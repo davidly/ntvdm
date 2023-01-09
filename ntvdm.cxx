@@ -954,10 +954,10 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             cpu.set_al( 2 ); // maybe try 3.0 for wordstar?
             cpu.set_ah( 11 ); 
-            cpu.set_al( 3 ); // maybe try 3.0 for wordstar?
-            cpu.set_ah( 0 ); 
+            //cpu.set_al( 3 ); // maybe try 3.0 for wordstar?
+            //cpu.set_ah( 0 ); 
 
-            tracer.Trace( "returning DOS version 2.11\n" );
+            tracer.Trace( "returning DOS version %d.%d\n", cpu.al(), cpu.ah() );
             return;
         }
         case IntCmd( 0x21, 0x33 ):
@@ -1766,7 +1766,13 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         }
         default:
         {
-            if ( 0x24 == interrupt_num )
+            if ( 0x22 == interrupt_num )
+            {
+                g_haltExecution = true;
+                cpu.end_emulation();
+                return;
+            }
+            else if ( 0x24 == interrupt_num )
             {
                 printf( "Abort, Retry, Ignore?\n" );
                 exit( 1 );
