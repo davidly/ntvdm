@@ -4,6 +4,11 @@
 //         https://www.eeeguide.com/8086-instruction-format/
 //         https://www.felixcloutier.com/x86
 //         https://onlinedisassembler.com/odaweb/
+//         https://www2.math.uni-wuppertal.de/~fpf/Uebungen/GdR-SS02/opcode_i.html
+// Cycle counts are approximate -- within 25% of actual values. It doesn't account for misalignment,
+// ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
+// and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
+// I tested cycle counts against a physical 80186 (which executes many opcodes in fewer cycles).
 
 #include <stdio.h>
 #include <memory.h>
@@ -32,12 +37,35 @@ void i8086::trace_state()
 {
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = dis.Disassemble( pcode );
-    tracer.TraceQuiet( "ip %#6x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s  %s ; (%u)\n",
+    tracer.TraceQuiet( "ip %#6x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x,"
+                       "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s  %s ; (%u)\n",
                        ip, *pcode, (byte) pcode[1], (byte) pcode[2], (byte) pcode[3], (byte) pcode[4],
                        ax, bx, cx, dx, di, si, ds, es, cs, ss, bp, sp, render_flags(), pdisassemble, dis.BytesConsumed() );
 //    DumpBinaryData( memory + flatten( ss, 0x11ac ), 4, 0 );
 //    DumpBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
 } //trace_state
+
+// base cycle count per opcode; will be higher for multi-byte instructions, memory references,
+// ea calculations, jumps taken, loops taken, rotate cl-times, and reps
+const uint8_t i8086_cycles[ 256 ]
+{
+    /*00*/     3,  3,  3,  3,  4,  4, 15, 12,    3,  3,  3,  3,  4,  4, 15,  0,
+    /*10*/     3,  3,  3,  3,  4,  4, 15, 12,    3,  3,  3,  3,  4,  4, 15, 12,
+    /*20*/     3,  3,  3,  3,  4,  4,  2,  4,    3,  3,  3,  3,  4,  4,  2,  4,
+    /*30*/     3,  3,  3,  3,  4,  4,  2,  4,    3,  3,  3,  3,  4,  4,  2,  4,
+    /*40*/     3,  3,  3,  3,  3,  3,  3,  3,    3,  3,  3,  3,  3,  3,  3,  3,
+    /*50*/    15, 15, 15, 15, 15, 15, 15, 15,   12, 12, 12, 12, 12, 12, 12, 12,
+    /*60*/     0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,
+    /*70*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
+    /*80*/     4,  4,  4,  4,  5,  5,  4,  4,    2,  2,  2,  2,  2,  4,  2, 12, // lea as 4, not 2; docs can't be right
+    /*90*/     4,  4,  4,  4,  4,  4,  4,  4,    2,  5, 36,  4, 14, 12,  4,  4,
+    /*a0*/    12, 12, 13, 13, 18, 26, 30, 30,    5,  5, 11, 15, 16, 16, 19, 19,
+    /*b0*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
+    /*c0*/     0,  0, 24, 20, 24, 24, 14, 14,    0,  0, 33, 34, 72, 71,  4, 44,
+    /*d0*/     2,  2,  8,  8, 83, 60, 11,  0,    0,  0,  0,  0,  0,  0,  0,  0,
+    /*e0*/     6,  5,  5,  6, 14, 14, 14, 14,   23, 15, 15, 15, 12, 12, 12, 12,
+    /*f0*/     1,  0,  9,  9,  2,  3,  5,  5,    2,  2,  2,  2,  2,  3,  2,  2,
+};
 
 void i8086::update_rep_sidi16()
 {
@@ -509,27 +537,27 @@ void i8086::op_sar8( uint8_t * pval, uint8_t shift )
     *pval = val;
 } //sar8
 
-void i8086::op_cmps16()
+void i8086::op_cmps16( uint64_t & cycles )
 {
-    op_sub16( * flat_address16( get_seg_value( ds ), si ), * flat_address16( es, di ) );
+    op_sub16( * flat_address16( get_seg_value( ds, cycles ), si ), * flat_address16( es, di ) );
     update_rep_sidi16();
 } //op_cmps16
 
-void i8086::op_cmps8()
+void i8086::op_cmps8( uint64_t & cycles )
 {
-    op_sub8( * flat_address8( get_seg_value( ds ), si ), * flat_address8( es, di ) );
+    op_sub8( * flat_address8( get_seg_value( ds, cycles ), si ), * flat_address8( es, di ) );
     update_rep_sidi8();
 } //op_cmps8
 
-void i8086::op_movs16()
+void i8086::op_movs16( uint64_t & cycles )
 {
-    * flat_address16( es, di ) = * flat_address16( get_seg_value( ds ), si );
+    * flat_address16( es, di ) = * flat_address16( get_seg_value( ds, cycles ), si );
     update_rep_sidi16();
 } //op_movs16
 
-void i8086::op_movs8()
+void i8086::op_movs8( uint64_t & cycles )
 {
-    * flat_address8( es, di ) = * flat_address8( get_seg_value( ds ), si );
+    * flat_address8( es, di ) = * flat_address8( get_seg_value( ds, cycles ), si );
     update_rep_sidi8();
 } //op_movs8
 
@@ -551,55 +579,65 @@ void i8086::op_sto8()
         di++;
 } //op_sto8
 
-void i8086::op_lods16()
+void i8086::op_lods16( uint64_t & cycles )
 {
-    ax = * flat_address16( get_seg_value( ds ), si );
+    ax = * flat_address16( get_seg_value( ds, cycles ), si );
     if ( fDirection )
         si -= 2;
     else
         si += 2;
 } //op_lods16
 
-void i8086::op_lods8()
+void i8086::op_lods8( uint64_t & cycles )
 {
-    set_al( * flat_address8( get_seg_value( ds ), si ) );
+    set_al( * flat_address8( get_seg_value( ds, cycles ), si ) );
     if ( fDirection )
         si--;
     else
         si++;
 } //op_lods8
 
-void i8086::op_scas16()
+void i8086::op_scas16( uint64_t & cycles )
 {
-    op_sub16( ax, * flat_address16( get_seg_value( es ), di ) );
+    op_sub16( ax, * flat_address16( get_seg_value( es, cycles ), di ) );
     if ( fDirection )
         di -= 2;
     else
         di += 2;
 } //op_scas16
 
-void i8086::op_scas8()
+void i8086::op_scas8( uint64_t & cycles )
 {
-    op_sub8( al(), * flat_address8( get_seg_value( es ), di ) );
+    op_sub8( al(), * flat_address8( get_seg_value( es, cycles ), di ) );
     if ( fDirection )
         di--;
     else
         di++;
 } //op_scas8
 
+void i8086::op_interrupt()
+{
+    last_interrupt = _b1;
+    uint32_t offset = 4 * _b1;
+    uint16_t * vectorItem = (uint16_t *) ( memory + (uint32_t) 4 * _b1 );
+    materializeFlags();
+    push( flags );
+    push( cs );
+    push( ip + 2 );
+    ip = vectorItem[ 0 ];
+    cs = vectorItem[ 1 ];
+} //op_interrupt
+
 uint64_t i8086::emulate( uint64_t maxcycles )
 {
     uint64_t cycles = 0;
-
-    while ( cycles < maxcycles )                   // 4% of runtime
+    do 
     {
-        prefix_segment_override = 0xff;            // 1% of runtime (the compiler does both at once!)
+        prefix_segment_override = 0xff;
         prefix_repeat_opcode = 0xff;
 
 _after_prefix:
-        cycles++;                                  // 7% of runtime. for now, it's just instructions not cycles. to be added...
-
-        if ( 0 != g_State )                        //.5% of runtime. grouped into one check rather than 2 every loop
+        if ( 0 != g_State )            
         {
             if ( g_State & stateEndEmulation )
             {
@@ -611,10 +649,17 @@ _after_prefix:
                 trace_state();
         }
 
-        decode_instruction( memptr( flat_ip() ) ); // 32 % of runtime
+        decode_instruction( memptr( flat_ip() ) );
 
-        bool handled = true;                       
-        switch( _b0 )                              // 20% of runtime setting up for the jump table
+        #ifdef I8086_TRACK_CYCLES
+            cycles += i8086_cycles[ _b0 ]; // base cycle count. In many cases it'll be higher than this
+        #else
+            cycles += 1;
+        #endif
+
+        bool handled = true;
+
+        switch( _b0 )                             
         {
             case 0x04: { set_al( op_add8( al(), _b1 ) ); _bc++; break; } // add al, immed8
             case 0x05: { ax = op_add16( ax, _b12 ); _bc += 2; break; } // add ax, immed16
@@ -670,23 +715,26 @@ _after_prefix:
             case 0x84: // test reg8/mem8, reg8
             {
                 _bc++;
+                AddMemCycles( cycles, 8 );
                 uint16_t src;
-                uint8_t * pleft = (uint8_t *) get_op_args( toreg(), src );
+                uint8_t * pleft = (uint8_t *) get_op_args( toreg(), src, cycles );
                 op_and8( *pleft, src & 0xff );
                 break;
             }
             case 0x85: // test reg16/mem16, reg16
             {
                 _bc++;
+                AddMemCycles( cycles, 8 );
                 uint16_t src;
-                uint16_t * pleft = (uint16_t *) get_op_args( toreg(), src );
+                uint16_t * pleft = (uint16_t *) get_op_args( toreg(), src, cycles );
                 op_and16( *pleft, src );
                 break;
             }
             case 0x86: // xchg reg8, reg8/mem8
             {
+                AddMemCycles( cycles, 21 );
                 uint8_t * pA = get_preg8( _reg );
-                uint8_t * pB = (uint8_t *) get_rm_ptr( _rm );
+                uint8_t * pB = (uint8_t *) get_rm_ptr( _rm, cycles );
                 uint8_t tmp = *pB;
                 *pB = *pA;
                 *pA = tmp;
@@ -695,8 +743,9 @@ _after_prefix:
             }
             case 0x87: // xchg reg16, reg16/mem16
             {
+                AddMemCycles( cycles, 21 );
                 uint16_t * pA = get_preg16( _reg );
-                uint16_t * pB = (uint16_t *) get_rm_ptr( _rm );
+                uint16_t * pB = (uint16_t *) get_rm_ptr( _rm, cycles );
                 uint16_t tmp = *pB;
                 *pB = *pA;
                 *pA = tmp;
@@ -706,33 +755,55 @@ _after_prefix:
             case 0x88: // mov reg8/mem8, reg8
             {
                 _bc++;
+                AddMemCycles( cycles, 11 ); // 10/11/12 possible
                 uint16_t src;
-                void * pdst = get_op_args( toreg(), src );
+                void * pdst = get_op_args( toreg(), src, cycles );
                 * (uint8_t *) pdst = src & 0xff;
                 break;
             }
             case 0x89: // mov reg16/mem16, reg16
             {
                 _bc++;
+                AddMemCycles( cycles, 11 ); // 10/11/12 possible
                 uint16_t src;
-                void * pdst = get_op_args( toreg(), src );
+                void * pdst = get_op_args( toreg(), src, cycles );
                 * (uint16_t *) pdst = src;
                 break;
             }
-            case 0x8a: { _bc++; * get_preg8( _reg ) = * (uint8_t *) get_rm_ptr( _rm ); break; } // mov reg8, r/m8
-            case 0x8b: { _bc++; * get_preg16( _reg ) = * (uint16_t *) get_rm_ptr( _rm ); break; } // mov reg16, r/m16
-            case 0x8c: { _bc++; * get_rm16_ptr() = * seg_reg( _reg ); break; } // mov r/m16, sreg
-            case 0x8d: { _bc++; * get_preg16( _reg ) = get_rm_ea( _rm ); break; } // lea reg16, mem16
+            case 0x8a: // mov reg8, r/m8
+            {
+                _bc++;
+                AddMemCycles( cycles, 11 ); // 10/11/12 possible
+                * get_preg8( _reg ) = * (uint8_t *) get_rm_ptr( _rm, cycles );
+                break;
+            }
+            case 0x8b: // mov reg16, r/m16
+            {
+                _bc++;
+                AddMemCycles( cycles, 11 ); // 10/11/12 possible
+                * get_preg16( _reg ) = * (uint16_t *) get_rm_ptr( _rm, cycles );
+                break;
+            } 
+            case 0x8c: // mov r/m16, sreg
+            {
+                _bc++;
+                AddMemCycles( cycles, 11 ); // 10/11/12 possible
+                * get_rm16_ptr( cycles ) = * seg_reg( _reg );
+                break;
+            }
+            case 0x8d: { _bc++; * get_preg16( _reg ) = get_rm_ea( _rm, cycles ); break; } // lea reg16, mem16
             case 0x8e: // mov sreg, reg16/mem16
             {
-                 _isword = true; // the opcode indicates it's a byte instruction, but it's not
-                 * seg_reg( _reg ) = * (uint16_t *) get_rm_ptr( _rm );
                  _bc++;
+                AddMemCycles( cycles, 11 ); // 10/11/12 possible
+                 _isword = true; // the opcode indicates it's a byte instruction, but it's not
+                 * seg_reg( _reg ) = * (uint16_t *) get_rm_ptr( _rm, cycles );
                  break;
             }
             case 0x8f: // pop reg16/mem16
             {
-                uint16_t * pdst = (uint16_t * ) get_rm_ptr( _rm );
+                AddMemCycles( cycles, 14 );
+                uint16_t * pdst = (uint16_t * ) get_rm_ptr( _rm, cycles );
                 *pdst = pop();
                 _bc++;
                 break;
@@ -784,28 +855,28 @@ _after_prefix:
             }
             case 0xa0: // mov al, mem8
             {
-                uint32_t flat = flatten( get_seg_value( ds ), _b12 );
+                uint32_t flat = flatten( get_seg_value( ds, cycles ), _b12 );
                 set_al( * (uint8_t *) ( memory + flat ) );
                 _bc += 2;
                 break;
             }
             case 0xa1: // mov ax, mem16
             {
-                uint32_t flat = flatten( get_seg_value( ds ), _b12 );
+                uint32_t flat = flatten( get_seg_value( ds, cycles ), _b12 );
                 ax = * (uint16_t *) ( memory + flat );
                 _bc += 2;
                 break;
             }
             case 0xa2: // mov mem8, al
             {
-                uint8_t * pdst = (uint8_t *) ( memory + flatten( get_seg_value( ds ), _b12 ) );
+                uint8_t * pdst = (uint8_t *) ( memory + flatten( get_seg_value( ds, cycles ), _b12 ) );
                 *pdst = al();
                 _bc += 2;
                 break;
             }
             case 0xa3: // mov mem16, ax
             {
-                uint16_t * pdst = (uint16_t *) ( memory + flatten( get_seg_value( ds ), _b12 ) );
+                uint16_t * pdst = (uint16_t *) ( memory + flatten( get_seg_value( ds, cycles ), _b12 ) );
                 *pdst = ax;
                 _bc += 2;
                 break;
@@ -816,12 +887,13 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_movs8();
+                        AddCycles( cycles, 17 );
+                        op_movs8( cycles );
                         cx--;
                     }
                 }
                 else
-                    op_movs8();
+                    op_movs8( cycles );
                 break;
             }
             case 0xa5: // movs dest-str16, src-str16
@@ -830,12 +902,13 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_movs16();
+                        AddCycles( cycles, 17 );
+                        op_movs16( cycles );
                         cx--;
                     }
                 }
                 else
-                    op_movs16();
+                    op_movs16( cycles );
                 break;
             }
             case 0xa6: // cmps m8, m8
@@ -844,7 +917,8 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_cmps8();
+                        AddCycles( cycles, 30 );
+                        op_cmps8( cycles );
                         cx--;
                         if ( fZero )
                             break;
@@ -854,14 +928,15 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_cmps8();
+                        AddCycles( cycles, 30 );
+                        op_cmps8( cycles );
                         cx--;
                         if ( !fZero )
                             break;
                     }
                 }
                 else
-                    op_cmps8();
+                    op_cmps8( cycles );
                 break;
             }
             case 0xa7: // cmps dest-str15, src-str16
@@ -870,7 +945,8 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_cmps16();
+                        AddCycles( cycles, 30 );
+                        op_cmps16( cycles );
                         cx--;
                         if ( fZero )
                             break;
@@ -880,14 +956,15 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_cmps16();
+                        AddCycles( cycles, 30 );
+                        op_cmps16( cycles );
                         cx--;
                         if ( !fZero )
                             break;
                     }
                 }
                 else
-                    op_cmps16();
+                    op_cmps16( cycles );
                 break;
             }
             case 0xa8: { _bc++; op_and8( al(), _b1 ); break; } // test al, immed8
@@ -903,6 +980,7 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
+                        AddCycles( cycles, 10 );
                         op_sto8();
                         cx--;
                     }
@@ -917,6 +995,7 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
+                        AddCycles( cycles, 14 );
                         op_sto16();
                         cx--;
                     }
@@ -931,12 +1010,13 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_lods8();
+                        AddCycles( cycles, 10 ); // a guess
+                        op_lods8( cycles );
                         cx--;
                     }
                 }
                 else
-                    op_lods8();
+                    op_lods8( cycles );
                 break;
             }
             case 0xad: // lods16 src-str16
@@ -945,12 +1025,13 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_lods16();
+                        AddCycles( cycles, 10 ); // a guess
+                        op_lods16( cycles );
                         cx--;
                     }
                 }
                 else
-                    op_lods16();
+                    op_lods16( cycles );
                 break;
             }
             case 0xae: // scas8 compare al with byte at es:di
@@ -959,7 +1040,8 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_scas8();
+                        AddCycles( cycles, 15 ); // a guess
+                        op_scas8( cycles );
                         cx--;
                         if ( fZero )
                             break;
@@ -969,14 +1051,15 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_scas8();
+                        AddCycles( cycles, 15 ); // a guess
+                        op_scas8( cycles );
                         cx--;
                         if ( !fZero )
                             break;
                     }
                 }
                 else
-                    op_scas8();
+                    op_scas8( cycles );
                 break;
             }
             case 0xaf: // scas16 compare ax with word at es:di
@@ -985,7 +1068,8 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_scas16();
+                        AddCycles( cycles, 19 ); // a guess
+                        op_scas16( cycles );
                         cx--;
                         if ( fZero )
                             break;
@@ -995,14 +1079,15 @@ _after_prefix:
                 {
                     while ( 0 != cx )
                     {
-                        op_scas16();
+                        AddCycles( cycles, 19 ); // a guess
+                        op_scas16( cycles );
                         cx--;
                         if ( !fZero )
                             break;
                     }
                 }
                 else
-                    op_scas16();
+                    op_scas16( cycles );
                 break;
             }
             case 0xc2: { ip = pop(); sp += _b12; continue; } // ret immed16 intrasegment
@@ -1012,7 +1097,7 @@ _after_prefix:
                 _isword = true; // opcode is even, but it's a word.
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
-                uint16_t * pvalue = (uint16_t *) get_rm_ptr( _rm );
+                uint16_t * pvalue = (uint16_t *) get_rm_ptr( _rm, cycles );
                 *preg = pvalue[ 0 ];
                 es = pvalue[ 1 ];
                 break;
@@ -1022,7 +1107,7 @@ _after_prefix:
                 _isword = true; // opcode is even, but it's a word.
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
-                uint16_t * pvalue = (uint16_t *) get_rm_ptr( _rm );
+                uint16_t * pvalue = (uint16_t *) get_rm_ptr( _rm, cycles );
                 *preg = pvalue[ 0 ];
                 ds = pvalue[ 1 ];
                 break;
@@ -1030,7 +1115,7 @@ _after_prefix:
             case 0xc6: // mov mem8, immed8
             {
                 _bc++;
-                uint8_t * pdst = (uint8_t *) get_rm_ptr( _rm );
+                uint8_t * pdst = (uint8_t *) get_rm_ptr( _rm, cycles );
                 *pdst = _pcode[ _bc ];
                 _bc++;
                 break;
@@ -1039,7 +1124,7 @@ _after_prefix:
             {
                 _bc++;
                 uint16_t src;
-                uint16_t * pdst = (uint16_t *) get_op_args( false, src );
+                uint16_t * pdst = (uint16_t *) get_op_args( false, src, cycles );
                 *pdst = src;
                 break;
             }
@@ -1048,16 +1133,17 @@ _after_prefix:
             case 0xcc: { DebugBreak(); break; } // int 3
             case 0xcd: // int
             {
-                last_interrupt = _b1;
-                uint32_t offset = 4 * _b1;
-                uint16_t * vectorItem = (uint16_t *) ( memory + (uint32_t) 4 * _b1 );
-                materializeFlags();
-                push( flags );
-                push( cs );
-                push( ip + 2 );
-                ip = vectorItem[ 0 ];
-                cs = vectorItem[ 1 ];
+                op_interrupt();
                 continue;
+            }
+            case 0xce: // into
+            {
+                if ( fOverflow )
+                {
+                    AddCycles( cycles, 69 );
+                    op_interrupt();
+                    continue;
+                }
             }
             case 0xcf: // iret
             {
@@ -1070,7 +1156,8 @@ _after_prefix:
             case 0xd0: // bit shift reg8/mem8, 1
             {
                 _bc++;
-                uint8_t *pval = get_rm8_ptr();
+                AddMemCycles( cycles, 13 );
+                uint8_t *pval = get_rm8_ptr( cycles );
                 uint8_t original = *pval;
 
                 if ( 0 == _reg ) op_rol8( pval, 1 );
@@ -1086,7 +1173,8 @@ _after_prefix:
             case 0xd1: // bit shift reg16/mem16, 1
             {
                 _bc++;
-                uint16_t *pval = get_rm16_ptr();
+                AddMemCycles( cycles, 13 );
+                uint16_t *pval = get_rm16_ptr( cycles );
                 uint16_t original = *pval;
 
                 if ( 0 == _reg ) op_rol16( pval, 1 );
@@ -1102,9 +1190,11 @@ _after_prefix:
             case 0xd2: // bit shift reg8/mem8, cl
             {
                 _bc++;
-                uint8_t *pval = get_rm8_ptr();
+                AddMemCycles( cycles, 12 );
+                uint8_t *pval = get_rm8_ptr( cycles );
                 uint8_t original = *pval;
                 uint8_t amount = cl() & 0x1f;
+                AddCycles( cycles, 4 * amount );
 
                 if ( 0 == _reg ) op_rol8( pval, amount );
                 else if ( 1 == _reg ) op_ror8( pval, amount );
@@ -1119,9 +1209,11 @@ _after_prefix:
             case 0xd3: // bit shift reg16/mem16, cl
             {
                 _bc++;
-                uint16_t *pval = get_rm16_ptr();
+                AddMemCycles( cycles, 12 );
+                uint16_t *pval = get_rm16_ptr( cycles );
                 uint16_t original = *pval;
                 uint8_t amount = cl() & 0x1f;
+                AddCycles( cycles, 4 * amount );
 
                 if ( 0 == _reg ) op_rol16( pval, amount );
                 else if ( 1 == _reg ) op_ror16( pval, amount );
@@ -1155,27 +1247,29 @@ _after_prefix:
             }
             case 0xd7: // xlat
             {
-                uint8_t * ptable = flat_address8( get_seg_value( ds ), bx );
+                uint8_t * ptable = flat_address8( get_seg_value( ds, cycles ), bx );
                 set_al( ptable[ al() ] );
                 break;
             }
-            case 0xe0: // loopne short-label
+            case 0xe0: // loopne/loopnz short-label
             {
                 cx--;
                 _bc++;
                 if ( 0 != cx && !fZero )
                 {
+                    AddCycles( cycles, 14 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
                     continue;
                 }
                 break;
             }
-            case 0xe1: // loope short-label
+            case 0xe1: // loope/loopz short-label
             {
                 cx--;
                 _bc++;
                 if ( 0 != cx && fZero )
                 {
+                    AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
                     continue;
                 }
@@ -1187,6 +1281,7 @@ _after_prefix:
                 _bc++;
                 if ( 0 != cx )
                 {
+                    AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
                     continue;
                 }
@@ -1196,6 +1291,7 @@ _after_prefix:
             {
                 if ( 0 == cx )
                 {
+                    AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
                     continue;
                 }
@@ -1233,30 +1329,35 @@ _after_prefix:
                 {
                     // test is different: reg8/mem8, immed8
 
-                    uint8_t lhs = * (uint8_t *) get_rm_ptr( _rm );
+                    AddMemCycles( cycles, 8 );
+                    uint8_t lhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     uint8_t rhs = _pcode[ _bc++ ];
                     op_and8( lhs, rhs );
                 }
                 else if ( 2 == _reg ) // not reg8/mem8 -- no flags updated
                 {
-                    uint8_t * pval = (uint8_t *) get_rm_ptr( _rm );
+                    AddMemCycles( cycles, 13 );
+                    uint8_t * pval = (uint8_t *) get_rm_ptr( _rm, cycles );
                     *pval = ~ ( *pval );
                 }
                 else if ( 3 == _reg ) // neg reg8/mem8 (subtract from 0)
                 {
-                    uint8_t * pval = (uint8_t *) get_rm_ptr( _rm );
+                    AddMemCycles( cycles, 13 );
+                    uint8_t * pval = (uint8_t *) get_rm_ptr( _rm, cycles );
                     *pval = op_sub8( 0, *pval );
                 }
                 else if ( 4 == _reg ) // mul. ax = al * r/m8
                 {
-                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 77 ); // assume worst-case
+                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     ax = (uint16_t) al() * (uint16_t) rhs;
                     set_PZS16( ax );
                     fCarry = fOverflow = false;
                 }
                 else if ( 5 == _reg ) // imul. ax = al * r/m8
                 {
-                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 98 ); // assume worst-case
+                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     uint32_t result = (int16_t) al() * (int16_t) rhs;
                     ax = result & 0xffff;
                     set_PZS16( ax );
@@ -1265,6 +1366,7 @@ _after_prefix:
                 }
                 else if ( 6 == _reg ) // div m, r8 / src. al = result, ah = remainder
                 {
+                    AddCycles( cycles, 90 ); // assume worst-case
                     uint8_t rhs = * get_preg8( _rm );
                     if ( 0 != rhs )
                     {
@@ -1276,7 +1378,8 @@ _after_prefix:
                 }
                 else if ( 7 == _reg ) // idiv r/m8
                 {
-                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 112 ); // assume worst-case
+                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     int16_t lhs = ax;
                     set_al( ( lhs / (int16_t) rhs ) & 0xff );
                     set_ah( lhs % (int16_t) rhs );
@@ -1295,24 +1398,28 @@ _after_prefix:
                 {
                     // test is different: reg16/mem16, immed16
 
-                    uint16_t lhs = * (uint16_t *) get_rm_ptr( _rm );
+                    AddMemCycles( cycles, 8 );
+                    uint16_t lhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
                     uint16_t rhs = _pcode[ _bc++ ];
                     rhs |= ( (uint16_t) ( _pcode[ _bc++ ] ) << 8 );
                     op_and16( lhs, rhs );
                 }
                 else if ( 2 == _reg ) // not reg16/mem16 -- no flags updated
                 {
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm );
+                    AddMemCycles( cycles, 13 );
+                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
                     *pval = ~ ( *pval );
                 }
                 else if ( 3 == _reg ) // neg reg16/mem16 (subtract from 0)
                 {
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm );
+                    AddMemCycles( cycles, 13 );
+                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
                     *pval = op_sub16( 0, *pval );
                 }
                 else if ( 4 == _reg ) // mul. dx:ax = ax * src
                 {
-                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 133 ); // assume worst-case
+                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
                     uint32_t result = (uint32_t) ax * (uint32_t) rhs;
                     dx = result >> 16;
                     ax = result & 0xffff;
@@ -1321,7 +1428,8 @@ _after_prefix:
                 }
                 else if ( 5 == _reg ) // imul. dx:ax = ax * src
                 {
-                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 154 ); // assume worst-case
+                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
                     uint32_t result = (int32_t) ax * (int32_t) rhs;
                     dx = result >> 16;
                     ax = result & 0xffff;
@@ -1331,7 +1439,8 @@ _after_prefix:
                 }
                 else if ( 6 == _reg ) // div dx:ax / src. ax = result, dx = remainder
                 {
-                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 162 ); // assume worst-case
+                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
                     if ( 0 != rhs )
                     {
                         uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
@@ -1342,7 +1451,8 @@ _after_prefix:
                 }
                 else if ( 7 == _reg ) // idiv dx:ax / src. ax = result, dx = remainder
                 {
-                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 184 ); // assume worst-case
+                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
                     if ( 0 != rhs )
                     {
                         uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
@@ -1368,7 +1478,8 @@ _after_prefix:
             case 0xfe: // inc/dec reg8/mem8
             {
                 _bc++;
-                uint8_t * pdst = (uint8_t *) get_rm_ptr( _rm );
+                AddMemCycles( cycles, 12 );
+                uint8_t * pdst = (uint8_t *) get_rm_ptr( _rm, cycles );
 
                 if ( 0 == _reg ) // inc
                     *pdst = op_inc8( *pdst );
@@ -1380,19 +1491,23 @@ _after_prefix:
             {
                 if ( 0 == _reg ) // inc mem16
                 {
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 21 );
+                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
                     *pval = op_inc16( *pval );
                     _bc++;
                 }
                 else if ( 1 == _reg ) // dec mem16
                 {
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 21 );
+                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
                     *pval = op_dec16( *pval );
                     _bc++;
                 }
                 else if ( 2 == _reg ) // call reg16/mem16 (intra segment)
                 {
-                    uint16_t * pfunc = (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 18 );
+                    AddMemCycles( cycles, 9 );
+                    uint16_t * pfunc = (uint16_t *) get_rm_ptr( _rm, cycles );
                     uint16_t return_address = ip + _bc + 1;
                     push( return_address );
                     ip = *pfunc;
@@ -1400,7 +1515,8 @@ _after_prefix:
                 }
                 else if ( 3 == _reg ) // call mem16:16 (inter segment)
                 {
-                    uint16_t * pdata = (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 35 );
+                    uint16_t * pdata = (uint16_t *) get_rm_ptr( _rm, cycles );
                     push( cs );
                     push( ip + _bc + 1 );
                     ip = pdata[ 0 ];
@@ -1409,19 +1525,23 @@ _after_prefix:
                 }
                 else if ( 4 == _reg ) // jmp reg16/mem16 (intra segment)
                 {
-                    ip = * (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 13 );
+                    AddMemCycles( cycles, 3 );
+                    ip = * (uint16_t *) get_rm_ptr( _rm, cycles );
                     continue;
                 }
                 else if ( 5 == _reg ) // jmp mem16 (inter segment)
                 {
-                    uint16_t * pdata = (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 16 );
+                    uint16_t * pdata = (uint16_t *) get_rm_ptr( _rm, cycles );
                     ip = pdata[ 0 ];
                     cs = pdata[ 1 ];
                     continue;
                 }
                 else if ( 6 == _reg ) // push mem16
                 {
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm );
+                    AddCycles( cycles, 14 );
+                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
                     push( *pval );
                     _bc++;
                 }
@@ -1483,6 +1603,7 @@ _after_prefix:
                 if ( takejmp )
                 {
                     ip += ( 2 + (int) (char) _b1 );
+                    AddCycles( cycles, 12 );
                     continue;
                 }
             }
@@ -1517,8 +1638,9 @@ _after_prefix:
             {
                 case 0x00: // add
                 {
+                    AddMemCycles( cycles, 10 );
                     uint16_t src;
-                    void * pdst = get_op_args( true, src );
+                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
                         * (uint16_t *) pdst = op_add16( * (uint16_t *) pdst, src );
                     else
@@ -1527,8 +1649,9 @@ _after_prefix:
                 }
                 case 0x08: // or
                 {
+                    AddMemCycles( cycles, 10 );
                     uint16_t src;
-                    void * pdst = get_op_args( true, src );
+                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
                         * (uint16_t *) pdst = op_or16( * (uint16_t *) pdst, src );
                     else
@@ -1537,8 +1660,9 @@ _after_prefix:
                 }
                 case 0x10: // adc
                 {
+                    AddMemCycles( cycles, 10 );
                     uint16_t src;
-                    void * pdst = get_op_args( true, src );
+                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
                         * (uint16_t *) pdst = op_add16( * (uint16_t *) pdst, src, fCarry );
                     else
@@ -1547,8 +1671,9 @@ _after_prefix:
                 }
                 case 0x18: // sbb
                 {
+                    AddMemCycles( cycles, 10 );
                     uint16_t src;
-                    void * pdst = get_op_args( true, src );
+                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
                         * (uint16_t *) pdst = op_sub16( * (uint16_t *) pdst, src, fCarry );
                     else
@@ -1557,8 +1682,9 @@ _after_prefix:
                 }
                 case 0x20: // and
                 {
+                    AddMemCycles( cycles, 10 );
                     uint16_t src;
-                    void * pdst = get_op_args( true, src );
+                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
                         * (uint16_t *) pdst = op_and16( * (uint16_t *) pdst, src );
                     else
@@ -1567,8 +1693,9 @@ _after_prefix:
                 }
                 case 0x28: // sub
                 {
+                    AddMemCycles( cycles, 10 );
                     uint16_t src;
-                    void * pdst = get_op_args( true, src );
+                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
                         * (uint16_t *) pdst = op_sub16( * (uint16_t *) pdst, src );
                     else
@@ -1577,8 +1704,9 @@ _after_prefix:
                 }
                 case 0x30: // xor
                 {
+                    AddMemCycles( cycles, 10 );
                     uint16_t src;
-                    void * pdst = get_op_args( true, src );
+                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
                         * (uint16_t *) pdst = op_xor16( * (uint16_t *) pdst, src );
                     else
@@ -1587,8 +1715,9 @@ _after_prefix:
                 }
                 case 0x38: // cmp
                 {
+                    AddMemCycles( cycles, 10 );
                     uint16_t src;
-                    void * pdst = get_op_args( true, src );
+                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
                         op_sub16( * (uint16_t *) pdst, src );
                     else
@@ -1607,10 +1736,12 @@ _after_prefix:
                     else if ( 2 == _mod || directAddress )
                         immoffset += 2;
 
+                    AddCycles( cycles, directAddress ? 13 : 6 );
+
                     if ( _isword )
                     {
                         uint16_t rhs;
-                        if ( 0x83 == _b0 ) // one byte immediate, word math
+                        if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
                             rhs = (int8_t) _pcode[ immoffset ]; // cast for sign extension from byte to word
                         else
                         {
@@ -1618,12 +1749,12 @@ _after_prefix:
                             rhs = (uint16_t) _pcode[ immoffset ] + ( (uint16_t) ( _pcode[ 1 + immoffset ] ) << 8 );
                         }
 
-                        do_math16( math, get_rm16_ptr(), rhs );
+                        do_math16( math, get_rm16_ptr( cycles ), rhs );
                     }
                     else
                     {
                         uint8_t rhs = _pcode[ immoffset ];
-                        do_math8( math, get_rm8_ptr(), rhs );
+                        do_math8( math, get_rm8_ptr( cycles ), rhs );
                     }
                     break;
                 }
@@ -1637,8 +1768,8 @@ _after_prefix:
         }
 
         ip += _bc;
-    }
+    } while ( cycles < maxcycles );
+
 _all_done:
     return cycles;
 } //emulate
-

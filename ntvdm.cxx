@@ -1831,20 +1831,22 @@ static void usage( char const * perr )
         printf( "error: %s\n", perr );
 
     printf( "NT Virtual DOS Machine: emulates an MS-DOS 2.11 runtime environment enough to run some COM/EXE files on Win64\n" );
-    printf( "usage: ntvdm [-c] [-p] [-s:X] [-t] <DOS executable> [arg1] [arg2]\n" );
+    printf( "usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]\n" );
     printf( "  notes:\n" );
-    printf( "            -c     don't auto-detect and set the console to 80x25\n" );
+    printf( "            -c     don't auto-detect cursor positioning and set the console to 80x25\n" );
     printf( "            -i     trace instructions as they are executed (this is verbose!)\n" );
     printf( "            -p     show performance information\n" ); 
-#if false // turn off until cycles are implemented in i8086.?xx
+#ifdef I8086_TRACK_CYCLES
     printf( "            -s:X   speed in Hz. Default is 0, which is as fast as possible.\n" );
-    printf( "                   for 4Mhz, use -s:4000000\n" );
+    printf( "                   for 4.77Mhz, use -s:4770000\n" );
 #endif
     printf( "            -t     enable debug tracing to ntvdm.log\n" );
-    printf( "                   arguments after the .COM/.EXE file are passed to that command\n" );
+    printf( " [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command\n" );
     printf( "  examples:\n" );
     printf( "      ntvdm -c -t app.com foo bar\n" );
     printf( "      ntvdm turbo.com\n" );
+    printf( "      ntvdm s:\\github\\MS-DOS\\v2.0\\bin\\masm small,,,small\n" );
+    printf( "      ntvdm s:\\github\\MS-DOS\\v2.0\\bin\\link small,,,small\n" );
     exit( 1 );
 } //usage
 
@@ -2089,12 +2091,12 @@ int main(int argc, char **argv)
     g_haltExecution = false;
 
     CPerfTime perfApp;
-    uint64_t total_cycles = 0;
+    uint64_t total_cycles = 0; // this will be instructions if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
 
     do
     {
-        total_cycles += cpu.emulate( 1000 );
+        total_cycles += cpu.emulate( 1000 ); // 1000 cycles or instructions at a time
 
         if ( g_haltExecution )
             break;
@@ -2114,17 +2116,17 @@ int main(int argc, char **argv)
 
     if ( showPerformance )
     {
-#if false // turn off until cycles are implemented in i8086.?xx
-        printf( "8086 cycles:      %14ws\n", perfApp.RenderLL( (LONGLONG) total_cycles ) );
-        printf( "clock rate: " );
-        if ( 0 == clockrate )
-        {
-            printf( "      %14s\n", "unbounded" );
-            printf( "approx ms at 4.77Mhz: %10ws\n", perfApp.RenderLL( total_cycles / 4770 ) );
-        }
-        else
-            printf( "      %14ws Hz\n", perfApp.RenderLL( (LONGLONG ) clockrate ) );
-#endif
+        #ifdef I8086_TRACK_CYCLES
+            printf( "8086 cycles:      %16ws\n", perfApp.RenderLL( (LONGLONG) total_cycles ) );
+            printf( "clock rate: " );
+            if ( 0 == clockrate )
+            {
+                printf( "      %16s\n", "unbounded" );
+                printf( "approx ms at 4.77Mhz: %12ws\n", perfApp.RenderLL( total_cycles / 4770 ) );
+            }
+            else
+                printf( "      %16ws Hz\n", perfApp.RenderLL( (LONGLONG ) clockrate ) );
+        #endif
 
         ULARGE_INTEGER ullK, ullU;
         ullK.HighPart = kernelFT.dwHighDateTime;
@@ -2133,10 +2135,10 @@ int main(int argc, char **argv)
         ullU.HighPart = userFT.dwHighDateTime;
         ullU.LowPart = userFT.dwLowDateTime;
     
-        printf( "kernel CPU ms:    %14ws\n", perfApp.RenderDurationInMS( ullK.QuadPart ) );
-        printf( "user CPU ms:      %14ws\n", perfApp.RenderDurationInMS( ullU.QuadPart ) );
-        printf( "total CPU ms:     %14ws\n", perfApp.RenderDurationInMS( ullU.QuadPart + ullK.QuadPart ) );
-        printf( "elapsed ms:       %14ws\n", perfApp.RenderDurationInMS( elapsed ) );
+        printf( "kernel CPU ms:    %16ws\n", perfApp.RenderDurationInMS( ullK.QuadPart ) );
+        printf( "user CPU ms:      %16ws\n", perfApp.RenderDurationInMS( ullU.QuadPart ) );
+        printf( "total CPU ms:     %16ws\n", perfApp.RenderDurationInMS( ullU.QuadPart + ullK.QuadPart ) );
+        printf( "elapsed ms:       %16ws\n", perfApp.RenderDurationInMS( elapsed ) );
     }
 
     tracer.Shutdown();
