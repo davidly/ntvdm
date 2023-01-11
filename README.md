@@ -22,14 +22,22 @@ functions must work but isn't documented.
 djl8086d.hxx is an 8086 disassembler that's used when tracing instructions. It's useful when debugging why
 apps don't work properly.
 
-    usage: ntvdm [-c] [-i] [-p] [-t] <DOS executable> [arg1] [arg2]
+Cycle counts are conditionally computed based on a #define in i8086.hxx. Using this, the emulator can
+simulate running at a given clock rate. Cycle counts vary widely between various spec docs I found online,
+and the code doesn't check for misaligned memory access, get details of mult/div correct, or otherwise
+get any closer than about 25% of what would be accurate. It's in the ballpark.
 
+    usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
-                -c     don't auto-detect and set the console to 80x25
+                -c     don't auto-detect cursor positioning and set the console to 80x25
                 -i     trace instructions as they are executed (this is verbose!)
                 -p     show performance information
+                -s:X   speed in Hz. Default is 0, which is as fast as possible.
+                       for 4.77Mhz, use -s:4770000
                 -t     enable debug tracing to ntvdm.log
-                       arguments after the .COM/.EXE file are passed to that command
+     [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command
       examples:
           ntvdm -c -t app.com foo bar
           ntvdm turbo.com
+          ntvdm s:\github\MS-DOS\v2.0\bin\masm small,,,small
+          ntvdm s:\github\MS-DOS\v2.0\bin\link small,,,small
