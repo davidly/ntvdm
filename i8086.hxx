@@ -403,6 +403,8 @@ struct i8086
     void op_lods16( uint64_t & cycles );
     void op_scas16( uint64_t & cycles );
     void op_movs16( uint64_t & cycles );
+    void update_index16( uint16_t & index_register );
+    void update_index8( uint16_t & index_register );
     void update_rep_sidi8();
     void update_rep_sidi16();
     uint8_t op_inc8( uint8_t val );

@@ -67,48 +67,45 @@ const uint8_t i8086_cycles[ 256 ]
     /*f0*/     1,  0,  9,  9,  2,  3,  5,  5,    2,  2,  2,  2,  2,  3,  2,  2,
 };
 
-void i8086::update_rep_sidi16()
+void i8086::update_index16( uint16_t & index_register ) // si or di
 {
     if ( fDirection )
-    {
-        si -= 2;
-        di -= 2;
-    }
+        index_register -= 2;
     else
-    {
-        si += 2;
-        di += 2;
-    }
+        index_register += 2;
+} //update_index16
+
+void i8086::update_index8( uint16_t & index_register ) // si or di
+{
+    if ( fDirection )
+        index_register--;
+    else
+        index_register++;
+} //update_index16
+
+void i8086::update_rep_sidi16()
+{
+    update_index16( si );
+    update_index16( di );
 } //update_rep_sidi16
 
 void i8086::update_rep_sidi8()
 {
-    if ( fDirection )
-    {
-        si--;
-        di--;
-    }
-    else
-    {
-        si++;
-        di++;
-    }
+    update_index8( si );
+    update_index8( di );
 } //update_rep_sidi8
 
 uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 {
     // com == ones-complement
-
     uint8_t com_rhs = ~rhs;
     uint8_t borrow_int = borrow ? 0 : 1;
     uint16_t res16 =  (uint16_t) lhs + (uint16_t) com_rhs + (uint16_t) borrow_int;
     uint8_t res8 = res16 & 0xff;
-
     fCarry = ( 0 == ( res16 & 0x100 ) );
     set_PZS8( res8 );
 
     // if not ( ( one of lhs and com_x are negative ) and ( one of lhs and result are negative ) )
-
     fOverflow = ! ( ( lhs ^ com_rhs ) & 0x80 ) && ( ( lhs ^ res8 ) & 0x80 );
     fAuxCarry = ( 0 != ( ( ( lhs & 0xf ) + ( com_rhs & 0xf ) + borrow_int ) & 0x10 ) );
     return res8;
@@ -117,7 +114,6 @@ uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
 {
     // com == ones-complement
-
     uint16_t com_rhs = ~rhs;
     uint16_t borrow_int = borrow ? 0 : 1;
     uint32_t res32 =  (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) borrow_int;
@@ -564,55 +560,37 @@ void i8086::op_movs8( uint64_t & cycles )
 void i8086::op_sto16()
 {
     * flat_address16( es, di ) = ax;
-    if ( fDirection )
-        di -= 2;
-    else
-        di += 2;
+    update_index16( di );
 } //op_sto16
 
 void i8086::op_sto8()
 {
     * flat_address8( es, di ) = al();
-    if ( fDirection )
-        di--;
-    else
-        di++;
+    update_index8( di );
 } //op_sto8
 
 void i8086::op_lods16( uint64_t & cycles )
 {
     ax = * flat_address16( get_seg_value( ds, cycles ), si );
-    if ( fDirection )
-        si -= 2;
-    else
-        si += 2;
+    update_index16( si );
 } //op_lods16
 
 void i8086::op_lods8( uint64_t & cycles )
 {
     set_al( * flat_address8( get_seg_value( ds, cycles ), si ) );
-    if ( fDirection )
-        si--;
-    else
-        si++;
+    update_index8( si );
 } //op_lods8
 
 void i8086::op_scas16( uint64_t & cycles )
 {
     op_sub16( ax, * flat_address16( get_seg_value( es, cycles ), di ) );
-    if ( fDirection )
-        di -= 2;
-    else
-        di += 2;
+    update_index16( di );
 } //op_scas16
 
 void i8086::op_scas8( uint64_t & cycles )
 {
     op_sub8( al(), * flat_address8( get_seg_value( es, cycles ), di ) );
-    if ( fDirection )
-        di--;
-    else
-        di++;
+    update_index8( di );
 } //op_scas8
 
 void i8086::op_interrupt()
@@ -820,18 +798,8 @@ _after_prefix:
                 continue;
             }
             case 0x9b: break; // wait for pending floating point exceptions
-            case 0x9c: // pushf
-            {
-                materializeFlags();
-                push( flags );
-                break;
-            }
-            case 0x9d: // popf
-            {
-                flags = pop();
-                unmaterializeFlags();
-                break;
-            }
+            case 0x9c: { materializeFlags(); push( flags ); break; } // pushf
+            case 0x9d: { flags = pop(); unmaterializeFlags(); break; } // popf
             case 0x9e: // sahf -- stores a subset of flags from ah
             {
                 uint8_t fl = ah();
@@ -1325,10 +1293,8 @@ _after_prefix:
             {
                 _bc++;
 
-                if ( 0 == _reg )
+                if ( 0 == _reg ) // test reg8/mem8, immed8
                 {
-                    // test is different: reg8/mem8, immed8
-
                     AddMemCycles( cycles, 8 );
                     uint8_t lhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     uint8_t rhs = _pcode[ _bc++ ];
@@ -1394,10 +1360,8 @@ _after_prefix:
             {
                 _bc++;
 
-                if ( 0 == _reg )
+                if ( 0 == _reg ) // test reg16/mem16, immed16
                 {
-                    // test is different: reg16/mem16, immed16
-
                     AddMemCycles( cycles, 8 );
                     uint16_t lhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
                     uint16_t rhs = _pcode[ _bc++ ];
