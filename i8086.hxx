@@ -425,11 +425,11 @@ struct i8086
     } //pop
 
     #ifdef I8086_TRACK_CYCLES
-        void AddCycles( uint64_t & cycles, uint64_t amount ) { cycles += amount; }
-        void AddMemCycles( uint64_t & cycles, uint64_t amount ) { if ( 3 != _mod ) cycles += amount; }
+        void AddCycles( uint64_t & cycles, uint8_t amount ) { cycles += amount; }
+        void AddMemCycles( uint64_t & cycles, uint8_t amount ) { if ( 3 != _mod ) cycles += amount; }
     #else
-        void AddCycles( uint64_t & cycles, uint64_t amount ) {}
-        void AddMemCycles( uint64_t & cycles, uint64_t amount ) {}
+        void AddCycles( uint64_t & cycles, uint8_t amount ) {}
+        void AddMemCycles( uint64_t & cycles, uint8_t amount ) {}
     #endif
 
 }; //i8086
@@ -440,4 +440,4 @@ extern i8086 cpu;
 
 extern void i8086_invoke_interrupt( uint8_t interrupt ); // called by default for all interrupts
 extern void i8086_invoke_halt();                         // called when the HLT instruction is executed
-extern uint8_t i8086_invoke_in( uint16_t port );            // for in al, dx
+extern uint8_t i8086_invoke_in( uint16_t port );         // called for the instruction: in al, dx

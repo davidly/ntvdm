@@ -2055,7 +2055,7 @@ int main(int argc, char **argv)
         cbUsed -= codeStart; // don't include the header
         tracer.Trace( "bytes used by load module: %u, and code starts at %u\n", cbUsed, codeStart );
 
-        const DWORD CodeSegmentOffset = 0x20100;           //  data segment + 256 bytes for the psp
+        const DWORD CodeSegmentOffset = DataSegmentOffset + 0x100;   //  data segment + 256 bytes for the psp
         const WORD CodeSegment = CodeSegmentOffset / 16;    
 
         byte * pcode = GetMem( CodeSegment, 0 );
@@ -2122,7 +2122,14 @@ int main(int argc, char **argv)
             if ( 0 == clockrate )
             {
                 printf( "      %16s\n", "unbounded" );
-                printf( "approx ms at 4.77Mhz: %12ws\n", perfApp.RenderLL( total_cycles / 4770 ) );
+                uint64_t total_ms = total_cycles / 4770;
+                printf( "approx ms at 4.77Mhz: %12ws  == ", perfApp.RenderLL( total_ms ) );
+                uint16_t days = total_ms / 1000 / 60 / 60 / 24;
+                uint16_t hours = ( total_ms % ( 1000 * 60 * 60 * 24 ) ) / 1000 / 60 / 60;
+                uint16_t minutes = ( total_ms % ( 1000 * 60 * 60 ) ) / 1000 / 60;
+                uint16_t seconds = ( total_ms % ( 1000 * 60 ) ) / 1000;
+                uint16_t milliseconds = ( total_ms % 1000 );
+                printf( "%u days, %u hours, %u minutes, %u seconds, %u milliseconds\n", days, hours, minutes, seconds, milliseconds );
             }
             else
                 printf( "      %16ws Hz\n", perfApp.RenderLL( (LONGLONG ) clockrate ) );

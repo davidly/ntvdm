@@ -211,7 +211,7 @@ void i8086::do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs )
     else if ( 4 == math ) *psrc = op_and8( *psrc, rhs );
     else if ( 5 == math ) *psrc = op_sub8( *psrc, rhs );
     else if ( 6 == math ) *psrc = op_xor8( *psrc, rhs );
-    else op_sub8( *psrc, rhs ); // 7 == math
+    else op_sub8( *psrc, rhs ); // 7 == math -- cmp
 } //do_math8
 
 void i8086::do_math16( uint8_t math, uint16_t * psrc, uint16_t rhs )
@@ -223,8 +223,8 @@ void i8086::do_math16( uint8_t math, uint16_t * psrc, uint16_t rhs )
     else if ( 3 == math ) *psrc = op_sub16( *psrc, rhs, fCarry );
     else if ( 4 == math ) *psrc = op_and16( *psrc, rhs );
     else if ( 5 == math ) *psrc = op_sub16( *psrc, rhs );
-    else if ( 6 == math ) op_xor16( *psrc, rhs );
-    else op_sub16( *psrc, rhs ); // 7 == math
+    else if ( 6 == math ) *psrc = op_xor16( *psrc, rhs );
+    else op_sub16( *psrc, rhs ); // 7 == math -- cmp
 } //do_math16
 
 uint8_t i8086::op_inc8( uint8_t val )
