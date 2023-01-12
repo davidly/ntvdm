@@ -32,14 +32,14 @@ const DWORD stateEndEmulation = 2;
 void i8086::trace_instructions( bool t ) { if ( t ) g_State |= stateTraceInstructions; else g_State &= ~stateTraceInstructions; }
 void i8086::end_emulation() { g_State |= stateEndEmulation; }
 
-extern void DumpBinaryData( byte * pData, DWORD length, DWORD indent );
+extern void DumpBinaryData( uint8_t * pData, DWORD length, DWORD indent );
 void i8086::trace_state()
 {
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = dis.Disassemble( pcode );
     tracer.TraceQuiet( "ip %#6x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x,"
                        "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s  %s ; (%u)\n",
-                       ip, *pcode, (byte) pcode[1], (byte) pcode[2], (byte) pcode[3], (byte) pcode[4],
+                       ip, *pcode, (uint8_t) pcode[1], (uint8_t) pcode[2], (uint8_t) pcode[3], (uint8_t) pcode[4],
                        ax, bx, cx, dx, di, si, ds, es, cs, ss, bp, sp, render_flags(), pdisassemble, dis.BytesConsumed() );
 //    DumpBinaryData( memory + flatten( ss, 0x11ac ), 4, 0 );
 //    DumpBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
@@ -1631,97 +1631,28 @@ _after_prefix:
 
         if ( !handled )
         {
-            byte top6 = _b0 & 0xfc;
+            uint8_t top6 = _b0 & 0xfc;
             _bc = 2;
 
             switch( top6 )
             {
                 case 0x00: // add
-                {
-                    AddMemCycles( cycles, 10 );
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
-                    if ( _isword )
-                        * (uint16_t *) pdst = op_add16( * (uint16_t *) pdst, src );
-                    else
-                        * (uint8_t *) pdst = op_add8( * (uint8_t *) pdst, src & 0xff );
-                    break;
-                }
                 case 0x08: // or
-                {
-                    AddMemCycles( cycles, 10 );
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
-                    if ( _isword )
-                        * (uint16_t *) pdst = op_or16( * (uint16_t *) pdst, src );
-                    else
-                        * (uint8_t *) pdst = op_or8( * (uint8_t *) pdst, src & 0xff );
-                    break;
-                }
                 case 0x10: // adc
-                {
-                    AddMemCycles( cycles, 10 );
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
-                    if ( _isword )
-                        * (uint16_t *) pdst = op_add16( * (uint16_t *) pdst, src, fCarry );
-                    else
-                        * (uint8_t *) pdst = op_add8( * (uint8_t *) pdst, src & 0xff, fCarry );
-                    break;
-                }
                 case 0x18: // sbb
-                {
-                    AddMemCycles( cycles, 10 );
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
-                    if ( _isword )
-                        * (uint16_t *) pdst = op_sub16( * (uint16_t *) pdst, src, fCarry );
-                    else
-                        * (uint8_t *) pdst = op_sub8( * (uint8_t *) pdst, src & 0xff, fCarry );
-                    break;
-                }
                 case 0x20: // and
-                {
-                    AddMemCycles( cycles, 10 );
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
-                    if ( _isword )
-                        * (uint16_t *) pdst = op_and16( * (uint16_t *) pdst, src );
-                    else
-                        * (uint8_t *) pdst = op_and8( * (uint8_t *) pdst, src & 0xff );
-                    break;
-                }
                 case 0x28: // sub
-                {
-                    AddMemCycles( cycles, 10 );
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
-                    if ( _isword )
-                        * (uint16_t *) pdst = op_sub16( * (uint16_t *) pdst, src );
-                    else
-                        * (uint8_t *) pdst = op_sub8( * (uint8_t *) pdst, src & 0xff );
-                    break;
-                }
                 case 0x30: // xor
-                {
-                    AddMemCycles( cycles, 10 );
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
-                    if ( _isword )
-                        * (uint16_t *) pdst = op_xor16( * (uint16_t *) pdst, src );
-                    else
-                        * (uint8_t *) pdst = op_xor8( * (uint8_t *) pdst, src & 0xff );
-                    break;
-                }
                 case 0x38: // cmp
                 {
                     AddMemCycles( cycles, 10 );
+                    uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
                     uint16_t src;
                     void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
-                        op_sub16( * (uint16_t *) pdst, src );
+                        do_math16( bits5to3, (uint16_t *) pdst, src );
                     else
-                        op_sub8( * (uint8_t *) pdst, (uint8_t) src );
+                        do_math8( bits5to3, (uint8_t *) pdst, src & 0xff );
                     break;
                 }
                 case 0x80: // math
