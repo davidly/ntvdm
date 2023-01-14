@@ -66,6 +66,9 @@ struct ExeRelocation
 const DWORD ScreenBufferSize = 2 * 80 * 25;
 const DWORD ScreenBufferAddress = 0xb8000;
 static WORD blankLine[80] = {0};
+static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
+static const DWORD hookedVectorIRet = 0x00600004;           // this is in segment::offset format
+static bool g_TimerInterrupt1CHooked = false;
 
 CDJLTrace tracer;
 bool g_haltExecution = false;
@@ -81,6 +84,19 @@ static HANDLE g_hConsole = 0;
 static unsigned char g_curRow = 0, g_curCol = 0;
 static bool g_forceConsole = false;
 ConsoleConfiguration g_consoleConfig;
+
+#pragma pack( push, 1 )
+struct DosFindFile
+{
+    uint8_t undocumented[ 0x15 ];
+
+    uint8_t file_attributes;
+    uint16_t file_time;
+    uint16_t file_date;
+    uint32_t file_size;
+    char file_name[ 13 ];          // 8.3 blanks stripped null-terminated
+};
+#pragma pack(pop)
 
 FILE * RemoveFileEntry( WORD handle )
 {
@@ -399,6 +415,27 @@ struct IntInfo
     const char * name;
 };
 
+const IntInfo intsNoAH[] =
+{
+   { 0x00, 0, "divide error" },
+   { 0x01, 0, "single-step" },
+   { 0x02, 0, "non-maskable interrupt" },
+   { 0x03, 0, "1-byte interrupt" },
+   { 0x04, 0, "internal overflow" },
+   { 0x05, 0, "print-screen key" },
+   { 0x06, 0, "undefined opcode" },
+   { 0x08, 0, "hardware timer interrupt" },
+   { 0x11, 0, "bios equipment determination" },
+   { 0x1c, 0, "software tick tock" },
+   { 0x20, 0, "cp/m compatible exit app" },
+   { 0x21, 0, "generic dos interrupt" },
+   { 0x22, 0, "end application" },
+   { 0x23, 0, "control c exit address" },
+   { 0x24, 0, "fatal error handler address" },
+   { 0x2a, 0, "network information" },
+   { 0x2f, 0, "dos multiplex" },
+};
+
 const IntInfo ints[] =
 {
     { 0x10, 0x00, "set video mode" },
@@ -408,6 +445,7 @@ const IntInfo ints[] =
     { 0x10, 0x05, "set active displaypage" },
     { 0x10, 0x06, "scroll window up" },
     { 0x10, 0x07, "scroll window down" },
+    { 0x10, 0x08, "read attributes+character at cursor position" },
     { 0x10, 0x09, "output character" },
     { 0x10, 0x0a, "output character only" },
     { 0x10, 0x0f, "get video mode" },
@@ -423,7 +461,6 @@ const IntInfo ints[] =
     { 0x16, 0x00, "get character" },
     { 0x16, 0x01, "keyboard status" },
     { 0x1a, 0x00, "read real time clock" },
-    { 0x20, 0x00, "cp/m compatible exit app" },
     { 0x21, 0x00, "exit app" },
     { 0x21, 0x02, "output character" },
     { 0x21, 0x09, "print string $-terminated" },
@@ -441,11 +478,13 @@ const IntInfo ints[] =
     { 0x21, 0x25, "set interrupt vector" },
     { 0x21, 0x27, "random block read using FCB" },
     { 0x21, 0x28, "write random using FCBs" },
+    { 0x21, 0x29, "parse filename" },
     { 0x21, 0x2a, "get system date" },
     { 0x21, 0x2c, "get system time" },
     { 0x21, 0x30, "get version number" },
     { 0x21, 0x33, "get/set ctrl-break status" },
     { 0x21, 0x35, "get interrupt vector" },
+    { 0x21, 0x36, "get disk space" },
     { 0x21, 0x37, "get query switchchar" },
     { 0x21, 0x38, "get/set country dependent information" },
     { 0x21, 0x3c, "create file" },
@@ -453,11 +492,16 @@ const IntInfo ints[] =
     { 0x21, 0x3e, "close file" },
     { 0x21, 0x3f, "read from file using handle" },
     { 0x21, 0x40, "write to file using handle" },
+    { 0x21, 0x41, "delete file" },
     { 0x21, 0x42, "move file pointer (seek)" },
+    { 0x21, 0x43, "get/put file attributes" },
     { 0x21, 0x44, "ioctl" },
     { 0x21, 0x47, "get current directory" },
     { 0x21, 0x4a, "modify memory allocation" },
     { 0x21, 0x4c, "exit app" },
+    { 0x21, 0x4e, "find first asciz" },
+    { 0x21, 0x4f, "find next asciz" },
+    { 0x21, 0x56, "rename file" },
 };
 
 const char * getint( byte i, byte c )
@@ -465,6 +509,10 @@ const char * getint( byte i, byte c )
     for ( int x = 0; x < _countof( ints ); x++ )
         if ( ints[ x ].i == i && ints[ x ].c == c )
             return ints[ x ].name;
+
+    for ( int x = 0; x < _countof( intsNoAH ); x++ )
+        if ( intsNoAH[ x ].i == i )
+            return intsNoAH[ x ].name;
 
     return "unknown";
 } //getint
@@ -488,6 +536,57 @@ void i8086_invoke_halt()
     g_haltExecution = true;
 } // i8086_invoke_halt
 
+void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
+{
+    tracer.Trace( "actual found filename: '%s'\n", fd.cFileName );
+    if ( 0 != fd.cAlternateFileName[ 0 ] )
+        strcpy( pff->file_name, fd.cAlternateFileName );
+    else
+    {
+        assert( strlen( fd.cFileName ) < _countof( pff->file_name ) );
+        strcpy( pff->file_name, fd.cFileName );
+    }
+    pff->file_size = ( fd.nFileSizeLow );
+
+    // these bits are the same
+    pff->file_attributes = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
+                                                     FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
+
+    FILETIME ft = fd.ftLastWriteTime;
+    SYSTEMTIME st = {0};
+    FileTimeToSystemTime( &ft, &st );
+
+    // low 5 bits seconds, next 6 bits minutes, high 5 bits hours
+
+    pff->file_time = st.wSecond;
+    pff->file_time |= ( st.wMinute << 5 );
+    pff->file_time |= ( st.wHour << 11 );
+
+    // low 5 bits day, next 4 bits month, high 7 bits year less 1980
+
+    pff->file_date = st.wDay;
+    pff->file_date |= ( st.wMonth << 5 );
+    pff->file_date |= ( ( st.wYear - 1980 ) << 9 );
+
+    tracer.Trace( "  search found '%s', size %u\n", pff->file_name, pff->file_size );
+} //ProcessFoundFile
+
+
+void PerhapsFlipTo80x25()
+{
+    static bool firstTime = true;
+
+    if ( firstTime )
+    {
+        firstTime = false;
+        if ( !g_forceConsole )
+        {
+            g_use80x25 = true;
+            g_consoleConfig.EstablishConsole( 80, 25, ControlHandler  );
+        }
+    }
+} //PerhapsFlipTo80x25
+
 void i8086_invoke_interrupt( uint8_t interrupt_num )
 {
     static char cwd[ MAX_PATH ];
@@ -505,7 +604,6 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
     switch( IntCmd( interrupt_num, c ) )
     {
-        case IntCmd( 0x20, 0 ):     // compatibility with CP/M apps for COM executables that jump to address 0
         case IntCmd( 0x21, 0 ):
         {
             // terminate program
@@ -624,7 +722,6 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     
                     pfcb->Trace();
                     cpu.set_al( 0 );
-
                 }
                 else
                     tracer.Trace( "ERROR: file open using FCB of %s failed, error %d = %s\n", filename, errno, strerror( errno ) );
@@ -667,7 +764,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             {
                 tracer.Trace( "  deleting %s\n", filename );
     
-                int removeok = remove( filename );
+                int removeok = !remove( filename );
                 if ( removeok )
                 {
                     cpu.set_al( 0 );
@@ -815,10 +912,17 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         {
             // set interrupt vector
 
-            tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), getint( 0x21, cpu.al() ), cpu.ds, cpu.dx );
+            tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), getint( cpu.al(), 0 ), cpu.ds, cpu.dx );
             uint16_t * pvec = (uint16_t *) GetMem( 0, 4 * (uint16_t) cpu.al() );
             pvec[0] = cpu.dx;
             pvec[1] = cpu.ds;
+
+            if ( 0x1c == cpu.al() )
+            {
+                DWORD dw = ( (DWORD) cpu.ds << 16 ) | cpu.dx;
+                g_TimerInterrupt1CHooked = ( hookedVectorIRet != dw );
+                tracer.Trace( "timer hooked: %d\n", g_TimerInterrupt1CHooked );
+            }
             return;
         }           
         case IntCmd( 0x21, 0x27 ):
@@ -922,6 +1026,60 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             return;
         }
+        case IntCmd( 0x21, 0x29 ):
+        {
+            // parse filename
+            // in: ds:si -- string to parse
+            //     es:di -- buffer pointing to an fcb
+            //     al:   -- bit 0: 0 parsing stops if file separator found
+            //                     1 leading separator ignored
+            //              bit 1: 0 drive number in fcb set to default if no drive in string
+            //                     1 drive number in fcb not modified
+            //              bit 2: 0 set filename in fcb to blanks if no filename in string
+            //                     1 don't modify filename in fcb if no filename in string
+            //              bit 3: 0 extension in fcb set to blanks if no extension in string
+            //                     1 extension left unchanged if no extension in string
+            // out: al:     0: no wildcards in name or extension
+            //              1: wildcards appeared
+            //           0xff: drive specifier invalid
+            //      ds:si:  first byte after parsed string
+            //      es:di:  buffer filled with unopened fcb
+
+            char * pfile = (char *) GetMem( cpu.ds, cpu.si );
+            tracer.Trace( "parse filename '%s'\n", pfile );
+            DumpBinaryData( (byte *) pfile, 64, 0 );
+
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.es, cpu.di );
+            char * pf = pfile;
+
+            if ( 0 == pfile[0] )
+            {
+                if ( 0 == ( cpu.al() & 4 ) )
+                    memset( pfcb->name, ' ', _countof( pfcb->name ) );
+                if ( 0 == ( cpu.al() & 8 ) )
+                    memset( pfcb->ext, ' ', _countof( pfcb->ext ) );
+            }
+            else
+            {
+                memset( pfcb->name, ' ', _countof( pfcb->name ) );
+                memset( pfcb->ext, ' ', _countof( pfcb->ext ) );
+                for ( int i = 0; i < _countof( pfcb->name ) && *pf && *pf != '.'; i++ )
+                    pfcb->name[ i ] = *pf++;
+                if ( '.' == *pf )
+                    pf++;
+                for ( int i = 0; i < _countof( pfcb->ext ) && *pf; i++ )
+                    pfcb->ext[ i ] = *pf++;
+            }
+
+            if ( strchr( pfile, '*' ) || strchr( pfile, '?' ) )
+                cpu.set_al( 1 );
+            else
+                cpu.set_al( 0 );
+
+            cpu.si += 1 + (uint16_t) ( pf - pfile );
+
+            return;
+        }
         case IntCmd( 0x21, 0x2a ):
         {
             // get system date. al is day of week 0-6 0=sunday, cx = year 1980-2099, dh = month 1-12, dl = day 1-31
@@ -975,7 +1133,20 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             cpu.bx = pvec[ 0 ];
             cpu.es = pvec[ 1 ];
 
-            tracer.Trace( "  getting interrupt vector %02x %s which is %04x:%04x\n", cpu.al(), getint( 0x21, cpu.al() ), cpu.es, cpu.bx );
+            tracer.Trace( "  getting interrupt vector %02x %s which is %04x:%04x\n", cpu.al(), getint( cpu.al(), 0 ), cpu.es, cpu.bx );
+            return;
+        }
+        case IntCmd( 0x21, 0x36 ):
+        {
+            // get disk space: in: dl code (0 default, 1 = A, 2 = B...
+            // output: ax: sectors per cluster, bx = # of available clusters, cx = bytes per sector, dx = total clusters
+            // use believable numbers for DOS for lots of disk space free.
+
+            cpu.ax = 8;
+            cpu.bx = 0x6fff;
+            cpu.cx = 512;
+            cpu.dx = 0x7fff;
+
             return;
         }
         case IntCmd( 0x21, 0x37 ):
@@ -1169,9 +1340,10 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             WORD h = cpu.bx;
             cpu.fCarry = false;
-            cpu.ax = cpu.cx;
             if ( h <= 4 )
             {
+                cpu.ax = cpu.cx;
+
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
 
                 byte * p = GetMem( cpu.ds, cpu.dx );
@@ -1223,12 +1395,12 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             {
                 WORD len = cpu.cx;
                 byte * p = GetMem( cpu.ds, cpu.dx );
-                tracer.Trace( "write file using handle %u bytes at address %p\n", len, p );
+                tracer.Trace( "write file using handle, %u bytes at address %p\n", len, p );
 
                 cpu.ax = 0;
 
                 size_t numWritten = fwrite( p, len, 1, fp );
-                if ( numWritten )
+                if ( numWritten || ( 0 == len ) )
                 {
                     cpu.ax = len;
                     tracer.Trace( "  successfully wrote %u bytes\n", len );
@@ -1244,6 +1416,25 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
                 tracer.Trace( "ERROR: write to file handle couldn't find handle %u\n", cpu.bx );
                 cpu.ax = 6;
                 cpu.fCarry = true;
+            }
+
+            return;
+        }
+        case IntCmd( 0x21, 0x41 ):
+        {
+            // delete file: ds:dx has asciiz name of file to delete.
+            // return: cf set on error, ax = error code
+
+            char * pfile = (char *) GetMem( cpu.ds, cpu.dx );
+            tracer.Trace( "deleting file '%s'\n", pfile );
+            int removeok = !remove( pfile );
+            if ( removeok )
+                cpu.fCarry = false;
+            else
+            {
+                tracer.Trace( "ERROR: can't delete file '%s' error %d = %s\n", pfile, errno, strerror( errno ) );
+                cpu.fCarry = true;
+                cpu.ax = 2;
             }
 
             return;
@@ -1295,6 +1486,38 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
                 cpu.ax = 6;
                 cpu.fCarry = true;
             }
+
+            return;
+        }
+        case IntCmd( 0x21, 0x43 ):
+        {
+            // get/put file attributes
+            // al: 0 == get file attributes, 1 == put file attributes
+            // cx: attributes (bits: 0 ro, 1 hidden, 2 system, 3 volume, 4 subdir, 5 archive)
+            // ds:dx: asciz filename
+            // returns: ax = error code if CF set. CX = file attributes on get.
+
+            char * pfile = (char *) GetMem( cpu.ds, cpu.dx );
+            tracer.Trace( "get/put file attributes on file '%s'\n", pfile );
+            cpu.fCarry = true;
+
+            if ( 0 == cpu.al() ) // get
+            {
+                DWORD attr = GetFileAttributesA( pfile );
+                if ( INVALID_FILE_ATTRIBUTES != attr )
+                {
+                    cpu.fCarry = false;
+                    cpu.cx = ( attr & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
+                                        FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
+                }
+            }
+            else
+            {
+                BOOL ok = SetFileAttributesA( pfile, cpu.cx );
+                cpu.fCarry = !ok;
+            }
+
+            tracer.Trace( "result of get/put file attributes: %d\n", !cpu.fCarry );
 
             return;
         }
@@ -1377,12 +1600,103 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             g_haltExecution = true;
             return;
         }
+      
+        case IntCmd( 0x21, 0x4e ):
+        {
+            // find first asciz
+            // in: cx = attribute used during search: 7..0 unused, archive, subdir, volume, system, hidden, read-only
+            //     ds:dx pointer to null-terminated ascii string including wildcards
+            // out: CF: true on error, false on success
+            //      ax: error code if CF is true.
+            //      disk transfer address: DosFindFile
+
+            cpu.fCarry = true;
+            DosFindFile * pff = (DosFindFile* ) g_DiskTransferAddress;
+            char * psearch_string = (char *) GetMem( cpu.ds, cpu.dx );
+            tracer.Trace( "Find First Asciz for pattern '%s'\n", psearch_string );
+
+            tracer.Trace( "offset of file_name: %02x\n", offsetof( DosFindFile, file_name ) );
+
+            if ( INVALID_HANDLE_VALUE != g_hFindFirst )
+            {
+                FindClose( g_hFindFirst );
+                g_hFindFirst = INVALID_HANDLE_VALUE;
+            }
+
+            WIN32_FIND_DATAA fd = {0};
+            g_hFindFirst = FindFirstFileA( psearch_string, &fd );
+            if ( INVALID_HANDLE_VALUE != g_hFindFirst )
+            {
+                ProcessFoundFile( pff, fd );
+                cpu.fCarry = false;
+            }
+            else
+            {
+                cpu.ax = GetLastError(); // interesting errors actually match
+                tracer.Trace( "WARNING: find first file failed, error %d\n", GetLastError() );
+            }
+
+            return;
+        }
+      
+        case IntCmd( 0x21, 0x4f ):
+        {
+            // find next asciz
+
+            cpu.fCarry = true;
+            DosFindFile * pff = (DosFindFile* ) g_DiskTransferAddress;
+            tracer.Trace( "Find Next Asciz\n" );
+    
+            if ( INVALID_HANDLE_VALUE != g_hFindFirst )
+            {
+                WIN32_FIND_DATAA fd = {0};
+                BOOL found = FindNextFileA( g_hFindFirst, &fd );
+                if ( found )
+                {
+                    ProcessFoundFile( pff, fd );
+                    cpu.fCarry = false;
+                }
+                else
+                {
+                    cpu.ax = 12; // no more files
+                    tracer.Trace( "WARNING: find next file found no more, error %d\n", GetLastError() );
+                }
+            }
+            else
+            {
+                cpu.ax = 12; // no more files
+                tracer.Trace( "ERROR: search for next without a prior successful search for first\n" );
+            }
+
+            return;
+        }
+        case IntCmd( 0x21, 0x56 ):
+        {
+            // rename file: ds:dx old name, es:di new name
+            // CF set on error, AX with error code
+
+            char * poldname = (char *) GetMem( cpu.ds, cpu.dx );
+            char * pnewname = (char *) GetMem( cpu.es, cpu.di );
+
+            tracer.Trace( "renaming file '%s' to '%s'\n", poldname, pnewname );
+            int renameok = ! rename( poldname, pnewname );
+            if ( renameok )
+                cpu.fCarry = false;
+            else
+            {
+                tracer.Trace( "ERROR: can't rename file '%s' as '%s' error %d = %s\n", poldname, pnewname, errno, strerror( errno ) );
+                cpu.fCarry = true;
+                cpu.ax = 2;
+            }
+
+            return;
+        }
         case IntCmd( 0x1a, 0 ):
         {
             // real time. get ticks since system boot. 18.2 ticks per second.
 
             ULONGLONG milliseconds = GetTickCount64();
-            milliseconds *= 1820;
+            milliseconds *= 1821;
             milliseconds /= 100000;
             cpu.set_al( 0 );
 
@@ -1577,6 +1891,18 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             return;
         }
+        case IntCmd( 0x10, 8 ):
+        {
+            // read attributes+character at current position. bh == display page
+            // returns al character and ah attribute of character
+
+            PerhapsFlipTo80x25();
+
+            cpu.set_al( ' ' ); // hack for now
+            cpu.set_ah( 0 );
+
+            return;
+        }
         case IntCmd( 0x10, 9 ):
         {
             // output character
@@ -1638,19 +1964,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         {
             // get video mode
 
-            static bool firstTime = true;
-
-            if ( firstTime )
-            {
-                firstTime = false;
-                if ( !g_forceConsole )
-                {
-                    g_use80x25 = true;
-                    g_consoleConfig.EstablishConsole( 80, 25, ControlHandler  );
-                    //ClearDisplay();
-                    //UpdateDisplay();
-                }
-            }
+            PerhapsFlipTo80x25();
 
             cpu.set_al( g_videoMode );
             cpu.set_ah( 80 ); // columns
@@ -1741,6 +2055,9 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         {
             // check keyboard status. checks if a character is available. returns it if so but not removed from buffer
 
+            if ( g_use80x25 )
+                UpdateDisplay();
+
             cpu.set_ah( 0 );
 
             if ( _kbhit() )
@@ -1766,7 +2083,15 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         }
         default:
         {
-            if ( 0x22 == interrupt_num )
+            if ( 0x20 == interrupt_num )     // compatibility with CP/M apps for COM executables that jump to address 0 in its data segment
+            {
+                // terminate program
+    
+                g_haltExecution = true;
+                cpu.end_emulation();
+                return;
+            }
+            else if ( 0x22 == interrupt_num )
             {
                 g_haltExecution = true;
                 cpu.end_emulation();
@@ -1971,12 +2296,15 @@ int main(int argc, char **argv)
     * (byte *) ( pextradata + 0x00 ) = i8086_opcode_interrupt; // this instruction will cause i8086_invoke_interrupt to be called
     * (byte *) ( pextradata + 0x01 ) = 0xca;       // far ret 2 instead of iret, which trashes the flags
     * (byte *) ( pextradata + 0x02 ) = 2;          // it's what the DOS bios does
-    * (byte *) ( pextradata + 0x03 ) = 0;
+    * (byte *) ( pextradata + 0x03 ) = 0;          // it's what the DOS bios does
+    * (byte *) ( pextradata + 0x04 ) = 0xcf;       // int 1c return is an iret; don't bother calling back
 
     // claim bios and dos interrupt vectors (0-3f)
     DWORD * pVectors = (DWORD *) GetMem( 0, 0 );
     for ( DWORD intx = 0; intx < 0x40; intx++ )
         * (DWORD *) ( GetMem( 0, intx * 4 ) ) = hookedVector; // point all interrupts at the hook
+
+    * (DWORD *) ( GetMem( 0, 0x1c * 4 ) ) = hookedVectorIRet; // tick tock 18x a second can just iret
 
     if ( isCOM )
     {
@@ -2093,6 +2421,7 @@ int main(int argc, char **argv)
     CPerfTime perfApp;
     uint64_t total_cycles = 0; // this will be instructions if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
+    ULONGLONG ms_last = GetTickCount64();
 
     do
     {
@@ -2102,6 +2431,16 @@ int main(int argc, char **argv)
             break;
 
         delay.Delay( total_cycles );
+
+        if ( g_TimerInterrupt1CHooked ) // optimization since the default handler is just an iret
+        {
+            ULONGLONG ms_now = GetTickCount64();
+            if ( ms_now != ms_last )
+            {
+                ms_last = ms_now;
+                cpu.queue_interrupt( 0x1c );
+            }
+        }
     } while ( true );
 
     LONGLONG elapsed = 0;

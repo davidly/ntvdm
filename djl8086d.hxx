@@ -80,7 +80,7 @@ class CDisassemble8086
             {
                 if ( 0x6 == rm_to_use )
                 {
-                    _daa( "[%#04x]", (DWORD) _pcode[ 2 + immediateOffset ] + ( (DWORD) _pcode[ 3 + immediateOffset ] << 8 ) );
+                    _daa( "[%04xh]", (DWORD) _pcode[ 2 + immediateOffset ] + ( (DWORD) _pcode[ 3 + immediateOffset ] << 8 ) );
                     _bc += 2;
                 }
                 else
@@ -94,7 +94,7 @@ class CDisassemble8086
             }
             else if ( 2 == _mod )
             {
-                _daa( "[%s+%#04x]", rm_strings[ rm_to_use ], _pcode[2] + ( (DWORD) _pcode[3] << 8 ) );
+                _daa( "[%s+%04xh]", rm_strings[ rm_to_use ], _pcode[2] + ( (DWORD) _pcode[3] << 8 ) );
                 _bc += 2;
             }
         
@@ -260,7 +260,7 @@ class CDisassemble8086
             DecodeInstruction( pcode );
             bool handled = true;
 
-            //tracer.TraceQuiet( "{reg %#02x, rm %#02x, isword %d, b12 %#04x}", _reg, _rm, _isword, _b12 );
+            //tracer.TraceQuiet( "{reg %#02x, rm %#02x, isword %d, b12 %04xh}", _reg, _rm, _isword, _b12 );
         
             switch ( _b0 )
             {
