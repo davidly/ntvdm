@@ -206,27 +206,33 @@ uint8_t i8086::op_xor8( uint8_t lhs, uint8_t rhs )
 void i8086::do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs )
 {
     assert( math <= 7 );
-    if ( 0 == math ) *psrc = op_add8( *psrc, rhs );
-    else if ( 1 == math ) *psrc = op_or8( *psrc, rhs );
-    else if ( 2 == math ) *psrc = op_add8( *psrc, rhs, fCarry );
-    else if ( 3 == math ) *psrc = op_sub8( *psrc, rhs, fCarry );
-    else if ( 4 == math ) *psrc = op_and8( *psrc, rhs );
-    else if ( 5 == math ) *psrc = op_sub8( *psrc, rhs );
-    else if ( 6 == math ) *psrc = op_xor8( *psrc, rhs );
-    else op_sub8( *psrc, rhs ); // 7 == math -- cmp
+    switch ( math )
+    {
+        case 0: *psrc = op_add8( *psrc, rhs ); break;
+        case 1: *psrc = op_or8( *psrc, rhs ); break;
+        case 2: *psrc = op_add8( *psrc, rhs, fCarry ); break;
+        case 3: *psrc = op_sub8( *psrc, rhs, fCarry ); break;
+        case 4: *psrc = op_and8( *psrc, rhs ); break;
+        case 5: *psrc = op_sub8( *psrc, rhs ); break;
+        case 6: *psrc = op_xor8( *psrc, rhs ); break;
+        default: op_sub8( *psrc, rhs ); break; // 7 is cmp
+    }
 } //do_math8
 
 void i8086::do_math16( uint8_t math, uint16_t * psrc, uint16_t rhs )
 {
     assert( math <= 7 );
-    if ( 0 == math ) *psrc = op_add16( *psrc, rhs );
-    else if ( 1 == math ) *psrc = op_or16( *psrc, rhs );
-    else if ( 2 == math ) *psrc = op_add16( *psrc, rhs, fCarry );
-    else if ( 3 == math ) *psrc = op_sub16( *psrc, rhs, fCarry );
-    else if ( 4 == math ) *psrc = op_and16( *psrc, rhs );
-    else if ( 5 == math ) *psrc = op_sub16( *psrc, rhs );
-    else if ( 6 == math ) *psrc = op_xor16( *psrc, rhs );
-    else op_sub16( *psrc, rhs ); // 7 == math -- cmp
+    switch( math )
+    {
+        case 0: *psrc = op_add16( *psrc, rhs ); break;
+        case 1: *psrc = op_or16( *psrc, rhs ); break;
+        case 2: *psrc = op_add16( *psrc, rhs, fCarry ); break;
+        case 3: *psrc = op_sub16( *psrc, rhs, fCarry ); break;
+        case 4: *psrc = op_and16( *psrc, rhs ); break;
+        case 5: *psrc = op_sub16( *psrc, rhs ); break;
+        case 6: *psrc = op_xor16( *psrc, rhs ); break;
+        default: op_sub16( *psrc, rhs ); break; // 7 is cmp
+    }
 } //do_math16
 
 uint8_t i8086::op_inc8( uint8_t val )
@@ -599,10 +605,38 @@ void i8086::op_scas8( uint64_t & cycles )
     update_index8( di );
 } //op_scas8
 
+void i8086::op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount )
+{
+    switch( operation )
+    {
+        case 0: op_rol8( pval, amount ); break;
+        case 1: op_ror8( pval, amount ); break;
+        case 2: op_rcl8( pval, amount ); break;
+        case 3: op_rcr8( pval, amount ); break;
+        case 4: op_sal8( pval, amount ); break;    // aka shr
+        case 5: op_shr8( pval, amount ); break;
+        case 6: { assert( false );  break; }       // illegal
+        default: op_sar8( pval, amount ); break;   // 7 is sar
+    }
+} //op_rotate8
+
+void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
+{
+    switch( operation )
+    {
+        case 0: op_rol16( pval, amount ); break;
+        case 1: op_ror16( pval, amount ); break;
+        case 2: op_rcl16( pval, amount ); break;
+        case 3: op_rcr16( pval, amount ); break;
+        case 4: op_sal16( pval, amount ); break;   // aka shl
+        case 5: op_shr16( pval, amount ); break; 
+        case 6: { assert( false ); break; }        // illegal
+        default: op_sar16( pval, amount ); break;  // 7 is sar
+    }
+} //op_rotate16
+
 void i8086::op_interrupt( bool external_interrupt )
 {
-    // externally generated interrupts don't use the i8086_invoke_interrupt hook. They return via iret
-
     if ( !external_interrupt )
         last_interrupt = _b1;
     uint32_t offset = 4 * _b1;
@@ -1135,16 +1169,7 @@ _after_prefix:
                 _bc++;
                 AddMemCycles( cycles, 13 );
                 uint8_t *pval = get_rm8_ptr( cycles );
-                uint8_t original = *pval;
-
-                if ( 0 == _reg ) op_rol8( pval, 1 );
-                else if ( 1 == _reg ) op_ror8( pval, 1 );
-                else if ( 2 == _reg ) op_rcl8( pval, 1 );
-                else if ( 3 == _reg ) op_rcr8( pval, 1 );
-                else if ( 4 == _reg ) op_sal8( pval, 1 ); // aka shr
-                else if ( 5 == _reg ) op_shr8( pval, 1 );
-                else if ( 6 == _reg ) { assert( false ); } // illegal
-                else op_sar8( pval, 1 ); // ( 7 == _reg )
+                op_rotate8( pval, _reg, 1 );
                 break;
             }
             case 0xd1: // bit shift reg16/mem16, 1
@@ -1152,16 +1177,7 @@ _after_prefix:
                 _bc++;
                 AddMemCycles( cycles, 13 );
                 uint16_t *pval = get_rm16_ptr( cycles );
-                uint16_t original = *pval;
-
-                if ( 0 == _reg ) op_rol16( pval, 1 );
-                else if ( 1 == _reg ) op_ror16( pval, 1 );
-                else if ( 2 == _reg ) op_rcl16( pval, 1 );
-                else if ( 3 == _reg ) op_rcr16( pval, 1 );
-                else if ( 4 == _reg ) op_sal16( pval, 1 ); // aka shl
-                else if ( 5 == _reg ) op_shr16( pval, 1 );
-                else if ( 6 == _reg ) { assert( false ); } // illegal
-                else  op_sar16( pval, 1 ); // ( 7 == _reg ) 
+                op_rotate16( pval, _reg, 1 );
                 break;
             }
             case 0xd2: // bit shift reg8/mem8, cl
@@ -1169,18 +1185,9 @@ _after_prefix:
                 _bc++;
                 AddMemCycles( cycles, 12 );
                 uint8_t *pval = get_rm8_ptr( cycles );
-                uint8_t original = *pval;
                 uint8_t amount = cl() & 0x1f;
                 AddCycles( cycles, 4 * amount );
-
-                if ( 0 == _reg ) op_rol8( pval, amount );
-                else if ( 1 == _reg ) op_ror8( pval, amount );
-                else if ( 2 == _reg ) op_rcl8( pval, amount );
-                else if ( 3 == _reg ) op_rcr8( pval, amount );
-                else if ( 4 == _reg ) op_sal8( pval, amount ); // aka shl
-                else if ( 5 == _reg ) op_shr8( pval, amount );
-                else if ( 6 == _reg ) { assert( false ); } // illegal
-                else op_sar8( pval, amount ); // ( 7 == _reg )
+                op_rotate8( pval, _reg, amount );
                 break;
             }
             case 0xd3: // bit shift reg16/mem16, cl
@@ -1188,18 +1195,9 @@ _after_prefix:
                 _bc++;
                 AddMemCycles( cycles, 12 );
                 uint16_t *pval = get_rm16_ptr( cycles );
-                uint16_t original = *pval;
                 uint8_t amount = cl() & 0x1f;
                 AddCycles( cycles, 4 * amount );
-
-                if ( 0 == _reg ) op_rol16( pval, amount );
-                else if ( 1 == _reg ) op_ror16( pval, amount );
-                else if ( 2 == _reg ) op_rcl16( pval, amount );
-                else if ( 3 == _reg ) op_rcr16( pval, amount );
-                else if ( 4 == _reg ) op_sal16( pval, amount ); // aka shl
-                else if ( 5 == _reg ) op_shr16( pval, amount );
-                else if ( 6 == _reg ) { assert( false ); } // illegal
-                else op_sar16( pval, amount ); // ( 7 == _reg )
+                op_rotate16( pval, _reg, amount );
                 break;
             }
             case 0xd4: // aam

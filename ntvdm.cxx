@@ -88,13 +88,13 @@ ConsoleConfiguration g_consoleConfig;
 #pragma pack( push, 1 )
 struct DosFindFile
 {
-    uint8_t undocumented[ 0x15 ];
+    uint8_t undocumented[ 0x15 ];  // no attempt to mock this because I haven't found apps that use it
 
     uint8_t file_attributes;
     uint16_t file_time;
     uint16_t file_date;
     uint32_t file_size;
-    char file_name[ 13 ];          // 8.3 blanks stripped null-terminated
+    char file_name[ 13 ];          // 8.3, blanks stripped, null-terminated
 };
 #pragma pack(pop)
 
@@ -301,7 +301,7 @@ byte * GetVideoMem()
 void SetCursorPos()
 {
     assert( g_use80x25 );
-    COORD pos;
+    COORD pos = {0};
     pos.X = g_curCol;
     pos.Y = g_curRow;
     SetConsoleCursorPosition( g_hConsole, pos );
@@ -331,7 +331,7 @@ void UpdateDisplay()
             for ( WORD x = 0; x < 80; x++ )
                 ac[ x ] = pbuf[ y * 80 * 2 + x * 2 ];
 
-            COORD pos;
+            COORD pos = {0};
             pos.X = 0;
             pos.Y = y;
             SetConsoleCursorPosition( g_hConsole, pos );
@@ -415,7 +415,7 @@ struct IntInfo
     const char * name;
 };
 
-const IntInfo intsNoAH[] =
+const IntInfo interrupt_list_no_ah[] =
 {
    { 0x00, 0, "divide error" },
    { 0x01, 0, "single-step" },
@@ -436,7 +436,7 @@ const IntInfo intsNoAH[] =
    { 0x2f, 0, "dos multiplex" },
 };
 
-const IntInfo ints[] =
+const IntInfo interrupt_list[] =
 {
     { 0x10, 0x00, "set video mode" },
     { 0x10, 0x01, "set cursor size" },
@@ -506,13 +506,13 @@ const IntInfo ints[] =
 
 const char * getint( byte i, byte c )
 {
-    for ( int x = 0; x < _countof( ints ); x++ )
-        if ( ints[ x ].i == i && ints[ x ].c == c )
-            return ints[ x ].name;
+    for ( int x = 0; x < _countof( interrupt_list ); x++ )
+        if ( interrupt_list[ x ].i == i && interrupt_list[ x ].c == c )
+            return interrupt_list[ x ].name;
 
-    for ( int x = 0; x < _countof( intsNoAH ); x++ )
-        if ( intsNoAH[ x ].i == i )
-            return intsNoAH[ x ].name;
+    for ( int x = 0; x < _countof( interrupt_list_no_ah ); x++ )
+        if ( interrupt_list_no_ah[ x ].i == i )
+            return interrupt_list_no_ah[ x ].name;
 
     return "unknown";
 } //getint
@@ -589,8 +589,8 @@ void PerhapsFlipTo80x25()
 
 void i8086_invoke_interrupt( uint8_t interrupt_num )
 {
-    static char cwd[ MAX_PATH ];
-    static char curPath[ MAX_PATH ];
+    static char cwd[ MAX_PATH ] = {0};
+    static char curPath[ MAX_PATH ] = {0};
     static bool int16ungetAvailable = false;
     static int int16ungetChar = 0;
     static int int16ungetScancode = 0;
@@ -1086,10 +1086,10 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             SYSTEMTIME st = {0};
             GetLocalTime( &st );
-            cpu.set_al( st.wDayOfWeek );
+            cpu.set_al( (uint8_t) st.wDayOfWeek );
             cpu.cx = st.wYear;
-            cpu.set_dh( st.wMonth );
-            cpu.set_dl( st.wDay );
+            cpu.set_dh( (uint8_t) st.wMonth );
+            cpu.set_dl( (uint8_t) st.wDay );
 
             return;
         }           
@@ -1099,10 +1099,10 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             SYSTEMTIME st = {0};
             GetLocalTime( &st );
-            cpu.set_ch( st.wHour );
-            cpu.set_cl( st.wMinute );
-            cpu.set_dh( st.wSecond );
-            cpu.set_dl( st.wMilliseconds / 10 );
+            cpu.set_ch( (uint8_t) st.wHour );
+            cpu.set_cl( (uint8_t) st.wMinute );
+            cpu.set_dh( (uint8_t) st.wSecond );
+            cpu.set_dl( (uint8_t) ( st.wMilliseconds / 10 ) );
 
             return;
         }           
@@ -1180,7 +1180,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             FILE * fp = fopen( path, "w+b" );
             if ( fp )
             {
-                FileEntry fe;
+                FileEntry fe = {0};
                 strcpy( fe.path, path );
                 fe.fp = fp;
                 fe.handle = g_nextFileHandle++;
@@ -1209,7 +1209,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             FILE * fp = fopen( path, "r+b" );
             if ( fp )
             {
-                FileEntry fe;
+                FileEntry fe = {0};
                 strcpy( fe.path, path );
                 fe.fp = fp;
                 fe.handle = g_nextFileHandle++;
@@ -1700,11 +1700,11 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             milliseconds /= 100000;
             cpu.set_al( 0 );
 
-#if false
-            static ULONGLONG fakems = 0;
-            fakems += 10;
-            milliseconds = fakems;
-#endif
+            #if false // useful for creating logs that can be compared to fix bugs
+                static ULONGLONG fakems = 0;
+                fakems += 10;
+                milliseconds = fakems;
+            #endif
 
             cpu.set_ch( ( milliseconds >> 24 ) & 0xff );
             cpu.set_cl( ( milliseconds >> 16 ) & 0xff );
@@ -2083,10 +2083,14 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         }
         default:
         {
-            if ( 0x20 == interrupt_num )     // compatibility with CP/M apps for COM executables that jump to address 0 in its data segment
+            if ( 0x11 == interrupt_num )
             {
-                // terminate program
-    
+                // bios equipment determination
+                cpu.ax = 0x002c;
+                return;
+            }
+            else if ( 0x20 == interrupt_num ) // compatibility with CP/M apps for COM executables that jump to address 0 in its data segment
+            {
                 g_haltExecution = true;
                 cpu.end_emulation();
                 return;
@@ -2114,25 +2118,17 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
                 cpu.set_al( 1 ); // not installed, do NOT install
                 return;
             }
-            else if ( 0x11 == interrupt_num )
-            {
-                // bios equipment determination
-                cpu.ax = 0x002c;
-                return;
-            }
 
             tracer.Trace( "UNIMPLEMENTED pc interrupt!!!!: %02u == %#x, ah: %02u == %#x, al: %02u == %#x\n",
                           interrupt_num, interrupt_num, cpu.ah(), cpu.ah(), cpu.al(), cpu.al() );
-            break;
+            return;
         }
     }
-
-    return;
 } //i8086_invoke_interrupt
 
 void InitializePSP( WORD segment, char * acAppArgs )
 {
-    * (WORD *)  ( GetMem( segment, 0x00 ) ) = 0x20cd;     // int 20 instruction to terminate app
+    * (WORD *)  ( GetMem( segment, 0x00 ) ) = 0x20cd;     // int 20 instruction to terminate app like CP/M
     * (WORD *)  ( GetMem( segment, 0x02 ) ) = 0x9fff;     // top of memorysegment in paragraph form
     * (byte *)  ( GetMem( segment, 0x04 ) ) = 0x00;       // DOS uses 0
 
@@ -2435,9 +2431,10 @@ int main(int argc, char **argv)
         if ( g_TimerInterrupt1CHooked ) // optimization since the default handler is just an iret
         {
             ULONGLONG ms_now = GetTickCount64();
-            if ( ms_now >= ( ms_last + 55 ) )
+            if ( ms_now >= ( ms_last + 55 ) ) // On my machine GetTickCount64() changes every 16ms or so
             {
-                // note that if the app is blocked on something like keyboard input this interrupt will be delivered late
+                // if the app is blocked on keyboard input this interrupt will be delivered late.
+
                 ms_last = ms_now;
                 cpu.external_interrupt( 0x1c );
             }
@@ -2492,5 +2489,4 @@ int main(int argc, char **argv)
 
     return 0;
 } //main
-
 

@@ -413,6 +413,8 @@ struct i8086
     uint16_t op_inc16( uint16_t val );
     uint16_t op_dec16( uint16_t val );
     void op_interrupt( bool simulated_hardware = false );
+    void op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount );
+    void op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount );
 
     void push( uint16_t val )
     {
