@@ -25,15 +25,18 @@ uint8_t memory[ 1024 * 1024 ];
 i8086 cpu;
 static CDisassemble8086 dis;
 static uint32_t g_State = 0;
-static uint8_t g_QueuedInterrupt = 0;
 
 const DWORD stateTraceInstructions = 1;
 const DWORD stateEndEmulation = 2;
-const DWORD stateQueuedInterrupt = 4;
 
 void i8086::trace_instructions( bool t ) { if ( t ) g_State |= stateTraceInstructions; else g_State &= ~stateTraceInstructions; }
 void i8086::end_emulation() { g_State |= stateEndEmulation; }
-void i8086::queue_interrupt( uint8_t interrupt_num ) { g_QueuedInterrupt = interrupt_num; g_State |= stateQueuedInterrupt; }
+
+void i8086::external_interrupt( uint8_t interrupt_num )
+{
+    _b1 = interrupt_num;
+    op_interrupt( true );
+} //external_interrupt
 
 extern void DumpBinaryData( uint8_t * pData, DWORD length, DWORD indent );
 void i8086::trace_state()
@@ -596,18 +599,18 @@ void i8086::op_scas8( uint64_t & cycles )
     update_index8( di );
 } //op_scas8
 
-void i8086::op_interrupt( bool simulated_hardware_int )
+void i8086::op_interrupt( bool external_interrupt )
 {
-    // simulated-hardware generated interrupts don't use the i8086_invoke_interrupt hook and return via iret
+    // externally generated interrupts don't use the i8086_invoke_interrupt hook. They return via iret
 
-    if ( !simulated_hardware_int )
+    if ( !external_interrupt )
         last_interrupt = _b1;
     uint32_t offset = 4 * _b1;
     uint16_t * vectorItem = (uint16_t *) ( memory + (uint32_t) 4 * _b1 );
     materializeFlags();
     push( flags );
     push( cs );
-    push( simulated_hardware_int ? ip : ( ip + 2 ) ); // hardware interrupts aren't in the instruction stream; don't advance
+    push( external_interrupt ? ip : ( ip + 2 ) ); // external interrupts aren't in the instruction stream; don't advance
     ip = vectorItem[ 0 ];
     cs = vectorItem[ 1 ];
 } //op_interrupt
@@ -627,13 +630,6 @@ _after_prefix:
             {
                 g_State &= ~stateEndEmulation;
                 break;
-            }
-
-            if ( g_State & stateQueuedInterrupt )
-            {
-                g_State &= ~stateQueuedInterrupt;
-                _b1 = g_QueuedInterrupt;
-                op_interrupt( true );
             }
 
             if ( g_State & stateTraceInstructions )

@@ -764,7 +764,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             {
                 tracer.Trace( "  deleting %s\n", filename );
     
-                int removeok = !remove( filename );
+                int removeok = ( 0 == remove( filename ) );
                 if ( removeok )
                 {
                     cpu.set_al( 0 );
@@ -1427,7 +1427,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             char * pfile = (char *) GetMem( cpu.ds, cpu.dx );
             tracer.Trace( "deleting file '%s'\n", pfile );
-            int removeok = !remove( pfile );
+            int removeok = ( 0 == remove( pfile ) );
             if ( removeok )
                 cpu.fCarry = false;
             else
@@ -1679,7 +1679,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             char * pnewname = (char *) GetMem( cpu.es, cpu.di );
 
             tracer.Trace( "renaming file '%s' to '%s'\n", poldname, pnewname );
-            int renameok = ! rename( poldname, pnewname );
+            int renameok = ( 0 == rename( poldname, pnewname ) );
             if ( renameok )
                 cpu.fCarry = false;
             else
@@ -2435,10 +2435,11 @@ int main(int argc, char **argv)
         if ( g_TimerInterrupt1CHooked ) // optimization since the default handler is just an iret
         {
             ULONGLONG ms_now = GetTickCount64();
-            if ( ms_now != ms_last )
+            if ( ms_now >= ( ms_last + 55 ) )
             {
+                // note that if the app is blocked on something like keyboard input this interrupt will be delivered late
                 ms_last = ms_now;
-                cpu.queue_interrupt( 0x1c );
+                cpu.external_interrupt( 0x1c );
             }
         }
     } while ( true );
