@@ -18,7 +18,6 @@ struct i8086
     uint16_t flags;
     uint8_t prefix_segment_override; // 0xff for none, 0..3 for es, cs, ss, ds
     uint8_t prefix_repeat_opcode;
-    uint8_t last_interrupt;
     void * reg_pointers[ 16 ];
 
     // bits   0,           2,         4,     6,     7,     8,          9,         10,        11

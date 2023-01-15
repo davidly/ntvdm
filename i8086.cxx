@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <memory.h>
 #include <assert.h>
-#include <vector>
+#include <stack>
 #include <djltrace.hxx>
 #include <djl8086d.hxx>
 
@@ -23,8 +23,9 @@ using namespace std;
 
 uint8_t memory[ 1024 * 1024 ];
 i8086 cpu;
-static CDisassemble8086 dis;
+static CDisassemble8086 g_Disassembler;
 static uint32_t g_State = 0;
+static stack<uint8_t> g_InterruptStack;
 
 const DWORD stateTraceInstructions = 1;
 const DWORD stateEndEmulation = 2;
@@ -42,11 +43,11 @@ extern void DumpBinaryData( uint8_t * pData, DWORD length, DWORD indent );
 void i8086::trace_state()
 {
     uint8_t * pcode = memptr( flat_ip() );
-    const char * pdisassemble = dis.Disassemble( pcode );
+    const char * pdisassemble = g_Disassembler.Disassemble( pcode );
     tracer.TraceQuiet( "ip %#6x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
                        "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s  %s ; (%u)\n",
                        ip, *pcode, (uint8_t) pcode[1], (uint8_t) pcode[2], (uint8_t) pcode[3], (uint8_t) pcode[4],
-                       ax, bx, cx, dx, di, si, ds, es, cs, ss, bp, sp, render_flags(), pdisassemble, dis.BytesConsumed() );
+                       ax, bx, cx, dx, di, si, ds, es, cs, ss, bp, sp, render_flags(), pdisassemble, g_Disassembler.BytesConsumed() );
 //    DumpBinaryData( memory + flatten( ds, 0x197b ), 6, 0 );
 //    DumpBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
 } //trace_state
@@ -637,8 +638,6 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
 
 void i8086::op_interrupt( bool external_interrupt )
 {
-    if ( !external_interrupt )
-        last_interrupt = _b1;
     uint32_t offset = 4 * _b1;
     uint16_t * vectorItem = (uint16_t *) ( memory + (uint32_t) 4 * _b1 );
     materializeFlags();
@@ -647,6 +646,9 @@ void i8086::op_interrupt( bool external_interrupt )
     push( external_interrupt ? ip : ( ip + 2 ) ); // external interrupts aren't in the instruction stream; don't advance
     ip = vectorItem[ 0 ];
     cs = vectorItem[ 1 ];
+    uint8_t first_opcode = * flat_address8( cs, ip );
+    if ( i8086_opcode_interrupt == first_opcode ) // if a callback interrupt, save the # for the callback later
+        g_InterruptStack.push( _b1 );
 } //op_interrupt
 
 uint64_t i8086::emulate( uint64_t maxcycles )
@@ -730,7 +732,10 @@ _after_prefix:
             case 0x3e: { prefix_segment_override = 3; ip++; goto _after_prefix; } // ds segment override
             case 0x69: // FAKE Opcode: i8086_opcode_interrupt
             {
-                i8086_invoke_interrupt( last_interrupt );
+                assert( g_InterruptStack.size() > 0 );
+                uint8_t interrupt = g_InterruptStack.top();
+                g_InterruptStack.pop();
+                i8086_invoke_interrupt( interrupt );
                 break;
             }
             case 0x84: // test reg8/mem8, reg8
