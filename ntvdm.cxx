@@ -130,6 +130,21 @@ FILE * FindFileEntry( WORD handle )
     return 0;
 } //FindFileEntry
 
+const char * FindFileEntryPath( WORD handle )
+{
+    for ( size_t i = 0; i < g_fileEntries.size(); i++ )
+    {
+        if ( handle == g_fileEntries[ i ].handle )
+        {
+            tracer.Trace( "found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
+            return g_fileEntries[ i ].path;
+        }
+    }
+
+    tracer.Trace( "ERROR: could not find file entry for handle %u\n", handle );
+    return 0;
+} //FindFileEntryPath
+
 BOOL isPressed( int vkey )
 {
     SHORT s = GetAsyncKeyState( vkey );
@@ -434,6 +449,7 @@ const IntInfo interrupt_list_no_ah[] =
    { 0x24, 0, "fatal error handler address" },
    { 0x2a, 0, "network information" },
    { 0x2f, 0, "dos multiplex" },
+   { 0xf0, 0, "gwbasic interpreter" },
 };
 
 const IntInfo interrupt_list[] =
@@ -502,6 +518,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x4e, "find first asciz" },
     { 0x21, 0x4f, "find next asciz" },
     { 0x21, 0x56, "rename file" },
+    { 0x21, 0x57, "get/set file date and time using handle" },
 };
 
 const char * getint( byte i, byte c )
@@ -536,6 +553,24 @@ void i8086_invoke_halt()
     g_haltExecution = true;
 } // i8086_invoke_halt
 
+void FileTimeToDos( FILETIME & ft, uint16_t & dos_time, uint16_t & dos_date )
+{
+    SYSTEMTIME st = {0};
+    FileTimeToSystemTime( &ft, &st );
+
+    // low 5 bits seconds, next 6 bits minutes, high 5 bits hours
+
+    dos_time = st.wSecond;
+    dos_time |= ( st.wMinute << 5 );
+    dos_time |= ( st.wHour << 11 );
+
+    // low 5 bits day, next 4 bits month, high 7 bits year less 1980
+
+    dos_date = st.wDay;
+    dos_date |= ( st.wMonth << 5 );
+    dos_date |= ( ( st.wYear - 1980 ) << 9 );
+} //FileTimeToDos
+
 void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
 {
     tracer.Trace( "actual found filename: '%s'\n", fd.cFileName );
@@ -552,25 +587,9 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
     pff->file_attributes = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
                                                      FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
 
-    FILETIME ft = fd.ftLastWriteTime;
-    SYSTEMTIME st = {0};
-    FileTimeToSystemTime( &ft, &st );
-
-    // low 5 bits seconds, next 6 bits minutes, high 5 bits hours
-
-    pff->file_time = st.wSecond;
-    pff->file_time |= ( st.wMinute << 5 );
-    pff->file_time |= ( st.wHour << 11 );
-
-    // low 5 bits day, next 4 bits month, high 7 bits year less 1980
-
-    pff->file_date = st.wDay;
-    pff->file_date |= ( st.wMonth << 5 );
-    pff->file_date |= ( ( st.wYear - 1980 ) << 9 );
-
+    FileTimeToDos( fd.ftLastWriteTime, pff->file_time, pff->file_date );
     tracer.Trace( "  search found '%s', size %u\n", pff->file_name, pff->file_size );
 } //ProcessFoundFile
-
 
 void PerhapsFlipTo80x25()
 {
@@ -1687,6 +1706,59 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
                 tracer.Trace( "ERROR: can't rename file '%s' as '%s' error %d = %s\n", poldname, pnewname, errno, strerror( errno ) );
                 cpu.fCarry = true;
                 cpu.ax = 2;
+            }
+
+            return;
+        }
+        case IntCmd( 0x21, 0x57 ):
+        {
+            // get/set file date and time using handle
+            // input:  al: 0: get, 1 set
+            //         bx: handle
+            //         cx: time to set if setting
+            //         dx: date to set if setting
+            // output: es:di pointer to buffer containing results
+            //         CF set on error
+            //         ax: error code if CF set
+            //         cx: file time if getting
+            //         dx: file date if getting
+            //
+
+            cpu.fCarry = true;
+            WORD handle = cpu.bx;
+            const char * path = FindFileEntryPath( handle );
+            if ( path )
+            {
+                if ( 0 == cpu.al() )
+                {
+                    WIN32_FILE_ATTRIBUTE_DATA fad = {0};
+                    if ( GetFileAttributesExA( path, GetFileExInfoStandard, &fad ) )
+                    {
+                        cpu.ax = 0;
+                        cpu.fCarry = false;
+                        FileTimeToDos( fad.ftLastWriteTime, cpu.cx, cpu.dx );
+                    }
+                    else
+                    {
+                        tracer.Trace( "ERROR: can't get/set file date and time; getfileattributesex failed %d\n", GetLastError() );
+                        cpu.ax = 1;
+                    }
+                }
+                else if ( 1 == cpu.al() )
+                {
+                    // set not implemented...
+                    cpu.ax = 0x57;
+                }
+                else
+                {
+                    tracer.Trace( "ERROR: can't get/set file date and time; command in al not valid: %d\n", cpu.al() );
+                    cpu.ax = 1;
+                }
+            }
+            else
+            {
+                tracer.Trace( "ERROR: can't get/set file date and time; file handle not valid\n" );
+                cpu.ax = 6;
             }
 
             return;
