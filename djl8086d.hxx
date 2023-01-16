@@ -300,6 +300,8 @@ class CDisassemble8086
                 case 0x3d: _da( "cmp    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x3e: _da( "ds segment override" ); break;
                 case 0x69: _da( "(invoke interrupt hook)" ); break;
+                case 0x84: _da( "test   %s", opargs( true ) ); _bc++; break;
+                case 0x85: _da( "test   %s", opargs( true ) ); _bc++; break;
                 case 0x86: _da( "xchg   %s", opargs( true ) ); _bc++; break;
                 case 0x87: _da( "xchg   %s", opargs( true ) ); _bc++; break;
                 case 0x8c: _da( "mov    %s, %s", getrmAsWord(), sr_strings[ _reg ] ); _bc++; break;
@@ -342,7 +344,7 @@ class CDisassemble8086
                 case 0xcc: _da( "int 3" ); break;
                 case 0xcd: _da( "int    %02xh", _b1 ); _bc = 2; break;
                 case 0xce: _da( "into" ); break;
-                case 0xcf: _da( "iret" ); break;
+                case 0xcf: _da( "iret" ); _pcode = 0; break;
                 case 0xd4: _da( "aam" ); _bc = 2; break;
                 case 0xd5: _da( "aad" ); _bc = 2; break;
                 case 0xd7: _da( "xlat" ); break;
