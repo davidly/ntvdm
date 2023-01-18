@@ -3,18 +3,20 @@
 class ConsoleConfiguration
 {
     private:
-        WINDOWPLACEMENT windowPlacement;
-        CONSOLE_SCREEN_BUFFER_INFOEX oldScreenInfo;
         HANDLE consoleHandle;
+        WINDOWPLACEMENT oldWindowPlacement;
+        CONSOLE_SCREEN_BUFFER_INFOEX oldScreenInfo;
         DWORD oldConsoleMode;
+        CONSOLE_CURSOR_INFO oldCursorInfo;
 
     public:
         ConsoleConfiguration()
         {
-            windowPlacement = {0};
+            oldWindowPlacement = {0};
             oldScreenInfo = {0};
             consoleHandle = 0;
             oldConsoleMode = 0;
+            oldCursorInfo = {0};
         } //ConsoleConfiguration
 
         ~ConsoleConfiguration()
@@ -24,15 +26,37 @@ class ConsoleConfiguration
 
         bool IsEstablished() { return ( 0 != consoleHandle ); }
 
+        void SetCursorInfo( DWORD size ) // 0 to 100
+        {
+            if ( 0 != consoleHandle )
+            {
+                CONSOLE_CURSOR_INFO info = {0};
+                if ( 0 == size )
+                {
+                    info.dwSize = 1;
+                    info.bVisible = FALSE;
+                }
+                else
+                {
+                    info.dwSize = size;
+                    info.bVisible = TRUE;
+                }
+    
+                SetConsoleCursorInfo( consoleHandle, &info );
+            }
+        } //SetCursorInfo
+
         void EstablishConsole( SHORT width = 80, SHORT height = 24, PHANDLER_ROUTINE handler = NULL )
         {
             if ( 0 != consoleHandle )
                 return;
         
-            windowPlacement.length = sizeof windowPlacement;
-            GetWindowPlacement( GetConsoleWindow(), &windowPlacement );
+            oldWindowPlacement.length = sizeof oldWindowPlacement;
+            GetWindowPlacement( GetConsoleWindow(), &oldWindowPlacement );
         
             consoleHandle = GetStdHandle( STD_OUTPUT_HANDLE );
+
+            GetConsoleCursorInfo( consoleHandle, &oldCursorInfo );
         
             oldScreenInfo.cbSize = sizeof oldScreenInfo;
             GetConsoleScreenBufferInfoEx( consoleHandle, &oldScreenInfo );
@@ -70,8 +94,9 @@ class ConsoleConfiguration
             {
                 printf( "\x1b[2J" ); // clear the screen
                 SetConsoleScreenBufferInfoEx( consoleHandle, & oldScreenInfo );
-                SetWindowPlacement( GetConsoleWindow(), & windowPlacement );
+                SetWindowPlacement( GetConsoleWindow(), & oldWindowPlacement );
                 SetConsoleMode( consoleHandle, oldConsoleMode );
+                SetConsoleCursorInfo( consoleHandle, & oldCursorInfo );
                 consoleHandle = 0;
             }
         } //RestoreConsole
