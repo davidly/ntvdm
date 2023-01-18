@@ -8,7 +8,7 @@ on Win64 machines. It runs both .COM and .EXE files. It also runs apps generated
 
 WordStar Professional Release 4 for DOS works aside from features that try to shell out to command.com.
 
-It kinda sorta runs gwbasic -- the screen is a bit of a mess but BASIC apps load and run.
+GWBASIC works well, both in full-screen and command-line modes.
 
 No graphics, sound, mouse, or anything else not needed for simple command-line apps.
 
@@ -31,7 +31,8 @@ get any closer than about 25% of what would be accurate. It's in the ballpark.
 
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
-                -c     don't auto-detect cursor positioning and set the console to 80x25
+                -c     don't auto-detect apps that want 80x25 then set window to that size
+                -C     always set window to 80x25
                 -i     trace instructions as they are executed (this is verbose!)
                 -p     show performance information
                 -s:X   speed in Hz. Default is 0, which is as fast as possible.
@@ -43,3 +44,17 @@ get any closer than about 25% of what would be accurate. It's in the ballpark.
           ntvdm turbo.com
           ntvdm s:\github\MS-DOS\v2.0\bin\masm small,,,small
           ntvdm s:\github\MS-DOS\v2.0\bin\link small,,,small
+          
+sample usage:
+
+    C:\>ntvdm -c -p ttt8086.com
+    5.7 seconds
+    moves: 6493
+    iterations: 1000
+    8086 cycles:         7,612,099,336
+    clock rate:              unbounded
+    approx ms at 4.77Mhz:    1,595,827  == 0 days, 0 hours, 26 minutes, 35 seconds, 827 milliseconds
+    kernel CPU ms:                   0
+    user CPU ms:                 5,687
+    total CPU ms:                5,687
+    elapsed ms:                  5,728
