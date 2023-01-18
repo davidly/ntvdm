@@ -65,25 +65,26 @@ struct ExeRelocation
 };
 
 const DWORD ScreenBufferSize = 2 * 80 * 25;
-const DWORD ScreenBufferAddress = 0xb8000;
+const DWORD ScreenBufferAddress = 0xb8000;           // location in i8086 physical RAM
+static const DWORD hookedVectorIRet = 0x00600004;    // this is in segment::offset format
+const DWORD AppSegmentOffset = 0x20000;              // base address in the vm. 128k. DOS uses 0x1920
+const WORD AppSegment = AppSegmentOffset / 16;       // works at segment 0 as well, but for fun...
+
 static WORD blankLine[80] = {0};
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
-static const DWORD hookedVectorIRet = 0x00600004;           // this is in segment::offset format
 static bool g_TimerInterrupt1CHooked = false;
 
 CDJLTrace tracer;
-bool g_haltExecution = false;
-byte * g_DiskTransferAddress;
-const DWORD AppSegmentOffset = 0x20000;           // base address in the vm. 128k. DOS uses 0x1920
-const WORD AppSegment = AppSegmentOffset / 16;    // works at segment 0 as well, but for fun...
-static vector<FileEntry> g_fileEntries;
-static WORD g_nextFileHandle = 10; // 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
-static bool g_use80x25 = false;
-static byte g_videoMode = 3; // 2=80x25 16 grey, 3=80x25 16 colors, 7=80x25 b/w,
-static byte g_screenBuffer[ ScreenBufferSize ] = {0}; // used to check for changes
-static HANDLE g_hConsole = 0;
-static bool g_forceConsole = false;
-ConsoleConfiguration g_consoleConfig;
+static bool g_haltExecution = false;                 // true when the app is shutting down
+static byte * g_DiskTransferAddress;                 // where apps read/write data for i/o
+static vector<FileEntry> g_fileEntries;              // vector of currently open files
+static WORD g_nextFileHandle = 10;                   // 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
+static bool g_use80x25 = false;                      // true to force 80x25 with cursor positioning
+static byte g_videoMode = 3;                         // 2=80x25 16 grey, 3=80x25 16 colors, 7=80x25 b/w,
+static HANDLE g_hConsole = 0;                        // the Windows console handle
+static bool g_forceConsole = false;                  // true to force a teletype, with no cursor positioning
+static ConsoleConfiguration g_consoleConfig;         // to get into and out of 80x25 mode
+static bool g_int16_1_loop = false;                  // true if an app is looping to get keyboard input. don't busy loop.
 
 #pragma pack( push, 1 )
 struct DosFindFile
@@ -349,10 +350,11 @@ void UpdateWindowsCursorPosition()
 
 void UpdateDisplay()
 {
+    static byte bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
     assert( g_use80x25 );
     byte * pbuf = GetVideoMem();
 
-    if ( memcmp( g_screenBuffer, pbuf, ScreenBufferSize ) )
+    if ( memcmp( bufferLastUpdate, pbuf, ScreenBufferSize ) )
     {
         #if false
             CONSOLE_SCREEN_BUFFER_INFOEX csbi = { 0 };
@@ -368,35 +370,31 @@ void UpdateDisplay()
         {
             DWORD yoffset = y * 80 * 2;
 
-            if ( memcmp( g_screenBuffer + yoffset, pbuf + yoffset, 80 * 2 ) )
+            if ( memcmp( bufferLastUpdate + yoffset, pbuf + yoffset, 80 * 2 ) )
             {
-                memcpy( g_screenBuffer + yoffset, pbuf + yoffset, 80 * 2 );
-                char ac[80];
-                WORD at[80];
+                memcpy( bufferLastUpdate + yoffset, pbuf + yoffset, 80 * 2 );
+                char aChars[80];
+                WORD aAttribs[80];
                 for ( WORD x = 0; x < 80; x++ )
                 {
                     uint32_t offset = yoffset + x * 2;
-                    ac[ x ] = pbuf[ offset ];
-                    at[ x ] = pbuf[ 1 + offset ];
+                    aChars[ x ] = pbuf[ offset ];
+                    aAttribs[ x ] = pbuf[ 1 + offset ];
                 }
     
                 #if false
-                    char ac2[81];
-                    for ( WORD x = 0; x < 80; x++ )
-                        ac2[ x ] = printable( ac[ x ] );
-                    ac2[80] = 0;
-                    tracer.Trace( "    row %02u: '%s'\n", y, ac2 );
+                    tracer.Trace( "    row %02u: '%.80s'\n", y, aChars );
                 #endif
     
                 COORD pos = { 0, (SHORT) y };
                 SetConsoleCursorPosition( g_hConsole, pos );
     
-                BOOL ok = WriteConsoleA( g_hConsole, ac, 80, 0, 0 );
+                BOOL ok = WriteConsoleA( g_hConsole, aChars, 80, 0, 0 );
                 if ( !ok )
                     tracer.Trace( "writeconsolea failed with error %d\n", GetLastError() );
     
                 DWORD dwWritten;
-                ok = WriteConsoleOutputAttribute( g_hConsole, at, 80, pos, &dwWritten );
+                ok = WriteConsoleOutputAttribute( g_hConsole, aAttribs, 80, pos, &dwWritten );
                 if ( !ok )
                     tracer.Trace( "writeconsoleoutputattribute failed with error %d\n", GetLastError() );
             }
@@ -642,7 +640,8 @@ bool throttled_kbhit()
         return _kbhit();
     }
 
-    SleepEx( 1, FALSE );
+    if ( g_int16_1_loop )
+        SleepEx( 1, FALSE );
     return false;
 } //throttled_kbhit
 
@@ -892,11 +891,10 @@ void handle_int_10( uint8_t c )
                           cpu.al(), printable( cpu.al() ), cpu.cx, cpu.bl(), row, col );
 
             char ch = cpu.al();
-            if ( 0x1b == ch ) // escape should be a left arrow, but it just confuses the console
-                ch = ' ';
 
             if ( g_use80x25 )
             {
+                ch = printable( ch );
                 byte * pbuf = GetVideoMem();
                 DWORD offset = row * 2 * 80 + col * 2;
 
@@ -910,6 +908,9 @@ void handle_int_10( uint8_t c )
             }
             else
             {
+                if ( 0x1b == ch ) // don't show escape characters; as left arrows aren't shown
+                    ch = ' ';
+
                 if ( 0xd != ch )
                     printf( "%c", ch );
             }
@@ -1073,6 +1074,7 @@ void handle_int_16( uint8_t c )
             else
                 cpu.fZero = true;
 
+            g_int16_1_loop = true;
             return;
         }
         default:
@@ -1894,7 +1896,7 @@ void handle_int_21( uint8_t c )
                     {
                         for ( WORD x = 0; x < cpu.cx; x++ )
                         {
-                            if ( 0x0d != p[ x ] )
+                            if ( 0x0d != p[ x ] && 0x0b != p[ x ] )
                             {
                                 printf( "%c", p[ x ] );
                                 tracer.Trace( "writing %02x '%c' to display\n", p[ x ], printable( p[x] ) );
@@ -2293,6 +2295,9 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
                   cpu.ds, cpu.cs, cpu.ss, cpu.es,
                   get_interrupt_string( interrupt_num, c ) );
 
+    if ( 0x16 != interrupt_num || 1 != c )
+        g_int16_1_loop = false;
+
     if ( 0x10 == interrupt_num )
     {
         handle_int_10( c );
@@ -2668,7 +2673,7 @@ int main(int argc, char **argv)
 
     if ( !stricmp( acAPP, "gwbasic.exe" ) )
     {
-        // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants
+        // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
 
         if ( !g_forceConsole )
             force80x25 = true;
