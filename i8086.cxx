@@ -369,6 +369,9 @@ void i8086::op_rcr16( uint16_t * pval, uint8_t shift )
 
 void i8086::op_sal16( uint16_t * pval, uint8_t shift )
 {
+    if ( 0 == shift )
+        return;
+
     *pval <<= ( shift - 1 );
     fCarry = ( 0 != ( *pval & 0x8000 ) );
     *pval <<= 1;
@@ -381,6 +384,9 @@ void i8086::op_sal16( uint16_t * pval, uint8_t shift )
 
 void i8086::op_shr16( uint16_t * pval, uint8_t shift )
 {
+    if ( 0 == shift )
+        return;
+
     fOverflow = ( 0 != ( *pval & 0x8000 ) );
     *pval >>= ( shift - 1 );
     fCarry = ( 0 != ( *pval & 1 ) );
@@ -503,6 +509,9 @@ void i8086::op_rcr8( uint8_t * pval, uint8_t shift )
 
 void i8086::op_sal8( uint8_t * pval, uint8_t shift )
 {
+    if ( 0 == shift )
+        return;
+
     *pval <<= ( shift - 1 );
     fCarry = ( 0 != ( *pval & 0x80 ) );
     *pval <<= 1;
@@ -515,6 +524,9 @@ void i8086::op_sal8( uint8_t * pval, uint8_t shift )
 
 void i8086::op_shr8( uint8_t * pval, uint8_t shift )
 {
+    if ( 0 == shift )
+        return;
+
     fOverflow = ( 0 != ( *pval & 0x80 ) );
     *pval >>= ( shift - 1 );
     fCarry = ( 0 != ( *pval & 1 ) );
@@ -1329,7 +1341,6 @@ _after_prefix:
                     AddCycles( cycles, 77 ); // assume worst-case
                     uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     ax = (uint16_t) al() * (uint16_t) rhs;
-                    set_PZS16( ax );
                     fCarry = fOverflow = false;
                 }
                 else if ( 5 == _reg ) // imul. ax = al * r/m8
@@ -1338,7 +1349,6 @@ _after_prefix:
                     uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     uint32_t result = (int16_t) al() * (int16_t) rhs;
                     ax = result & 0xffff;
-                    set_PZS16( ax );
                     result &= 0xffff8000;
                     fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
                 }
@@ -1351,7 +1361,6 @@ _after_prefix:
                         uint16_t lhs = ax;
                         set_al( (uint8_t) ( lhs / (uint16_t) rhs ) );
                         set_ah( lhs % rhs );
-                        set_PZS8( al() );
                     }
                 }
                 else if ( 7 == _reg ) // idiv r/m8
@@ -1361,7 +1370,6 @@ _after_prefix:
                     int16_t lhs = ax;
                     set_al( ( lhs / (int16_t) rhs ) & 0xff );
                     set_ah( lhs % (int16_t) rhs );
-                    set_PZS8( al() );
                 }
                 else
                     assert( false );
@@ -1399,7 +1407,6 @@ _after_prefix:
                     uint32_t result = (uint32_t) ax * (uint32_t) rhs;
                     dx = result >> 16;
                     ax = result & 0xffff;
-                    set_PZS16( ax );
                     fCarry = fOverflow = ( result > 0xffff );
                 }
                 else if ( 5 == _reg ) // imul. dx:ax = ax * src
@@ -1409,7 +1416,6 @@ _after_prefix:
                     uint32_t result = (int32_t) ax * (int32_t) rhs;
                     dx = result >> 16;
                     ax = result & 0xffff;
-                    set_PZS16( ax );
                     result &= 0xffff8000;
                     fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
                 }
@@ -1422,7 +1428,6 @@ _after_prefix:
                         uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
                         ax = (uint16_t) ( lhs / (uint32_t) rhs );
                         dx = lhs % rhs;
-                        set_PZS16( ax );
                     }
                 }
                 else if ( 7 == _reg ) // idiv dx:ax / src. ax = result, dx = remainder
@@ -1434,7 +1439,6 @@ _after_prefix:
                         uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
                         ax = (uint16_t) ( (int32_t) lhs / (int32_t) (int16_t) rhs );
                         dx = (int32_t) lhs % (int32_t) rhs;
-                        set_PZS16( ax );
                     }
                 }
                 else
