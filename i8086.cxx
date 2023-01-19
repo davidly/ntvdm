@@ -13,7 +13,6 @@
 #include <stdio.h>
 #include <memory.h>
 #include <assert.h>
-#include <stack>
 #include <djltrace.hxx>
 #include <djl8086d.hxx>
 
@@ -25,7 +24,6 @@ uint8_t memory[ 1024 * 1024 ];
 i8086 cpu;
 static CDisassemble8086 g_Disassembler;
 static uint32_t g_State = 0;
-static stack<uint8_t> g_InterruptStack;
 
 const DWORD stateTraceInstructions = 1;
 const DWORD stateEndEmulation = 2;
@@ -651,7 +649,7 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
 void i8086::op_interrupt( bool external_interrupt )
 {
     uint32_t offset = 4 * _b1;
-    uint16_t * vectorItem = (uint16_t *) ( memory + (uint32_t) 4 * _b1 );
+    uint16_t * vectorItem = (uint16_t *) ( memory + offset );
     materializeFlags();
     push( flags );
     push( cs );
@@ -659,8 +657,6 @@ void i8086::op_interrupt( bool external_interrupt )
     ip = vectorItem[ 0 ];
     cs = vectorItem[ 1 ];
     uint8_t first_opcode = * flat_address8( cs, ip );
-    if ( i8086_opcode_interrupt == first_opcode ) // if a callback interrupt, save the # for the callback later
-        g_InterruptStack.push( _b1 );
 } //op_interrupt
 
 uint64_t i8086::emulate( uint64_t maxcycles )
@@ -744,10 +740,8 @@ _after_prefix:
             case 0x3e: { prefix_segment_override = 3; ip++; goto _after_prefix; } // ds segment override
             case 0x69: // FAKE Opcode: i8086_opcode_interrupt
             {
-                assert( g_InterruptStack.size() > 0 );
-                uint8_t interrupt = g_InterruptStack.top();
-                g_InterruptStack.pop();
-                i8086_invoke_interrupt( interrupt );
+                _bc++;
+                i8086_invoke_interrupt( _b1 );
                 break;
             }
             case 0x84: // test reg8/mem8, reg8

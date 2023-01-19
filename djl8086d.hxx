@@ -299,7 +299,7 @@ class CDisassemble8086
                 case 0x3c: _da( "cmp    al, %02xh", _b1 ); _bc = 2; break;
                 case 0x3d: _da( "cmp    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x3e: _da( "ds segment override" ); break;
-                case 0x69: _da( "(invoke interrupt hook)" ); break;
+                case 0x69: _da( "(invoke interrupt hook)" ); _bc = 2; break;
                 case 0x84: _da( "test   %s", opargs( true ) ); _bc++; break;
                 case 0x85: _da( "test   %s", opargs( true ) ); _bc++; break;
                 case 0x86: _da( "xchg   %s", opargs( true ) ); _bc++; break;
@@ -331,7 +331,7 @@ class CDisassemble8086
                 case 0xab: _da( "stosw" ); break;
                 case 0xac: _da( "lodsb" ); break;
                 case 0xad: _da( "lodsw" ); break;
-                case 0xae: _da( "scabs" ); break;
+                case 0xae: _da( "scasb" ); break;
                 case 0xaf: _da( "scasw" ); break;
                 case 0xc2: _da( "ret    %04xh", _b12 ); _bc = 3; _pcode = 0; break;
                 case 0xc3: _da( "ret" ); _pcode = 0; break;
@@ -496,7 +496,7 @@ class CDisassemble8086
                          _da( "%s   %s", i_opMath[ _reg ], getrm( _rm ) );
                      break;
                 }
-                case 0xfc: _da( "%s   %s", i_opMix[ _reg ], getrm( _rm ) ); break;
+                case 0xfc: _da( "%s   %s", i_opMix[ _reg ], getrm( _rm ) ); _pcode = 0; break;
                 default:   _da( "NYI" ); break;
             }
 
