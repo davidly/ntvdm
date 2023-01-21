@@ -296,10 +296,12 @@ class CDisassemble8086
                 case 0x34: _da( "xor    al, %02xh", _b1 ); _bc = 2; break;
                 case 0x35: _da( "xor    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x36: _da( "ss segment override" ); break;
+                case 0x37: _da( "aaa" ); break;
                 case 0x3c: _da( "cmp    al, %02xh", _b1 ); _bc = 2; break;
                 case 0x3d: _da( "cmp    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x3e: _da( "ds segment override" ); break;
-                case 0x69: _da( "(invoke interrupt hook)" ); _bc = 2; break;
+                case 0x3f: _da( "aas" ); break;
+                case 0x69: _da( "fint   %02xh", _b1 ); _bc = 2; break; // fake interrupt
                 case 0x84: _da( "test   %s", opargs( true ) ); _bc++; break;
                 case 0x85: _da( "test   %s", opargs( true ) ); _bc++; break;
                 case 0x86: _da( "xchg   %s", opargs( true ) ); _bc++; break;

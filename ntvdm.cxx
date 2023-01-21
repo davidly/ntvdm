@@ -10,6 +10,7 @@
 // Useful: http://www2.ift.ulaval.ca/~marchand/ift17583/dosints.pdf
 //         https://en.wikipedia.org/wiki/Program_Segment_Prefix
 //         https://stanislavs.org/helppc/bios_data_area.html
+//         https://stanislavs.org/helppc/scan_codes.html
 //
 // Memory map:
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed 0-0x3f
@@ -76,7 +77,6 @@ struct ExeRelocation
 
 const DWORD ScreenBufferSize = 2 * 80 * 25;
 const DWORD ScreenBufferAddress = 0xb8000;           // location in i8086 physical RAM of CGA display
-static const DWORD hookedVectorIRet = 0x00600004;    // this is in segment::offset format
 const DWORD AppSegmentOffset = 0x2000;               // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
 const WORD AppSegment = AppSegmentOffset / 16;       // works at segment 0 as well, but for fun...
 
@@ -95,6 +95,8 @@ static HANDLE g_hConsole = 0;                        // the Windows console hand
 static bool g_forceConsole = false;                  // true to force a teletype, with no cursor positioning
 static ConsoleConfiguration g_consoleConfig;         // to get into and out of 80x25 mode
 static bool g_int16_1_loop = false;                  // true if an app is looping to get keyboard input. don't busy loop.
+static bool g_KbdIntWaitingForRead = false;          // true when a kbd int happens and no read has happened since
+static bool g_injectControlC = false;                // true when ^c is hit and it must be put in the keyboard buffer
 
 #pragma pack( push, 1 )
 struct DosFindFile
@@ -254,24 +256,20 @@ void DumpBinaryData( byte * pData, DWORD length, DWORD indent )
     }
 } //DumpBinaryData
 
-/*
-            // return keyboard flags in AL
-            // (not tested yet)
+uint8_t get_keyboard_flags_depressed()
+{
+    uint8_t b = 0;
+    b |= isPressed( VK_RSHIFT );
+    b |= ( isPressed( VK_LSHIFT ) << 1 );
+    b |= ( ( isPressed( VK_LCONTROL ) || isPressed( VK_RCONTROL ) ) << 2 );
+    b |= ( ( isPressed( VK_LMENU ) || isPressed( VK_RMENU ) ) << 3 ); // alt
+    b |= ( keyState( VK_SCROLL ) << 4 );
+    b |= ( keyState( VK_NUMLOCK ) << 5 );
+    b |= ( keyState( VK_CAPITAL ) << 6 );
+    b |= ( keyState( VK_INSERT ) << 7 );
 
-            byte b = 0;
-            b |= isPressed( VK_RSHIFT );
-            b |= ( isPressed( VK_LSHIFT ) << 1 );
-            b |= ( ( isPressed( VK_LCONTROL ) || isPressed( VK_RCONTROL ) ) << 2 );
-            b |= ( ( isPressed( VK_LMENU ) || isPressed( VK_RMENU ) ) << 3 ); // alt
-            b |= ( keyState( VK_SCROLL ) << 4 );
-            b |= ( keyState( VK_NUMLOCK ) << 5 );
-            b |= ( keyState( VK_CAPITAL ) << 6 );
-            b |= ( keyState( VK_INSERT ) << 7 );
-
-
-            regs8[REG_AL] = _getch();
-*/
-
+    return b;
+} //get_keyboard_flags_depressed
 
 #define DOS_FILENAME_SIZE 13 // 8 + 3 + '.' + 0-termination
 #pragma pack( push, 1 )
@@ -447,6 +445,8 @@ BOOL WINAPI ControlHandler( DWORD fdwCtrlType )
             g_haltExecution = true;
             cpu.end_emulation();
         }
+        else
+            g_injectControlC = true;
 
         return TRUE;
     }
@@ -471,8 +471,10 @@ const IntInfo interrupt_list_no_ah[] =
    { 0x05, 0, "print-screen key" },
    { 0x06, 0, "undefined opcode" },
    { 0x08, 0, "hardware timer interrupt" },
+   { 0x09, 0, "keyboard interrupt" },
    { 0x10, 0, "bios video" },
    { 0x11, 0, "bios equipment determination" },
+   { 0x1b, 0, "ctrl-break key" },
    { 0x1c, 0, "software tick tock" },
    { 0x20, 0, "cp/m compatible exit app" },
    { 0x21, 0, "generic dos interrupt" },
@@ -481,6 +483,7 @@ const IntInfo interrupt_list_no_ah[] =
    { 0x24, 0, "fatal error handler address" },
    { 0x2a, 0, "network information" },
    { 0x2f, 0, "dos multiplex" },
+   { 0x33, 0, "mouse" },
    { 0x34, 0, "turbo c / microsoft floating point emulation" },
    { 0x35, 0, "turbo c / microsoft floating point emulation" },
    { 0x36, 0, "turbo c / microsoft floating point emulation" },
@@ -548,6 +551,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x36, "get disk space" },
     { 0x21, 0x37, "get query switchchar" },
     { 0x21, 0x38, "get/set country dependent information" },
+    { 0x21, 0x3b, "change directory" },
     { 0x21, 0x3c, "create file" },
     { 0x21, 0x3d, "open file" },
     { 0x21, 0x3e, "close file" },
@@ -579,9 +583,304 @@ const char * get_interrupt_string( byte i, byte c )
     return "unknown";
 } //get_interrupt_string
 
-uint8_t i8086_invoke_in( uint16_t port )
+bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scancode )
 {
-    if ( 0x3da )
+    if ( KEY_EVENT != rec.EventType )
+        return false;
+
+    if ( !rec.Event.KeyEvent.bKeyDown )
+        return false;
+
+    asciiChar = rec.Event.KeyEvent.uChar.AsciiChar;
+    scancode = rec.Event.KeyEvent.wVirtualScanCode;
+    const uint8_t asc = asciiChar; // non-writable shorthand
+    const uint8_t sc = scancode;
+
+    // don't pass back just an Alt/ctrl/shift/capslock without another character
+    if ( ( 0 == asc ) && ( 0x38 == sc || 0x1d == sc || 0x2a == sc || 0x3a == sc || 0x36 == sc ) )
+        return false;
+
+    bool fshift = ( 0 != ( rec.Event.KeyEvent.dwControlKeyState & SHIFT_PRESSED ) );
+    bool fctrl = ( 0 != ( rec.Event.KeyEvent.dwControlKeyState & ( LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED ) ) );
+    bool falt = ( 0 != ( rec.Event.KeyEvent.dwControlKeyState & ( LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED ) ) );
+
+    tracer.Trace( "    process key event sc/asc %02x%02x, shift %d, ctrl %d, alt %d\n", sc, asc, fshift, fctrl, falt );
+
+    // control+ 1, 3-5, and 7-0 should be swallowed. 2 and 6 are allowed.
+    if ( fctrl && ( 2 == sc || 4 == sc || 5 == sc || 6 == sc || 8 == sc || 9 == sc || 0xa == sc || 0xb == sc ) )
+        return false;
+
+    // control+ =, ;, ', `, ,, ., / should be swallowed
+    if ( fctrl && ( 0x0d == sc || 0x27 == sc || 0x28 == sc || 0x29 == sc || 0x33 == sc || 0x34 == sc || 0x35 == sc ) )
+        return false;
+
+    // alt+ these characters has no meaning
+    if ( falt && ( '\'' == asc || '`' == asc || ',' == asc || '.' == asc || '/' == asc || 0x4c == sc ) )
+        return false;
+
+    uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+    uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
+    uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
+
+    // if the buffer is full, stop consuming new characters
+    if ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) )
+        return false;
+
+    if ( falt )
+    {
+        // if A-Z, set low byte to 0
+
+        if ( asc >= 0x61 && asc <= 0x7a )
+            asciiChar = 0;
+        else if ( asc >= 0x30 && asc <= 0x39 )
+        {
+            if ( 0x30 == asc )
+                scancode = 0x81;
+            else
+                scancode = asc + 0x47;
+            asciiChar = 0;
+        }
+        else if ( '-' == asc ) { scancode = 0x82; asciiChar = 0; }
+        else if ( '=' == asc ) { scancode = 0x83; asciiChar = 0; }
+        else if ( '[' == asc ) { scancode = 0x1a; asciiChar = 0; }
+        else if ( ']' == asc ) { scancode = 0x1b; asciiChar = 0; }
+        else if ( ';' == asc ) { scancode = 0x27; asciiChar = 0; }
+        else if ( '\\' == asc ) { scancode = 0x26; asciiChar = 0; }
+        else if ( 0x08 == asc ) { scancode = 0x0e; asciiChar = 0; }
+    }
+
+    if ( fctrl )
+    {
+        // ctrl 6
+        if ( 0x07 == sc && 0 == asc ) asciiChar = 0x1e;
+        else if ( 0x0c == sc ) asciiChar = 0x1f;
+        else if ( 0x1a == sc ) asciiChar = 0x1b;
+        else if ( 0x1b == sc ) asciiChar = 0x1d;
+        else if ( 0x2b == sc ) asciiChar = 0x1c;
+    }
+
+    if ( 0x0f == sc ) // Tab
+    {
+        if ( falt ) { scancode = 0xa5; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x94; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x00; }
+    }
+    else if ( 0x35 == sc ) // keypad /
+    {
+        if ( falt ) { scancode = 0xa4; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x95; asciiChar = 0; }
+    }
+    else if ( 0x37 == sc ) // keypad *
+    {
+        if ( falt ) { asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x96; asciiChar = 0; }
+    }
+    else if ( sc >= 0x3b && sc <= 0x44 ) // F1 - F10
+    {
+        if ( falt ) scancode += 0x2d;
+        else if ( fctrl ) scancode += 0x23;
+        else if ( fshift ) scancode += 0x19;
+    }
+    else if ( 0x42 == sc ) // keypad -
+    {
+        if ( falt ) { scancode = 0x4a; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x8e; asciiChar = 0; }
+    }
+    else if ( 0x47 == sc ) // Home
+    {
+        if ( falt ) { scancode = 0x97; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x77; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x37; }
+    }
+    else if ( 0x48 == sc ) // up arrow
+    {
+        if ( falt ) { scancode = 0x98; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x8d; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x38; }
+    }
+    else if ( 0x49 == sc ) // page up
+    {
+        if ( falt ) { scancode = 0x99; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x84; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x39; }
+    }
+    else if ( 0x4b == sc ) // left arrow
+    {
+        if ( falt ) { scancode = 0x9b; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x73; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x34; }
+    }
+    else if ( 0x4c == sc ) // keypad 5
+    {
+        if ( fctrl ) { scancode = 0x8f; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x35; }
+    }
+    else if ( 0x4d == sc ) // right arrow
+    {
+        if ( falt ) { scancode = 0x9d; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x74; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x36; }
+    }
+    else if ( 0x4e == sc ) // keypad +
+    {
+        if ( falt ) { scancode = 0x4a; asciiChar = 0; }
+    }
+    else if ( 0x4f == sc ) // End
+    {
+        if ( falt ) { scancode = 0x9f; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x75; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x31; }
+    }
+    else if ( 0x50 == sc ) // down arrow
+    {
+        if ( falt ) { scancode = 0xa0; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x91; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x32; }
+    }
+    else if ( 0x51 == sc ) // page down
+    {
+        if ( falt ) { scancode = 0xa1; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x76; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x33; }
+    }
+    else if ( 0x52 == sc ) // Home
+    {
+        if ( falt ) { scancode = 0xa2; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x92; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x30; }
+    }
+    else if ( 0x53 == sc ) // Del
+    {
+        if ( falt ) { scancode = 0xa3; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x93; asciiChar = 0; }
+        else if ( fshift ) { asciiChar = 0x2e; }
+    }
+    else if ( 0x57 == sc || 0x58 == sc ) // F11 - F12
+    {
+        scancode += 0x2e;
+        if ( falt ) scancode += 6;
+        else if ( fctrl ) scancode += 4;
+        else if ( fshift ) scancode += 2;
+    }
+
+    return true;
+} //process_key_event
+
+bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
+{
+    if ( g_injectControlC )
+    {
+        asciiChar = 0x03;
+        scancode = 0x2e;
+        return true;
+    }
+
+    INPUT_RECORD records[ 10 ];
+    DWORD numRead = 0;
+    BOOL ok = PeekConsoleInput( g_consoleConfig.GetInputHandle(), records, _countof( records ), &numRead );
+    //tracer.Trace( "  PeekConsole returned %d, %d events\n", ok, numRead );
+    if ( ok )
+    {
+        for ( uint32_t x = 0; x < numRead; x++ )
+        {
+            bool used = process_key_event( records[ x ], asciiChar, scancode );
+            if ( !used )
+                continue;
+            tracer.Trace( "    peeked ascii %02x, scancode %02x\n", asciiChar, scancode );
+            return true;
+        }
+    }
+
+    // if none of the records were useful, clear them out
+
+    if ( 0 != numRead )
+        ReadConsoleInput( g_consoleConfig.GetInputHandle(), records, numRead, &numRead );
+
+    return false;
+} //peek_keyboard
+
+bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false )
+{
+    static ULONGLONG last_call = 0;
+
+    ULONGLONG this_call = GetTickCount64();
+    if ( throttle && ( this_call - last_call ) < 50 )
+    {
+        if ( sleep_on_throttle )
+            SleepEx( 1, FALSE );
+
+        return false;
+    }
+
+    last_call = this_call;
+    uint8_t a, s;
+    return peek_keyboard( a, s );
+} //peek_keyboard
+
+void consume_keyboard()
+{
+    if ( g_injectControlC ) // largeish hack for ^c handling
+    {
+        g_KbdIntWaitingForRead = false;
+        g_injectControlC = false;
+        uint8_t asciiChar = 0x03;
+        uint8_t scancode = 0x2e;
+        uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+        uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
+        uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
+
+        // if the buffer is full, stop consuming new characters
+        if ( ! ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ) )
+        {
+            pbiosdata[ *ptail ] = asciiChar;
+            (*ptail)++;
+            pbiosdata[ *ptail ] = scancode;
+            (*ptail)++;
+            if ( *ptail >= 0x3e )
+                *ptail = 0x1e;
+        }
+    }
+
+    INPUT_RECORD records[ 10 ];
+    DWORD numRead = 0;
+    BOOL ok = ReadConsoleInput( g_consoleConfig.GetInputHandle(), records, _countof( records ), &numRead );
+    tracer.Trace( "    consume_keyboard ReadConsole returned %d, %d events\n", ok, numRead );
+    if ( ok )
+    {
+        uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+        uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
+        uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
+        tracer.Trace( "    initial state: head %04x, tail %04x\n", *phead, *ptail );
+
+        uint8_t asciiChar = 0, scancode = 0;
+
+        for ( uint32_t x = 0; x < numRead; x++ )
+        {
+            bool used = process_key_event( records[ x ], asciiChar, scancode );
+            if ( !used )
+                continue;
+
+            tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scancode );
+
+            // It's ok to send more keyboard int 9s since we've consumed a character
+
+            g_KbdIntWaitingForRead = false;
+
+            pbiosdata[ *ptail ] = asciiChar;
+            (*ptail)++;
+            pbiosdata[ *ptail ] = scancode;
+            (*ptail)++;
+            if ( *ptail >= 0x3e )
+                *ptail = 0x1e;
+        }
+
+        tracer.Trace( "    final state: head %04x, tail %04x\n", *phead, *ptail );
+    }
+} //consume_keyboard
+
+uint8_t i8086_invoke_in_al( uint16_t port )
+{
+    if ( 0x3da == port )
     {
         // toggle this or apps will spin waiting for the I/O port to work.
 
@@ -589,9 +888,35 @@ uint8_t i8086_invoke_in( uint16_t port )
         cga_status ^= 9;
         return cga_status;
     }
+    else if ( 0x20 == port ) // pic1 int request register
+    {
+    }
+    else if ( 0x60 ==  port ) // keyboard data
+    {
+        uint8_t asciiChar, scancodeChar;
+        if ( peek_keyboard( asciiChar, scancodeChar ) )
+        {
+            tracer.Trace( "invoke_in_al, port %02x peeked a character and is returning %02x\n", port, asciiChar );
+            return asciiChar;
+        }
+    }
+    else if ( 0x61 == port ) // keyboard controller port
+    {
+    }
+    else if ( 0x64 == port ) // keyboard controller read status
+    {
+    }
+    else
+        tracer.Trace( "reading from unimplemented port %02x\n", port );
 
+    tracer.Trace( "invoke_in_al, port %02x returning 0\n", port );
     return 0;
-} //i8086_invoke_in
+} //i8086_invoke_in_al
+
+uint16_t i8086_invoke_in_ax( uint16_t port )
+{
+    return 0;
+} //i8086_invoke_in_ax
 
 void i8086_invoke_halt()
 {
@@ -626,6 +951,7 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
         assert( strlen( fd.cFileName ) < _countof( pff->file_name ) );
         strcpy( pff->file_name, fd.cFileName );
     }
+
     pff->file_size = ( fd.nFileSizeLow );
 
     // these bits are the same
@@ -651,22 +977,6 @@ void PerhapsFlipTo80x25()
         }
     }
 } //PerhapsFlipTo80x25
-
-bool throttled_kbhit()
-{
-    static ULONGLONG last_call = 0;
-    ULONGLONG this_call = GetTickCount64();
-
-    if ( ( this_call - last_call ) > 50 )
-    {
-        last_call = this_call;
-        return _kbhit();
-    }
-
-    if ( g_int16_1_loop )
-        SleepEx( 1, FALSE );
-    return false;
-} //throttled_kbhit
 
 // naming: row/col, upper/lower, left/right
 void scroll_up( byte * pbuf, int lines, int rul, int cul, int rlr, int clr )
@@ -1035,9 +1345,12 @@ void handle_int_10( uint8_t c )
 
 void handle_int_16( uint8_t c )
 {
-    static bool int16ungetAvailable = false;
-    static int int16ungetChar = 0;
-    static int int16ungetScancode = 0;
+    uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+    uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
+    uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
+    tracer.Trace( "  int_16 head: %04x, tail %04x\n", *phead, *ptail );
+
+    pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
 
     switch( c )
     {
@@ -1048,29 +1361,30 @@ void handle_int_16( uint8_t c )
             if ( g_use80x25 )
                 UpdateDisplay();
 
-            if ( int16ungetAvailable )
+            while ( *phead == *ptail )
             {
-                int16ungetAvailable = false;
-                cpu.set_al( int16ungetChar );
-                cpu.set_ah( int16ungetScancode );
+                // wait for a character then return it.
+
+                while ( !peek_keyboard( true, true ) )
+                    continue;
+
+                consume_keyboard();
             }
-            else
-            {
-                cpu.set_ah( 0 );
-                cpu.set_al( _getch() );
-                if ( 0 == cpu.al() || 0xe0 == cpu.al() )
-                    cpu.set_ah( _getch() ); // get the scan code
-                else
-                    cpu.set_ah( 0 );
-            }
+
+            cpu.set_al( pbiosdata[ *phead ] );
+            (*phead)++;
+            cpu.set_ah( pbiosdata[ *phead ] );
+            (*phead)++;
+            if ( *phead >= 0x3e )
+                *phead = 0x1e;
 
             tracer.Trace( "  returning character %#x '%c'\n", cpu.ax, printable( cpu.ax ) );
-
+            tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
         }
         case 1:
         {
-            // check keyboard status. checks if a character is available. returns it if so but not removed from buffer
+            // check keyboard status. checks if a character is available. return it if so, but not removed from buffer
 
             cpu.set_ah( 0 );
 
@@ -1079,32 +1393,32 @@ void handle_int_16( uint8_t c )
             if ( g_use80x25 )
                 throttled_UpdateDisplay();
 
-            if ( throttled_kbhit() )
+            if ( *phead == *ptail )
             {
-                cpu.fZero = false;
-                cpu.set_al( _getch() );
-
-                if ( 0 == cpu.al() || 0xe0 == cpu.al() )
-                    cpu.set_ah( _getch() ); // get the scan code
-                else
-                    cpu.set_ah( 0 );
-
-                int16ungetAvailable = true;
-                int16ungetChar = cpu.al();
-                int16ungetScancode = cpu.ah();
-                tracer.Trace( "  returning character %#x '%c'\n", cpu.ax, cpu.ax );
+                cpu.fZero = true;
+                if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
+                    SleepEx( 1, FALSE );
             }
             else
-                cpu.fZero = true;
+            {
+                cpu.set_al( pbiosdata[ *phead ] );
+                cpu.set_ah( pbiosdata[ 1 + ( *phead ) ] );
+                cpu.fZero = false;
+            }
 
+            tracer.Trace( "  returning flag %d, ax %04x\n", cpu.fZero, cpu.ax );
+            tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             g_int16_1_loop = true;
             return;
         }
-        default:
+        case 2:
         {
-            tracer.Trace( "unhandled int16 command %02x\n", c );
+            cpu.set_al( pbiosdata[ 0x17 ] );
+            return;
         }
     }
+
+    tracer.Trace( "unhandled int16 command %02x\n", c );
 } //handle_int_16
 
 void handle_int_21( uint8_t c )
@@ -1154,11 +1468,32 @@ void handle_int_21( uint8_t c )
             if ( 0xff == cpu.dl() )
             {
                 // input
-    
-                if ( throttled_kbhit() )
+
+                uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+                uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
+                uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
+                tracer.Trace( "  int_21 character input head: %04x, tail %04x\n", *phead, *ptail );
+
+                if ( *phead != *ptail )
                 {
+                    static bool mid_scancode_read = false;
                     cpu.fZero = false;
-                    cpu.set_al( _getch() );
+
+                    if ( mid_scancode_read )
+                    {
+                        mid_scancode_read = false;
+                        cpu.set_al( pbiosdata[ * ( phead + 1 ) ] );
+                        (*phead) += 2;
+                    }
+                    else
+                    {
+                        cpu.set_al( pbiosdata[ *phead ] );
+
+                        if ( 0 == *phead )
+                            mid_scancode_read = true;
+                        else
+                            (*phead) += 2;
+                    }
                 }
                 else
                     cpu.fZero = true;
@@ -1168,6 +1503,7 @@ void handle_int_21( uint8_t c )
                 // output
     
                 char ch = cpu.dl();
+                tracer.Trace( "    direct console output %02x, '%c'\n", (uint8_t) ch, printable( (uint8_t) ch ) );
                 if ( 0x0d != ch )
                     printf( "%c", ch );
             }
@@ -1203,9 +1539,9 @@ void handle_int_21( uint8_t c )
         case 0xc:
         {
             // clear input buffer and execute int 0x21 on command in register AL
-    
-            while ( _kbhit() )
-                _getch();
+
+            while ( peek_keyboard() )
+                consume_keyboard();
     
             cpu.set_ah( cpu.al() );
             tracer.Trace( "recursing to int 0x21 with command %#x\n", cpu.ah() );
@@ -1440,8 +1776,8 @@ void handle_int_21( uint8_t c )
             if ( 0x1c == cpu.al() )
             {
                 DWORD dw = ( (DWORD) cpu.ds << 16 ) | cpu.dx;
-                g_TimerInterrupt1CHooked = ( hookedVectorIRet != dw );
-                tracer.Trace( "timer hooked: %d\n", g_TimerInterrupt1CHooked );
+                g_TimerInterrupt1CHooked = ( cpu.ds != 0xc0 );
+                tracer.Trace( "timer 4c hooked: %d\n", g_TimerInterrupt1CHooked );
             }
             return;
         }           
@@ -1687,6 +2023,24 @@ void handle_int_21( uint8_t c )
             pinfo[ 2 ] = '$';
             pinfo[ 4 ] = ',';
             pinfo[ 6 ] = '.';
+            return;
+        }
+        case 0x3b:
+        {
+            // change directory ds:dx asciz directory name. cf set on error with code in ax
+            char * path = (char *) GetMem( cpu.ds, cpu.dx );
+            tracer.Trace( "change directory to '%s'\n", path );
+
+            int ret = chdir( path );
+            if ( 0 == ret )
+                cpu.fCarry = false;
+            else
+            {
+                cpu.fCarry = true;
+                cpu.ax = 3; // path not found
+                tracer.Trace( "ERROR: change directory sz failed with error %d = %s\n", errno, strerror( errno ) );
+            }
+
             return;
         }
         case 0x3c:
@@ -2321,7 +2675,12 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     if ( 0x16 != interrupt_num || 1 != c )
         g_int16_1_loop = false;
 
-    if ( 0x10 == interrupt_num )
+    if ( 0x09 == interrupt_num )
+    {
+        consume_keyboard();
+        return;
+    }
+    else if ( 0x10 == interrupt_num )
     {
         handle_int_10( c );
         return;
@@ -2404,17 +2763,19 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         // AL = 0 to indicate nothing is installed for the many AX values that invoke this.
 
         if ( 0x1680 == cpu.ax ) // program idle release timeslice
+        {
+            UpdateDisplay();
             SleepEx( 1, FALSE );
+        }
 
         cpu.set_al( 0x01 ); // not installed, do NOT install
         return;
     }
     else if ( 0x33 == interrupt_num )
     {
-        // query/set ctrl-break state
+        // mouse
 
-        if ( 0 == c )
-            cpu.set_dl( 0 ); // OFF
+        cpu.ax = 0; // hardware / driver not installed
         return;
     }
 
@@ -2581,13 +2942,17 @@ int main( int argc, char ** argv )
 
     // global bios memory
     byte * pbiosdata = GetMem( 0x40, 0 );
-    * (WORD *) ( pbiosdata + 0x10 ) = 0x21;     // equipment list. diskette installed and initial video mode 0x20
-    * (WORD *) ( pbiosdata + 0x13 ) = 640;      // contiguous 1k blocks (640 * 1024)
-    * (byte *) ( pbiosdata + 0x49 ) = 2;        // video mode is 80,25, 16 grey
-    * (WORD *) ( pbiosdata + 0x4a ) = 80;       // screen columns
-    * (WORD *) ( pbiosdata + 0x4c ) = 0x1000;   // video regen buffer size
-    * (WORD *) ( pbiosdata + 0x72 ) = 0x1234;   // soft reset flag (bypass memteest and crt init)
-    * (byte *) ( pbiosdata + 0x84 ) = 25;       // screen rows
+    * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;     // equipment list. diskette installed and initial video mode 0x20
+    * (uint16_t *) ( pbiosdata + 0x13 ) = 640;      // contiguous 1k blocks (640 * 1024)
+    * (uint16_t *) ( pbiosdata + 0x1a ) = 0x1e;     // keyboard buffer head
+    * (uint16_t *) ( pbiosdata + 0x1c ) = 0x1e;     // keyboard buffer tail
+    * (uint8_t *)  ( pbiosdata + 0x49 ) = 2;        // video mode is 80,25, 16 grey
+    * (uint16_t *) ( pbiosdata + 0x4a ) = 80;       // screen columns
+    * (uint16_t *) ( pbiosdata + 0x4c ) = 0x1000;   // video regen buffer size
+    * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;   // soft reset flag (bypass memteest and crt init)
+    * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;     // keyboard buffer start
+    * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;     // one byte past keyboard buffer start
+    * (uint8_t *)  ( pbiosdata + 0x84 ) = 25;       // screen rows
 
     // this is a byte where GWBASIC looks to check if it's being invoked recurisivly during a SHELL command
     * ( pbiosdata + 0x10f ) = 0;
@@ -2754,6 +3119,14 @@ int main( int argc, char ** argv )
 
         delay.Delay( total_cycles );
 
+        if ( !g_KbdIntWaitingForRead && peek_keyboard( true, false ) )
+        {
+            tracer.Trace( "main loop: scheduling an int 9\n" );
+            g_KbdIntWaitingForRead = true;
+            cpu.external_interrupt( 9 );
+            continue;
+        }
+
         if ( g_TimerInterrupt1CHooked ) // optimization since the default handler is just an iret
         {
             // this won't be precise enough to provide a clock, but it's good for delay loops
@@ -2765,6 +3138,7 @@ int main( int argc, char ** argv )
 
                 ms_last = ms_now;
                 cpu.external_interrupt( 0x1c );
+                continue;
             }
         }
     } while ( true );

@@ -42,7 +42,7 @@ void i8086::trace_state()
 {
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
-    tracer.TraceQuiet( "ip %#6x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
+    tracer.TraceQuiet( "ip %6x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
                        "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s  %s ; (%u)\n",
                        ip, *pcode, (uint8_t) pcode[1], (uint8_t) pcode[2], (uint8_t) pcode[3], (uint8_t) pcode[4],
                        ax, bx, cx, dx, di, si, ds, es, cs, ss, bp, sp, render_flags(), pdisassemble, g_Disassembler.BytesConsumed() );
@@ -418,6 +418,9 @@ void i8086::op_sar16( uint16_t * pval, uint8_t shift )
 
 void i8086::op_rol8( uint8_t * pval, uint8_t shift )
 {
+    if ( 0 == shift )
+        return;
+
     uint8_t val = *pval;
     for ( uint8_t sh = 0; sh < shift; sh++ )
     {
@@ -656,7 +659,6 @@ void i8086::op_interrupt( bool external_interrupt )
     push( external_interrupt ? ip : ( ip + 2 ) ); // external interrupts aren't in the instruction stream; don't advance
     ip = vectorItem[ 0 ];
     cs = vectorItem[ 1 ];
-    uint8_t first_opcode = * flat_address8( cs, ip );
 } //op_interrupt
 
 uint64_t i8086::emulate( uint64_t maxcycles )
@@ -735,9 +737,44 @@ _after_prefix:
             case 0x34: { _bc++; set_al( op_xor8( al(), _b1 ) ); break; } // xor al, immed8
             case 0x35: { _bc += 2; ax = op_xor16( ax, _b12 ); break; } // xor ax, immed16
             case 0x36: { prefix_segment_override = 2; ip++; goto _after_prefix; } // ss segment override
+            case 0x37: // aaa. ascii adjust after addition
+            {
+                if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
+                {
+                    ax = ax + 0x106;
+                    fAuxCarry = true;
+                    fCarry = true;
+                }
+                else
+                {
+                    fAuxCarry = false;
+                    fCarry = false;
+                }
+
+                set_al( al() & 0x0f );
+                break;
+            }
             case 0x3c: { _bc++; op_sub8( al(), _b1 ); break; } // cmp al, i8
             case 0x3d: { _bc += 2; op_sub16( ax, _b12 ); break; } // cmp ax, i16
             case 0x3e: { prefix_segment_override = 3; ip++; goto _after_prefix; } // ds segment override
+            case 0x3f: // aas. ascii adjust al after subtraction
+            {
+                if ( ( ( al() & 0x0f ) > 0 ) || fAuxCarry )
+                {
+                    ax = ax - 6;
+                    set_ah( ah() - 1 );
+                    fAuxCarry = 1;
+                    fCarry = 1;
+                    set_al( al() & 0x0f );
+                }
+                else
+                {
+                    fAuxCarry = false;
+                    fCarry = false;
+                    set_al( al() & 0x0f );
+                }
+                break;
+            }
             case 0x69: // FAKE Opcode: i8086_opcode_interrupt
             {
                 _bc++;
@@ -1284,8 +1321,8 @@ _after_prefix:
                 _bc++;
                 break;
             }
-            case 0xe4: { set_al( 0 ); _bc++; break; } // in al, immed8
-            case 0xe5: { ax = 0; _bc++; break; } // in ax, immed8
+            case 0xe4: { set_al( i8086_invoke_in_al( _b1 ) ); _bc++; break; } // in al, immed8
+            case 0xe5: { ax = i8086_invoke_in_ax( _b1 ); _bc++; break; } // in ax, immed8
             case 0xe6: { _bc++; break; } // out al, immed8
             case 0xe7: { _bc++; break; } // out ax, immed8
             case 0xe8: // call a8
@@ -1298,8 +1335,8 @@ _after_prefix:
             case 0xe9: { ip += ( 3 + (int16_t) _b12 ); continue; } // jmp near
             case 0xea: { ip = _b12; cs = _pcode[3] | ( uint16_t) _pcode[4] << 8; continue; } // jmp far
             case 0xeb: { ip += ( 2 + (int16_t) (int8_t) _b1 ); continue; } // jmp short i8
-            case 0xec: { set_al( i8086_invoke_in( dx ) ); break; } // in al, dx
-            case 0xed: { ax = 0; break; } // in ax, dx
+            case 0xec: { set_al( i8086_invoke_in_al( dx ) ); break; } // in al, dx
+            case 0xed: { ax = i8086_invoke_in_ax( dx ); break; } // in ax, dx
             case 0xee: { break; } // out al, dx
             case 0xef: { break; } // out ax, dx
             case 0xf0: { break; } // lock prefix. ignore since interrupts won't happen

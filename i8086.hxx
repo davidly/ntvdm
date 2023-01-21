@@ -444,4 +444,5 @@ extern i8086 cpu;
 
 extern void i8086_invoke_interrupt( uint8_t interrupt ); // called by default for all interrupts
 extern void i8086_invoke_halt();                         // called when the HLT instruction is executed
-extern uint8_t i8086_invoke_in( uint16_t port );         // called for the instruction: in al, dx
+extern uint8_t i8086_invoke_in_al( uint16_t port );      // called for the instructions: in al, dx and in al, im8
+extern uint16_t i8086_invoke_in_ax( uint16_t port );     // called for the instructions: in ax, dx and in ax, im8
