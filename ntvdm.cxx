@@ -576,6 +576,8 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x36, "get disk space" },
     { 0x21, 0x37, "get query switchchar" },
     { 0x21, 0x38, "get/set country dependent information" },
+    { 0x21, 0x39, "create directory" },
+    { 0x21, 0x3a, "remove directory" },
     { 0x21, 0x3b, "change directory" },
     { 0x21, 0x3c, "create file" },
     { 0x21, 0x3d, "open file" },
@@ -2055,6 +2057,42 @@ void handle_int_21( uint8_t c )
             pinfo[ 2 ] = '$';
             pinfo[ 4 ] = ',';
             pinfo[ 6 ] = '.';
+            return;
+        }
+        case 0x39:
+        {
+            // create directory ds:dx asciz directory name. cf set on error with code in ax
+            char * path = (char *) GetMem( cpu.ds, cpu.dx );
+            tracer.Trace( "create directory '%s'\n", path );
+
+            int ret = mkdir( path );
+            if ( 0 == ret )
+                cpu.fCarry = false;
+            else
+            {
+                cpu.fCarry = true;
+                cpu.ax = 3; // path not found
+                tracer.Trace( "ERROR: create directory sz failed with error %d = %s\n", errno, strerror( errno ) );
+            }
+
+            return;
+        }
+        case 0x3a:
+        {
+            // remove directory ds:dx asciz directory name. cf set on error with code in ax
+            char * path = (char *) GetMem( cpu.ds, cpu.dx );
+            tracer.Trace( "remove directory '%s'\n", path );
+
+            int ret = rmdir( path );
+            if ( 0 == ret )
+                cpu.fCarry = false;
+            else
+            {
+                cpu.fCarry = true;
+                cpu.ax = 3; // path not found
+                tracer.Trace( "ERROR: remove directory sz failed with error %d = %s\n", errno, strerror( errno ) );
+            }
+
             return;
         }
         case 0x3b:
