@@ -167,8 +167,8 @@ struct i8086
             case 4: AddCycles( cycles, 6 ); return si;
             case 5: AddCycles( cycles, 6 ); return di;
             case 6: AddCycles( cycles, 6 ); return bp;
+            default: AddCycles( cycles, 6 ); return bx;
         }
-        return bx;
     } //get_displacement
 
     uint16_t get_displacement_seg( uint8_t rm, uint64_t & cycles )
@@ -191,7 +191,7 @@ struct i8086
         if ( 3 == _mod )
             return reg_pointers[ rm_to_use | ( _isword ? 8 : 0 ) ];
         
-        rm_to_use &= 0x7; // mask away the higher bit that my be set for register lookups
+        rm_to_use &= 0x7; // mask away the higher bit that may be set for register lookups
 
         if ( 1 == _mod )
         {
@@ -233,7 +233,7 @@ struct i8086
             return _isword ? * (uint16_t *) pval : * (uint8_t *) pval;
         }
         
-        rm_to_use &= 0x7; // mask away the higher bit that my be set for register lookups
+        rm_to_use &= 0x7; // mask away the higher bit that may be set for register lookups
 
         if ( 1 == _mod )
         {

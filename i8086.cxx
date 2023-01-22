@@ -1261,9 +1261,7 @@ _after_prefix:
             }
             case 0xd5: // aad
             {
-                uint8_t tempal = al();
-                uint8_t tempah = ah();
-                set_al( ( tempal + ( tempah * _b1 ) ) & 0xff );
+                set_al( ( al() + ( ah() * _b1 ) ) & 0xff );
                 set_ah( 0 );
                 _bc++;
                 break;

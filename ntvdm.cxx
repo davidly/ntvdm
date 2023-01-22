@@ -48,31 +48,31 @@ struct FileEntry
 {
     char path[ MAX_PATH ];
     FILE * fp;
-    WORD handle;
+    uint16_t handle; // DOS handle, not host OS
 };
 
 struct ExeHeader
 {
-    unsigned short signature;
-    unsigned short bytes_in_last_block;
-    unsigned short blocks_in_file;
-    unsigned short num_relocs;
-    unsigned short header_paragraphs;
-    unsigned short min_extra_paragraphs;
-    unsigned short max_extra_paragraphs;
-    unsigned short ss;
-    unsigned short sp;
-    unsigned short checksum;
-    unsigned short ip;
-    unsigned short cs;
-    unsigned short reloc_table_offset;
-    unsigned short overlay_number;
+    uint16_t signature;
+    uint16_t bytes_in_last_block;
+    uint16_t blocks_in_file;
+    uint16_t num_relocs;
+    uint16_t header_paragraphs;
+    uint16_t min_extra_paragraphs;
+    uint16_t max_extra_paragraphs;
+    uint16_t ss;
+    uint16_t sp;
+    uint16_t checksum;
+    uint16_t ip;
+    uint16_t cs;
+    uint16_t reloc_table_offset;
+    uint16_t overlay_number;
 };
 
 struct ExeRelocation
 {
-    unsigned short offset;
-    unsigned short segment;
+    uint16_t offset;
+    uint16_t segment;
 };
 
 struct DosAllocation
@@ -81,14 +81,15 @@ struct DosAllocation
     uint16_t para_length;
 };
 
-const DWORD ScreenBufferSize = 2 * 80 * 25;
-const DWORD ScreenBufferAddress = 0xb8000;           // location in i8086 physical RAM of CGA display
-const DWORD AppSegmentOffset = 0x2000;               // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
-const WORD AppSegment = AppSegmentOffset / 16;       // works at segment 0 as well, but for fun...
-const WORD SegmentTooHigh = 0xa000;                  // hardware starts at 0xa000, apps load at AppSegment
-const WORD SegmentsAvailable = SegmentTooHigh - AppSegment;  
+const uint32_t ScreenBufferSize = 2 * 80 * 25;
+const uint32_t ScreenBufferAddress = 0xb8000;                    // location in i8086 physical RAM of CGA display
+const uint32_t AppSegmentOffset = 0x2000;                        // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
+const uint16_t AppSegment = AppSegmentOffset / 16;               // works at segment 0 as well, but for fun...
+const uint16_t SegmentHardware = 0xa000;                         // where hardware starts
+const uint16_t SegmentsAvailable = SegmentHardware - AppSegment; // hardware starts at 0xa000, apps load at AppSegment  
+const uint32_t DOS_FILENAME_SIZE = 13;                           // 8 + 3 + '.' + 0-termination
 
-static WORD blankLine[80] = {0};
+static uint16_t blankLine[80] = {0};
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
 static bool g_TimerInterrupt1CHooked = false;
 
@@ -97,7 +98,7 @@ static bool g_haltExecution = false;                 // true when the app is shu
 static byte * g_DiskTransferAddress;                 // where apps read/write data for i/o
 static vector<FileEntry> g_fileEntries;              // vector of currently open files
 static vector<DosAllocation> g_allocEntries;         // vector of blocks allocated to DOS apps
-static WORD g_nextFileHandle = 10;                   // 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
+static uint16_t g_nextFileHandle = 10;               // 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
 static bool g_use80x25 = false;                      // true to force 80x25 with cursor positioning
 static byte g_videoMode = 3;                         // 2=80x25 16 grey, 3=80x25 16 colors, 7=80x25 b/w,
 static HANDLE g_hConsole = 0;                        // the Windows console handle
@@ -116,7 +117,7 @@ struct DosFindFile
     uint16_t file_time;
     uint16_t file_date;
     uint32_t file_size;
-    char file_name[ 13 ];          // 8.3, blanks stripped, null-terminated
+    char file_name[ DOS_FILENAME_SIZE ];          // 8.3, blanks stripped, null-terminated
 };
 #pragma pack(pop)
 
@@ -295,7 +296,6 @@ uint8_t get_keyboard_flags_depressed()
     return b;
 } //get_keyboard_flags_depressed
 
-#define DOS_FILENAME_SIZE 13 // 8 + 3 + '.' + 0-termination
 #pragma pack( push, 1 )
 struct DOSFCB
 {
@@ -686,7 +686,11 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
         else if ( 0x2b == sc ) asciiChar = 0x1c;
     }
 
-    if ( 0x0f == sc ) // Tab
+    if ( 0x01 == sc ) // ESC
+    {
+        if ( falt ) { asciiChar = 0; }
+    }
+    else if ( 0x0f == sc ) // Tab
     {
         if ( falt ) { scancode = 0xa5; asciiChar = 0; }
         else if ( fctrl ) { scancode = 0x94; asciiChar = 0; }
@@ -973,11 +977,10 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
     tracer.Trace( "actual found filename: '%s'\n", fd.cFileName );
     if ( 0 != fd.cAlternateFileName[ 0 ] )
         strcpy( pff->file_name, fd.cAlternateFileName );
-    else
-    {
-        assert( strlen( fd.cFileName ) < _countof( pff->file_name ) );
+    else if ( strlen( fd.cFileName ) < _countof( pff->file_name ) )
         strcpy( pff->file_name, fd.cFileName );
-    }
+    else
+        GetShortPathNameA( fd.cFileName, pff->file_name, _countof( pff->file_name ) );
 
     pff->file_size = ( fd.nFileSizeLow );
 
@@ -2541,12 +2544,12 @@ void handle_int_21( uint8_t c )
                     highFreeSeg = after;
             }
 
-            if ( ( highFreeSeg + cpu.bx ) > SegmentTooHigh )
+            if ( ( highFreeSeg + cpu.bx ) > SegmentHardware )
             {
                 tracer.Trace( "  ERROR: unable to allocate memory\n" );
                 cpu.fCarry = true;
                 cpu.ax = 8; // insufficient memory
-                cpu.bx = SegmentTooHigh - highFreeSeg;
+                cpu.bx = SegmentHardware - highFreeSeg;
                 return;
             }
 
@@ -2556,7 +2559,7 @@ void handle_int_21( uint8_t c )
             da.para_length = cpu.bx;
             g_allocEntries.push_back( da );
             cpu.fCarry = false;
-            cpu.bx = SegmentTooHigh - highFreeSeg;
+            cpu.bx = SegmentHardware - highFreeSeg;
 
             return;
         }
@@ -2643,9 +2646,7 @@ void handle_int_21( uint8_t c )
             DosFindFile * pff = (DosFindFile* ) g_DiskTransferAddress;
             char * psearch_string = (char *) GetMem( cpu.ds, cpu.dx );
             tracer.Trace( "Find First Asciz for pattern '%s'\n", psearch_string );
-    
-            tracer.Trace( "offset of file_name: %02x\n", offsetof( DosFindFile, file_name ) );
-    
+
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
                 FindClose( g_hFindFirst );
