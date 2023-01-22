@@ -75,10 +75,18 @@ struct ExeRelocation
     unsigned short segment;
 };
 
+struct DosAllocation
+{
+    uint16_t segment;
+    uint16_t para_length;
+};
+
 const DWORD ScreenBufferSize = 2 * 80 * 25;
 const DWORD ScreenBufferAddress = 0xb8000;           // location in i8086 physical RAM of CGA display
 const DWORD AppSegmentOffset = 0x2000;               // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
 const WORD AppSegment = AppSegmentOffset / 16;       // works at segment 0 as well, but for fun...
+const WORD SegmentTooHigh = 0xa000;                  // hardware starts at 0xa000, apps load at AppSegment
+const WORD SegmentsAvailable = SegmentTooHigh - AppSegment;  
 
 static WORD blankLine[80] = {0};
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
@@ -88,6 +96,7 @@ CDJLTrace tracer;
 static bool g_haltExecution = false;                 // true when the app is shutting down
 static byte * g_DiskTransferAddress;                 // where apps read/write data for i/o
 static vector<FileEntry> g_fileEntries;              // vector of currently open files
+static vector<DosAllocation> g_allocEntries;         // vector of blocks allocated to DOS apps
 static WORD g_nextFileHandle = 10;                   // 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
 static bool g_use80x25 = false;                      // true to force 80x25 with cursor positioning
 static byte g_videoMode = 3;                         // 2=80x25 16 grey, 3=80x25 16 colors, 7=80x25 b/w,
@@ -157,6 +166,21 @@ const char * FindFileEntryPath( WORD handle )
     tracer.Trace( "ERROR: could not find file entry for handle %u\n", handle );
     return 0;
 } //FindFileEntryPath
+
+size_t FindAllocationEntry( uint16_t segment )
+{
+    for ( size_t i = 0; i < g_allocEntries.size(); i++ )
+    {
+        if ( segment == g_allocEntries[ i ].segment )
+        {
+            tracer.Trace( "  found allocation entry segment %u para size %u\n", g_allocEntries[ i ].segment, g_allocEntries[ i ].para_length );
+            return i;
+        }
+    }
+
+    tracer.Trace( "ERROR: could not find alloc entry for segment %u\n", segment );
+    return -1;
+} //FindAllocationEntry
 
 BOOL isPressed( int vkey )
 {
@@ -523,6 +547,7 @@ const IntInfo interrupt_list[] =
     { 0x12, 0x00, "get memory size" },
     { 0x16, 0x00, "get character" },
     { 0x16, 0x01, "keyboard status" },
+    { 0x16, 0x02, "keyboard - get shift status" },
     { 0x1a, 0x00, "read real time clock" },
     { 0x21, 0x00, "exit app" },
     { 0x21, 0x02, "output character" },
@@ -562,6 +587,8 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x43, "get/put file attributes" },
     { 0x21, 0x44, "ioctl" },
     { 0x21, 0x47, "get current directory" },
+    { 0x21, 0x48, "allocate memory" },
+    { 0x21, 0x49, "free memory" },
     { 0x21, 0x4a, "modify memory allocation" },
     { 0x21, 0x4c, "exit app" },
     { 0x21, 0x4e, "find first asciz" },
@@ -1413,6 +1440,8 @@ void handle_int_16( uint8_t c )
         }
         case 2:
         {
+            // get shift status (and alt/ctrl/etc.)
+
             cpu.set_al( pbiosdata[ 0x17 ] );
             return;
         }
@@ -1966,10 +1995,10 @@ void handle_int_21( uint8_t c )
         {
             // get version number
     
-            cpu.set_al( 2 ); 
-            cpu.set_ah( 11 ); 
-//            cpu.set_al( 3 ); // maybe try 3.0 for qbasic?
-//            cpu.set_ah( 0 ); 
+            //cpu.set_al( 2 ); 
+            //cpu.set_ah( 11 ); 
+            cpu.set_al( 3 ); // 3.0 support for qbasic is not complete.
+            cpu.set_ah( 0 ); 
     
             tracer.Trace( "returning DOS version %d.%d\n", cpu.al(), cpu.ah() );
             return;
@@ -2495,15 +2524,102 @@ void handle_int_21( uint8_t c )
     
             return;
         }
+        case 0x48:
+        {
+            // allocate memory. bx # of paragraphs requested
+            // on return, ax = segment of block or error code if cf set
+            // bx = size of largest block available if cf set and ax = not enough mem
+            // cf clear on success
+            // very simplistic strategy here.
+
+            tracer.Trace( "  allocate memory %04x paragraphs\n", cpu.bx );
+            uint16_t highFreeSeg = 0;
+            for ( size_t i = 0; i < g_allocEntries.size(); i++ )
+            {
+                uint16_t after = g_allocEntries[ i ].segment + g_allocEntries[ i ].para_length;
+                if ( after > highFreeSeg )
+                    highFreeSeg = after;
+            }
+
+            if ( ( highFreeSeg + cpu.bx ) > SegmentTooHigh )
+            {
+                tracer.Trace( "  ERROR: unable to allocate memory\n" );
+                cpu.fCarry = true;
+                cpu.ax = 8; // insufficient memory
+                cpu.bx = SegmentTooHigh - highFreeSeg;
+                return;
+            }
+
+            tracer.Trace( "  allocation succeeded. segment %04x length %04x\n", highFreeSeg, cpu.bx );
+            DosAllocation da;
+            da.segment = highFreeSeg;
+            da.para_length = cpu.bx;
+            g_allocEntries.push_back( da );
+            cpu.fCarry = false;
+            cpu.bx = SegmentTooHigh - highFreeSeg;
+
+            return;
+        }
+        case 0x49:
+        {
+            // free memory. es = segment to free
+            // on return, ax = error if cf is set
+            // cf clear on success
+
+            tracer.Trace( "  free memory segment %04x\n", cpu.es );
+
+            size_t entry = FindAllocationEntry( cpu.es );
+            if ( -1 == entry )
+            {
+                tracer.Trace( "  ERROR: memory corruption\n" );
+                cpu.fCarry = true;
+                cpu.ax = 07; // memory corruption
+            }
+            else
+            {
+                cpu.fCarry = false;
+                g_allocEntries.erase( g_allocEntries.begin() + entry );
+            }
+
+            return;
+        }
         case 0x4a:
         {
-            // modify memory allocation. fake it. say it worked and that all RAM to 90000 is available.
-            // VGA and other hardware start at a0000
-    
-            cpu.fCarry = cpu.bx > 0x9000;
-            if ( cpu.fCarry )
-                cpu.ax = 8; // insufficient memory
-            cpu.bx = 0x9000;
+            // modify memory allocation. VGA and other hardware start at a0000
+            // lots of opportunity for improvement here, but the typical scenario is that
+            // apps initially free RAM at startup then do a handful of small allocations
+            // and that's it. The code here just barely supports that.
+
+            size_t entry = FindAllocationEntry( cpu.es );
+            if ( -1 == entry )
+            {
+                cpu.fCarry = 1;
+                cpu.bx = 0;
+                return;
+            }
+
+            if ( 1 == g_allocEntries.size() )
+            {
+                if ( cpu.bx > SegmentsAvailable )
+                {
+                    cpu.fCarry = true;
+                    cpu.ax = 8; // insufficient memory
+                    tracer.Trace( "  insufficient RAM for allocation request of %04x\n", cpu.bx );
+                    cpu.bx = SegmentsAvailable;
+                }
+                else
+                {
+                    cpu.fCarry = false;
+                    tracer.Trace( "  allocation changed from %04x to %04x\n", g_allocEntries[ 0 ].para_length, cpu.bx );
+                    g_allocEntries[ 0 ].para_length = cpu.bx;
+                    cpu.bx = SegmentsAvailable;
+                }
+
+                return;
+            }
+
+            cpu.fCarry = true;
+            cpu.bx = 0;
             return;
         }
         case 0x4c:
@@ -2971,12 +3087,12 @@ int main( int argc, char ** argv )
         pVectors[ intx ] = ( 0xc0 << 16 ) | ( offset );
         byte * routine = pRoutines + offset;
         if ( 0x1c == intx )
-            routine[ 0 ] = 0xcf;
+            routine[ 0 ] = 0xcf; // iret
         else
         {
             routine[ 0 ] = i8086_opcode_interrupt;
             routine[ 1 ] = (byte) intx;
-            routine[ 2 ] = 0xca;
+            routine[ 2 ] = 0xca; // retf 2
             routine[ 3 ] = 2;
             routine[ 4 ] = 0;
         }
@@ -3017,6 +3133,14 @@ int main( int argc, char ** argv )
         const DWORD DataSegmentOffset = AppSegmentOffset;
         const WORD DataSegment = DataSegmentOffset / 16;
 
+        // Apps own all memory by default. They can realloc this to free space for other allocations
+
+        DosAllocation da;
+        da.segment = DataSegment;
+        da.para_length = SegmentsAvailable;
+        g_allocEntries.push_back( da );
+        tracer.Trace( "app given %04x segments, which is %u bytes\n", da.para_length, da.para_length * 16 );
+
         // PSP: Program Segment Prefix for programs in DOS
         InitializePSP( DataSegment, acAppArgs, acAPP );
 
@@ -3049,7 +3173,7 @@ int main( int argc, char ** argv )
         tracer.Trace( "relocation table offset %u, overlay number %u\n",
                       head.reloc_table_offset, head.overlay_number );
 
-        if ( head.reloc_table_offset >= 64 )
+        if ( head.reloc_table_offset > 64 )
             usage( "probably not a 16-bit exe" );
 
         ULONG codeStart = 16 * (DWORD) head.header_paragraphs;
