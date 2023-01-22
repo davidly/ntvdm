@@ -25,8 +25,8 @@ i8086 cpu;
 static CDisassemble8086 g_Disassembler;
 static uint32_t g_State = 0;
 
-const DWORD stateTraceInstructions = 1;
-const DWORD stateEndEmulation = 2;
+const uint32_t stateTraceInstructions = 1;
+const uint32_t stateEndEmulation = 2;
 
 void i8086::trace_instructions( bool t ) { if ( t ) g_State |= stateTraceInstructions; else g_State &= ~stateTraceInstructions; }
 void i8086::end_emulation() { g_State |= stateEndEmulation; }
@@ -37,7 +37,7 @@ void i8086::external_interrupt( uint8_t interrupt_num )
     op_interrupt( true );
 } //external_interrupt
 
-extern void DumpBinaryData( uint8_t * pData, DWORD length, DWORD indent );
+extern void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
 void i8086::trace_state()
 {
     uint8_t * pcode = memptr( flat_ip() );
