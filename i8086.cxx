@@ -108,7 +108,7 @@ uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
     uint16_t res16 =  (uint16_t) lhs + (uint16_t) com_rhs + (uint16_t) borrow_int;
     uint8_t res8 = res16 & 0xff;
     fCarry = ( 0 == ( res16 & 0x100 ) );
-    set_PZS8( res8 );
+    set_PSZ8( res8 );
 
     // if not ( ( one of lhs and com_x are negative ) and ( one of lhs and result are negative ) )
     fOverflow = ! ( ( lhs ^ com_rhs ) & 0x80 ) && ( ( lhs ^ res8 ) & 0x80 );
@@ -124,7 +124,7 @@ uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
     uint32_t res32 =  (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) borrow_int;
     uint16_t res16 = res32 & 0xffff;
     fCarry = ( 0 == ( res32 & 0x10000 ) );
-    set_PZS16( res16 );
+    set_PSZ16( res16 );
     fOverflow = ( ! ( ( lhs ^ com_rhs ) & 0x8000 ) ) && ( ( lhs ^ res16 ) & 0x8000 );
     fAuxCarry = ( 0 != ( ( ( lhs & 0xfff ) + ( com_rhs & 0xfff ) + borrow_int ) & 0x1000 ) );
     return res16;
@@ -137,7 +137,7 @@ uint16_t i8086::op_add16( uint16_t lhs, uint16_t rhs, bool carry )
     uint16_t r16 = r32 & 0xffff;
     fCarry = ( 0 != ( r32 & 0x010000 ) );
     fAuxCarry = ( 0 != ( ( ( 0xfff & lhs ) + ( 0xfff & rhs ) + carry_int ) & 0x1000 ) );
-    set_PZS16( r16 );
+    set_PSZ16( r16 );
     fOverflow = ( ! ( ( lhs ^ rhs ) & 0x8000 ) ) && ( ( lhs ^ r16 ) & 0x8000 );
     return r16;
 } //op_add16
@@ -149,7 +149,7 @@ uint8_t i8086::op_add8( uint8_t lhs, uint8_t rhs, bool carry )
     uint8_t r8 = r16 & 0xff;
     fCarry = ( 0 != ( r16 & 0x0100 ) );
     fAuxCarry = ( 0 != ( ( ( 0xf & lhs ) + ( 0xf & rhs ) + carry_int ) & 0x10 ) );
-    set_PZS8( r8 );
+    set_PSZ8( r8 );
     fOverflow = ( ! ( ( lhs ^ rhs ) & 0x80 ) ) && ( ( lhs ^ r8 ) & 0x80 );
     return r8;
 } //op_add8
@@ -157,7 +157,7 @@ uint8_t i8086::op_add8( uint8_t lhs, uint8_t rhs, bool carry )
 uint16_t i8086::op_and16( uint16_t lhs, uint16_t rhs )
 {
     lhs &= rhs;
-    set_PZS16( lhs );
+    set_PSZ16( lhs );
     reset_carry_overflow();
     return lhs;
 } //op_and16
@@ -165,7 +165,7 @@ uint16_t i8086::op_and16( uint16_t lhs, uint16_t rhs )
 uint8_t i8086::op_and8( uint8_t lhs, uint8_t rhs )
 {
     lhs &= rhs;
-    set_PZS8( lhs );
+    set_PSZ8( lhs );
     reset_carry_overflow();
     return lhs;
 } //op_and8
@@ -173,7 +173,7 @@ uint8_t i8086::op_and8( uint8_t lhs, uint8_t rhs )
 uint16_t i8086::op_or16( uint16_t lhs, uint16_t rhs )
 {
     lhs |= rhs;
-    set_PZS16( lhs );
+    set_PSZ16( lhs );
     reset_carry_overflow();
     return lhs;
 } //op_or16
@@ -181,7 +181,7 @@ uint16_t i8086::op_or16( uint16_t lhs, uint16_t rhs )
 uint16_t i8086::op_xor16( uint16_t lhs, uint16_t rhs )
 {
     lhs ^= rhs;
-    set_PZS16( lhs );
+    set_PSZ16( lhs );
     reset_carry_overflow();
     return lhs;
 } //op_xor16
@@ -189,7 +189,7 @@ uint16_t i8086::op_xor16( uint16_t lhs, uint16_t rhs )
 uint8_t i8086::op_or8( uint8_t lhs, uint8_t rhs )
 {
     lhs |= rhs;
-    set_PZS8( lhs );
+    set_PSZ8( lhs );
     reset_carry_overflow();
     return lhs;
 } //op_or8
@@ -197,7 +197,7 @@ uint8_t i8086::op_or8( uint8_t lhs, uint8_t rhs )
 uint8_t i8086::op_xor8( uint8_t lhs, uint8_t rhs )
 {
     lhs ^= rhs;
-    set_PZS8( lhs );
+    set_PSZ8( lhs );
     reset_carry_overflow();
     return lhs;
 } //op_xor8
@@ -239,7 +239,7 @@ uint8_t i8086::op_inc8( uint8_t val )
    fOverflow = ( 0x7f == val );
    val++;
    fAuxCarry = ( 0 == ( val & 0xf ) );
-   set_PZS8( val );
+   set_PSZ8( val );
    return val;
 } //op_inc8
 
@@ -248,7 +248,7 @@ uint8_t i8086::op_dec8( uint8_t val )
    val--;
    fOverflow = ( 0x80 == val );
    fAuxCarry = ( 0xf == ( val & 0xf ) );
-   set_PZS8( val );
+   set_PSZ8( val );
    return val;
 } //op_dec8
 
@@ -257,7 +257,7 @@ uint16_t i8086::op_inc16( uint16_t val )
    fOverflow = ( 0x7fff == val );
    val++;
    fAuxCarry = ( 0 == ( val & 0xfff ) );
-   set_PZS16( val );
+   set_PSZ16( val );
    return val;
 } //op_inc16
 
@@ -266,7 +266,7 @@ uint16_t i8086::op_dec16( uint16_t val )
    val--;
    fOverflow = ( 0x8000 == val );
    fAuxCarry = ( 0xfff == ( val & 0xfff ) );
-   set_PZS16( val );
+   set_PSZ16( val );
    return val;
 } //op_dec16
 
@@ -377,7 +377,7 @@ void i8086::op_sal16( uint16_t * pval, uint8_t shift )
     if ( 1 == shift )
         fOverflow = ! ( ( 0 != ( *pval & 0x8000 ) ) == fCarry );
 
-    set_PZS16( *pval );
+    set_PSZ16( *pval );
 } //sal16
 
 void i8086::op_shr16( uint16_t * pval, uint8_t shift )
@@ -389,7 +389,7 @@ void i8086::op_shr16( uint16_t * pval, uint8_t shift )
     *pval >>= ( shift - 1 );
     fCarry = ( 0 != ( *pval & 1 ) );
     *pval >>= 1;
-    set_PZS16( *pval );
+    set_PSZ16( *pval );
 } //shr16
 
 void i8086::op_sar16( uint16_t * pval, uint8_t shift )
@@ -412,7 +412,7 @@ void i8086::op_sar16( uint16_t * pval, uint8_t shift )
     if ( 1 == shift )
         fOverflow = false;
 
-    set_PZS16( val );
+    set_PSZ16( val );
     *pval = val;
 } //sar16
 
@@ -520,7 +520,7 @@ void i8086::op_sal8( uint8_t * pval, uint8_t shift )
     if ( 1 == shift )
         fOverflow = ! ( ( 0 != ( *pval & 0x8000 ) ) == fCarry );
 
-    set_PZS8( *pval );
+    set_PSZ8( *pval );
 } //sal8
 
 void i8086::op_shr8( uint8_t * pval, uint8_t shift )
@@ -532,7 +532,7 @@ void i8086::op_shr8( uint8_t * pval, uint8_t shift )
     *pval >>= ( shift - 1 );
     fCarry = ( 0 != ( *pval & 1 ) );
     *pval >>= 1;
-    set_PZS8( *pval );
+    set_PSZ8( *pval );
 } //shr8
 
 void i8086::op_sar8( uint8_t * pval, uint8_t shift )
@@ -555,7 +555,7 @@ void i8086::op_sar8( uint8_t * pval, uint8_t shift )
     if ( 1 == shift )
         fOverflow = false;
 
-    set_PZS16( val );
+    set_PSZ16( val );
     *pval = val;
 } //sar8
 
@@ -670,7 +670,7 @@ uint64_t i8086::emulate( uint64_t maxcycles )
         prefix_repeat_opcode = 0xff;
 
 _after_prefix:
-        if ( 0 != g_State )            
+        if ( 0 != g_State )                                // 6.7% of runtime
         {
             if ( g_State & stateEndEmulation )
             {
@@ -682,17 +682,17 @@ _after_prefix:
                 trace_state();
         }
 
-        decode_instruction( memptr( flat_ip() ) );
+        decode_instruction( memptr( flat_ip() ) );         // 26.6 % of runtime
 
         #ifdef I8086_TRACK_CYCLES
-            cycles += i8086_cycles[ _b0 ]; // base cycle count. In many cases it'll be higher than this
+            cycles += i8086_cycles[ _b0 ];                 // 4% of runtime
         #else
             cycles += 1;
         #endif
 
         bool handled = true;
 
-        switch( _b0 )                             
+        switch( _b0 )                                      // 20.3% of runtime
         {
             case 0x04: { set_al( op_add8( al(), _b1 ) ); _bc++; break; } // add al, immed8
             case 0x05: { ax = op_add16( ax, _b12 ); _bc += 2; break; } // add ax, immed16
@@ -775,7 +775,7 @@ _after_prefix:
                 }
                 break;
             }
-            case 0x69: // FAKE Opcode: i8086_opcode_interrupt
+            case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt
             {
                 _bc++;
                 i8086_invoke_interrupt( _b1 );
@@ -1707,8 +1707,8 @@ _after_prefix:
             }
         }
 
-        ip += _bc;
-    } while ( cycles < maxcycles );
+        ip += _bc;                                         // 3.5% of runtime
+    } while ( cycles < maxcycles );                        // 2% of runtime
 
 _all_done:
     return cycles;

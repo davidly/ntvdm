@@ -107,19 +107,19 @@ struct i8086
 #endif
     } //is_parity_even8
 
-    void set_PZS16( uint16_t val )
+    void set_PSZ16( uint16_t val )
     {
         fParityEven = ( is_parity_even8( val & 0xff ) == is_parity_even8( ( val >> 8 ) & 0xff ) );
         fZero = ( 0 == val );
         fSign = ( 0 != ( 0x8000 & val ) );
-    } //set_PZS16
+    } //set_PSZ16
 
-    void set_PZS8( uint8_t val )
+    void set_PSZ8( uint8_t val )
     {
         fParityEven = is_parity_even8( val );
         fZero = ( 0 == val );
         fSign = ( 0 != ( 0x80 & val ) );
-    } //set_PZS8
+    } //set_PSZ8
 
     void reset_carry_overflow() { fCarry = false; fOverflow = false; }
 
