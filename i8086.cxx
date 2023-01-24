@@ -42,11 +42,11 @@ void i8086::trace_state()
 {
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
-    tracer.TraceQuiet( "ip %6x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
+    tracer.TraceQuiet( "ip %4x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
                        "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s  %s ; (%u)\n",
                        ip, *pcode, (uint8_t) pcode[1], (uint8_t) pcode[2], (uint8_t) pcode[3], (uint8_t) pcode[4],
                        ax, bx, cx, dx, di, si, ds, es, cs, ss, bp, sp, render_flags(), pdisassemble, g_Disassembler.BytesConsumed() );
-//    DumpBinaryData( memory + flatten( ds, 0x197b ), 6, 0 );
+//    DumpBinaryData( memory + flatten( 0x48fa, 2 ), 4, 0 );
 //    DumpBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
 } //trace_state
 

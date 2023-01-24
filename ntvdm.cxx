@@ -83,15 +83,19 @@ struct DosAllocation
     uint16_t para_length;
 };
 
-const uint32_t ScreenBufferSize = 2 * 80 * 25;
-const uint32_t ScreenBufferAddress = 0xb8000;                    // location in i8086 physical RAM of CGA display
-const uint32_t AppSegmentOffset = 0x2000;                        // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
-const uint16_t AppSegment = AppSegmentOffset / 16;               // works at segment 0 as well, but for fun...
-const uint16_t SegmentHardware = 0xa000;                         // where hardware starts
-const uint16_t SegmentsAvailable = SegmentHardware - AppSegment; // hardware starts at 0xa000, apps load at AppSegment  
-const uint32_t DOS_FILENAME_SIZE = 13;                           // 8 + 3 + '.' + 0-termination
+const uint32_t ScreenColumns = 80;                                // this is the only mode supported
+const uint32_t ScreenRows = 25;                                   // this is the only mode supported
+const uint32_t ScreenColumnsM1 = ScreenColumns - 1;
+const uint32_t ScreenRowsM1 = ScreenRows - 1;
+const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
+const uint32_t ScreenBufferAddress = 0xb8000;                     // location in i8086 physical RAM of CGA display. 16k, 4k per page.
+const uint32_t AppSegmentOffset = 0x2000;                         // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
+const uint16_t AppSegment = AppSegmentOffset / 16;                // works at segment 0 as well, but for fun...
+const uint16_t SegmentHardware = 0xa000;                          // where hardware starts
+const uint16_t SegmentsAvailable = SegmentHardware - AppSegment;  // hardware starts at 0xa000, apps load at AppSegment  
+const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 
-static uint16_t blankLine[80] = {0};
+static uint16_t blankLine[ScreenColumns] = {0};
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
 static bool g_TimerInterrupt1CHooked = false;
 
@@ -176,14 +180,24 @@ size_t FindAllocationEntry( uint16_t segment )
     {
         if ( segment == g_allocEntries[ i ].segment )
         {
-            tracer.Trace( "  found allocation entry segment %u para size %u\n", g_allocEntries[ i ].segment, g_allocEntries[ i ].para_length );
+            tracer.Trace( "  found allocation entry segment %04x para size %04x\n", g_allocEntries[ i ].segment, g_allocEntries[ i ].para_length );
             return i;
         }
     }
 
-    tracer.Trace( "ERROR: could not find alloc entry for segment %u\n", segment );
+    tracer.Trace( "ERROR: could not find alloc entry for segment %04x\n", segment );
     return -1;
 } //FindAllocationEntry
+
+static int compare_alloc_entries( const void * a, const void * b )
+{
+    // sort by segment, low to high
+
+    DosAllocation const * pa = (DosAllocation const *) a;
+    DosAllocation const * pb = (DosAllocation const *) b;
+
+    return pa->segment - pb->segment;
+} //compareClusters
 
 bool isPressed( int vkey )
 {
@@ -204,7 +218,9 @@ uint8_t * GetMem( uint16_t seg, uint16_t offset )
 
 uint8_t * GetVideoMem()
 {
-    return memory + ScreenBufferAddress;
+    uint8_t activePage = * GetMem( 0x40, 0x62 );
+    assert( activePage <= 3 );
+    return memory + ScreenBufferAddress + 0x1000 * activePage;
 } //GetVideoMem
 
 void GetCursorPosition( uint8_t & row, uint8_t & col )
@@ -388,8 +404,9 @@ bool UpdateDisplay()
     assert( g_use80x25 );
     uint8_t * pbuf = GetVideoMem();
 
-    if ( memcmp( bufferLastUpdate, pbuf, ScreenBufferSize ) )
+    if ( memcmp( bufferLastUpdate, pbuf, sizeof( bufferLastUpdate ) ) )
     {
+        //tracer.Trace( "UpdateDisplay with changes\n" );
         #if false
             CONSOLE_SCREEN_BUFFER_INFOEX csbi = { 0 };
             csbi.cbSize = sizeof csbi;
@@ -400,16 +417,16 @@ bool UpdateDisplay()
                           csbi.srWindow.Left, csbi.srWindow.Top, csbi.srWindow.Right, csbi.srWindow.Bottom );
         #endif
 
-        for ( uint16_t y = 0; y < 25; y++ )
+        for ( uint16_t y = 0; y < ScreenRows; y++ )
         {
-            uint32_t yoffset = y * 80 * 2;
+            uint32_t yoffset = y * ScreenColumns * 2;
 
-            if ( memcmp( bufferLastUpdate + yoffset, pbuf + yoffset, 80 * 2 ) )
+            if ( memcmp( bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 ) )
             {
-                memcpy( bufferLastUpdate + yoffset, pbuf + yoffset, 80 * 2 );
-                char aChars[80];
-                WORD aAttribs[80];
-                for ( uint16_t x = 0; x < 80; x++ )
+                memcpy( bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
+                char aChars[ScreenColumns]; // 8-bit not 16 bit or the wrong codepage is used
+                WORD aAttribs[ScreenColumns];
+                for ( uint16_t x = 0; x < _countof( aChars ); x++ )
                 {
                     uint32_t offset = yoffset + x * 2;
                     aChars[ x ] = pbuf[ offset ];
@@ -423,12 +440,12 @@ bool UpdateDisplay()
                 COORD pos = { 0, (SHORT) y };
                 SetConsoleCursorPosition( g_hConsole, pos );
     
-                BOOL ok = WriteConsoleA( g_hConsole, aChars, 80, 0, 0 );
+                BOOL ok = WriteConsoleA( g_hConsole, aChars, ScreenColumns, 0, 0 );
                 if ( !ok )
                     tracer.Trace( "writeconsolea failed with error %d\n", GetLastError() );
     
                 DWORD dwWritten;
-                ok = WriteConsoleOutputAttribute( g_hConsole, aAttribs, 80, pos, &dwWritten );
+                ok = WriteConsoleOutputAttribute( g_hConsole, aAttribs, ScreenColumns, pos, &dwWritten );
                 if ( !ok )
                     tracer.Trace( "writeconsoleoutputattribute failed with error %d\n", GetLastError() );
             }
@@ -460,8 +477,8 @@ void ClearDisplay()
     assert( g_use80x25 );
     uint8_t * pbuf = GetVideoMem();
 
-    for ( uint16_t y = 0; y < 25; y++ )
-        memcpy( pbuf + ( y * 2 * 80 ), blankLine, sizeof( blankLine ) );
+    for ( uint16_t y = 0; y < ScreenRows; y++ )
+        memcpy( pbuf + ( y * 2 * ScreenColumns ), blankLine, sizeof( blankLine ) );
 } //ClearDisplay
 
 BOOL WINAPI ControlHandler( DWORD fdwCtrlType )
@@ -512,6 +529,7 @@ const IntInfo interrupt_list_no_ah[] =
    { 0x22, 0, "end application" },
    { 0x23, 0, "control c exit address" },
    { 0x24, 0, "fatal error handler address" },
+   { 0x28, 0, "dos idle loop / scheduler" },
    { 0x2a, 0, "network information" },
    { 0x2f, 0, "dos multiplex" },
    { 0x33, 0, "mouse" },
@@ -897,10 +915,9 @@ void consume_keyboard()
         uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
         uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
         uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
-        //tracer.Trace( "    initial state: head %04x, tail %04x\n", *phead, *ptail );
+        tracer.Trace( "    initial state: head %04x, tail %04x\n", *phead, *ptail );
 
         uint8_t asciiChar = 0, scancode = 0;
-
         for ( uint32_t x = 0; x < numRead; x++ )
         {
             bool used = process_key_event( records[ x ], asciiChar, scancode );
@@ -910,7 +927,6 @@ void consume_keyboard()
             tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scancode );
 
             // It's ok to send more keyboard int 9s since we've consumed a character
-
             g_KbdIntWaitingForRead = false;
 
             pbiosdata[ *ptail ] = asciiChar;
@@ -921,7 +937,7 @@ void consume_keyboard()
                 *ptail = 0x1e;
         }
 
-        //tracer.Trace( "    final state: head %04x, tail %04x\n", *phead, *ptail );
+        tracer.Trace( "    final state: head %04x, tail %04x\n", *phead, *ptail );
     }
 } //consume_keyboard
 
@@ -1018,7 +1034,7 @@ void PerhapsFlipTo80x25()
         if ( !g_forceConsole )
         {
             g_use80x25 = true;
-            g_consoleConfig.EstablishConsole( 80, 25, ControlHandler  );
+            g_consoleConfig.EstablishConsole( ScreenColumns, ScreenRows, ControlHandler  );
             ClearDisplay();
         }
     }
@@ -1031,12 +1047,12 @@ void scroll_up( uint8_t * pbuf, int lines, int rul, int cul, int rlr, int clr )
     {
         int targetrow = row - lines;
         if ( targetrow >= rul )
-            memcpy( pbuf + ( targetrow * 80 * 2 + cul * 2 ),
-                    pbuf + ( row * 80 * 2 + cul * 2 ),
+            memcpy( pbuf + ( targetrow * ScreenColumns * 2 + cul * 2 ),
+                    pbuf + ( row * ScreenColumns * 2 + cul * 2 ),
                     2 * ( clr - cul ) );
 
         if ( row > ( rlr - lines ) )
-            memcpy( pbuf + ( row * 80 * 2 + cul * 2 ),
+            memcpy( pbuf + ( row * ScreenColumns * 2 + cul * 2 ),
                     blankLine,
                     2 * ( 1 + clr - cul ) );
     }
@@ -1050,14 +1066,18 @@ void handle_int_10( uint8_t c )
     {
         case 0:
         {
-            // set video mode. 0 = 40x25, 3 = 80x25, 13h = graphical
+            // set video mode. 0 = 40x25, 3 = 80x25, 13h = graphical. no return value
 
             PerhapsFlipTo80x25();
             uint8_t mode = cpu.al();
             tracer.Trace( "set video mode to %#x\n", mode );
 
-            if ( 2 == mode || 3 == mode || 7 == mode )
+            if ( 2 == mode || 3 == mode ) // only 80x25 is supported with buffer address 0xb8000
+            {
                 g_videoMode = mode;
+                uint8_t * pmode = GetMem( 0x40, 0x49 ); // update the mode in bios data
+                *pmode = mode;
+            }
 
             return;
         }
@@ -1115,6 +1135,10 @@ void handle_int_10( uint8_t c )
         {
             // set active display page (ignore)
 
+            uint8_t page = cpu.al();
+            if ( page <= 3 )
+                 * GetMem( 0x40, 0x62 ) = page;
+
             return;
         }
         case 6:
@@ -1145,13 +1169,13 @@ void handle_int_10( uint8_t c )
                     return;
 
                 uint8_t * pbuf = GetVideoMem();
-                if ( 0 == lines || lines >= 25 )
+                if ( 0 == lines || lines >= ScreenRows )
                 {
                     if ( 0 == lines )
                     {
                         tracer.Trace( "SCROLLUP CLEAR!!!!!!!!\n", lines );
                         for ( int row = rul; row <= rlr; row++ )
-                            memcpy( pbuf + ( row * 80 * 2 + cul * 2 ), blankLine, 2 * ( 1 + clr - cul ) );
+                            memcpy( pbuf + ( row * ScreenColumns * 2 + cul * 2 ), blankLine, 2 * ( 1 + clr - cul ) );
                     }
                     else
                         ClearDisplay();
@@ -1196,13 +1220,13 @@ void handle_int_10( uint8_t c )
                     return;
 
                 uint8_t * pbuf = GetVideoMem();
-                if ( 0 == lines || lines >= 25 )
+                if ( 0 == lines || lines >= ScreenRows )
                 {
                     if ( 0 == lines )
                     {
                         tracer.Trace( "SCROLLDOWN CLEAR!!!!!!!!\n", lines );
                         for ( int row = rul; row <= rlr; row++ )
-                            memcpy( pbuf + ( row * 80 * 2 + cul * 2 ), blankLine, 2 * ( 1 + clr - cul ) );
+                            memcpy( pbuf + ( row * ScreenColumns * 2 + cul * 2 ), blankLine, 2 * ( 1 + clr - cul ) );
                     }
                     else
                         ClearDisplay();
@@ -1216,12 +1240,12 @@ void handle_int_10( uint8_t c )
                     {
                         int targetrow = row + lines;
                         if ( targetrow <= rlr )
-                            memcpy( pbuf + ( targetrow * 80 * 2 + cul * 2 ),
-                                    pbuf + ( row * 80 * 2 + cul * 2 ),
+                            memcpy( pbuf + ( targetrow * ScreenColumns * 2 + cul * 2 ),
+                                    pbuf + ( row * ScreenColumns * 2 + cul * 2 ),
                                     2 * ( clr - cul ) );
 
                         if ( row <= ( rul + lines ) )
-                            memcpy( pbuf + ( row * 80 * 2 + cul * 2 ),
+                            memcpy( pbuf + ( row * ScreenColumns * 2 + cul * 2 ),
                                     blankLine,
                                     2 * ( 1 + clr - cul ) );
                     }
@@ -1245,7 +1269,7 @@ void handle_int_10( uint8_t c )
 
                 GetCursorPosition( row, col );
                 uint8_t * pbuf = GetVideoMem();
-                uint32_t offset = row * 2 * 80 + col * 2;
+                uint32_t offset = row * 2 * ScreenColumns + col * 2;
                 cpu.set_al( pbuf[ offset ] );
                 cpu.set_ah( pbuf[ 1 + offset ] );
                 tracer.Trace( " returning character %02x, '%c'\n", cpu.al(), printable( cpu.al() ) );
@@ -1273,7 +1297,7 @@ void handle_int_10( uint8_t c )
             {
                 ch = printable( ch );
                 uint8_t * pbuf = GetVideoMem();
-                uint32_t offset = row * 2 * 80 + col * 2;
+                uint32_t offset = row * 2 * ScreenColumns + col * 2;
 
                 for ( uint16_t t = 0; t < cpu.cx; t++ )
                 {
@@ -1309,7 +1333,7 @@ void handle_int_10( uint8_t c )
             if ( g_use80x25 )
             {
                 uint8_t * pbuf = GetVideoMem();
-                uint32_t offset = row * 2 * 80 + col * 2;
+                uint32_t offset = row * 2 * ScreenColumns + col * 2;
 
                 for ( uint16_t t = 0; t < cpu.cx; t++ )
                     pbuf[ offset ] = ch;
@@ -1331,7 +1355,7 @@ void handle_int_10( uint8_t c )
             PerhapsFlipTo80x25();
 
             cpu.set_al( g_videoMode );
-            cpu.set_ah( 80 ); // columns
+            cpu.set_ah( ScreenColumns ); // columns
             cpu.set_bh( 0 );  // active display page number
 
             return;
@@ -1390,11 +1414,11 @@ void handle_int_10( uint8_t c )
 void handle_int_16( uint8_t c )
 {
     uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+    pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
     uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
     uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
     //tracer.Trace( "  int_16 head: %04x, tail %04x\n", *phead, *ptail );
 
-    pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
 
     switch( c )
     {
@@ -1423,7 +1447,7 @@ void handle_int_16( uint8_t c )
                 *phead = 0x1e;
 
             tracer.Trace( "  returning character %#x '%c'\n", cpu.ax, printable( cpu.ax ) );
-            //tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
+            tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
         }
         case 1:
@@ -1449,13 +1473,14 @@ void handle_int_16( uint8_t c )
             }
             else
             {
+                //cpu.trace_instructions( true );
                 cpu.set_al( pbiosdata[ *phead ] );
                 cpu.set_ah( pbiosdata[ 1 + ( *phead ) ] );
                 cpu.fZero = false;
             }
 
             tracer.Trace( "  returning flag %d, ax %04x\n", cpu.fZero, cpu.ax );
-            //tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
+            tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             g_int16_1_loop = true;
             return;
         }
@@ -1464,6 +1489,7 @@ void handle_int_16( uint8_t c )
             // get shift status (and alt/ctrl/etc.)
 
             cpu.set_al( pbiosdata[ 0x17 ] );
+            tracer.Trace( "  keyboard flag status: %02x\n", pbiosdata[ 0x17 ] );
             return;
         }
     }
@@ -1495,7 +1521,7 @@ void handle_int_21( uint8_t c )
             {
                 uint8_t * pbuf = GetVideoMem();
                 GetCursorPosition( row, col );
-                uint32_t offset = row * 2 * 80 + col * 2;
+                uint32_t offset = row * 2 * ScreenColumns + col * 2;
                 pbuf[ offset ] = cpu.dl();
                 col++;
                 SetCursorPosition( row, col );
@@ -2063,6 +2089,9 @@ void handle_int_21( uint8_t c )
         case 0x38:
         {
             // get/set country dependent information.
+
+            // some apps (um, Brief 3.1) call this in a tight loop along with get system time and keyboard status
+            SleepEx( 1, FALSE );
     
             cpu.fCarry = false;
             cpu.bx = 1; // USA
@@ -2324,28 +2353,28 @@ void handle_int_21( uint8_t c )
                             }
                             else if ( 0x0a == ch )
                             {
-                                if ( row >= 24 )
+                                if ( row >= ScreenRowsM1 )
                                 {
                                     int lines = 1;
                                     int rul = 0;
                                     int cul = 0;
-                                    int rlr = 24;
-                                    int clr = 79;
+                                    int rlr = ScreenRowsM1;
+                                    int clr = ScreenColumnsM1;
                 
                                     tracer.Trace( "  line feed scrolling up a line\n"  );
-                                    scroll_up( pbuf, 1, 0, 0, 24, 79 );
+                                    scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
                                 }
                                 else
                                     SetCursorPosition( row + 1, col );
                             }
                             else
                             {
-                                uint32_t offset = row * 2 * 80 + col * 2;
+                                uint32_t offset = row * 2 * ScreenColumns + col * 2;
                                 pbuf[ offset ] = printable( ch );
                                 tracer.Trace( "  writing %02x '%c' to display offset %u at row %u col %u\n",
                                               ch, printable( ch ), offset, row, col );
                                 col++;
-                                if ( col > 80 )
+                                if ( col > ScreenColumns )
                                     col = 1;
                                 SetCursorPosition( row, col );
                             }
@@ -2588,30 +2617,50 @@ void handle_int_21( uint8_t c )
             // very simplistic strategy here.
 
             tracer.Trace( "  allocate memory %04x paragraphs\n", cpu.bx );
-            uint16_t highFreeSeg = 0;
-            for ( size_t i = 0; i < g_allocEntries.size(); i++ )
+
+            // sort the blocks, then look for a gap large enough to hold the request
+
+            size_t cEntries = g_allocEntries.size();
+            qsort( g_allocEntries.data(), cEntries, sizeof( DosAllocation ), compare_alloc_entries );
+
+            for ( size_t i = 0; i < cEntries; i++ )
+                tracer.Trace( " alloc entry %d uses segment %04x, size %04x\n", i, g_allocEntries[i].segment, g_allocEntries[i].para_length );
+
+            uint16_t freeSeg = 0;
+            for ( size_t i = 0; i < cEntries; i++ )
             {
                 uint16_t after = g_allocEntries[ i ].segment + g_allocEntries[ i ].para_length;
-                if ( after > highFreeSeg )
-                    highFreeSeg = after;
+                if ( i < ( cEntries - 1 ) )
+                {
+                    uint16_t freePara = g_allocEntries[ i + 1 ].segment - after;
+                    if ( freePara >= cpu.bx )
+                    {
+                        tracer.Trace( "  using a gap from free memory\n" );
+                        freeSeg = after;
+                        break;
+                    }
+                }
+                else
+                    freeSeg = after;
             }
 
-            if ( ( highFreeSeg + cpu.bx ) > SegmentHardware )
+            if ( ( 0 == freeSeg ) || ( freeSeg + cpu.bx ) > SegmentHardware )
             {
                 tracer.Trace( "  ERROR: unable to allocate memory\n" );
                 cpu.fCarry = true;
                 cpu.ax = 8; // insufficient memory
-                cpu.bx = SegmentHardware - highFreeSeg;
+                cpu.bx = SegmentHardware - freeSeg;
                 return;
             }
 
-            tracer.Trace( "  allocation succeeded. segment %04x length %04x\n", highFreeSeg, cpu.bx );
+            tracer.Trace( "  allocation succeeded. segment %04x length %04x\n", freeSeg, cpu.bx );
             DosAllocation da;
-            da.segment = highFreeSeg;
+            da.segment = freeSeg;
             da.para_length = cpu.bx;
             g_allocEntries.push_back( da );
             cpu.fCarry = false;
-            cpu.bx = SegmentHardware - highFreeSeg;
+            cpu.bx = SegmentHardware - freeSeg;
+            cpu.ax = freeSeg;
 
             return;
         }
@@ -2920,6 +2969,13 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         printf( "Abort, Retry, Ignore?\n" );
         exit( 1 );
     }
+    else if ( 0x28 == interrupt_num )
+    {
+        // dos idle loop / scheduler
+
+        SleepEx( 1, FALSE );
+        return;
+    }
     else if ( 0x2a == interrupt_num )
     {
         // dos network / netbios
@@ -3111,17 +3167,17 @@ int main( int argc, char ** argv )
 
     // global bios memory
     uint8_t * pbiosdata = GetMem( 0x40, 0 );
-    * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;     // equipment list. diskette installed and initial video mode 0x20
-    * (uint16_t *) ( pbiosdata + 0x13 ) = 640;      // contiguous 1k blocks (640 * 1024)
-    * (uint16_t *) ( pbiosdata + 0x1a ) = 0x1e;     // keyboard buffer head
-    * (uint16_t *) ( pbiosdata + 0x1c ) = 0x1e;     // keyboard buffer tail
-    * (uint8_t *)  ( pbiosdata + 0x49 ) = 2;        // video mode is 80,25, 16 grey
-    * (uint16_t *) ( pbiosdata + 0x4a ) = 80;       // screen columns
-    * (uint16_t *) ( pbiosdata + 0x4c ) = 0x1000;   // video regen buffer size
-    * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;   // soft reset flag (bypass memteest and crt init)
-    * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;     // keyboard buffer start
-    * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;     // one byte past keyboard buffer start
-    * (uint8_t *)  ( pbiosdata + 0x84 ) = 25;       // screen rows
+    * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
+    * (uint16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
+    * (uint16_t *) ( pbiosdata + 0x1a ) = 0x1e;           // keyboard buffer head
+    * (uint16_t *) ( pbiosdata + 0x1c ) = 0x1e;           // keyboard buffer tail
+    * (uint8_t *)  ( pbiosdata + 0x49 ) = g_videoMode;    // video mode is 80x25, 16 colors
+    * (uint16_t *) ( pbiosdata + 0x4a ) = ScreenColumns;  // 80
+    * (uint16_t *) ( pbiosdata + 0x4c ) = 0x1000;         // video regen buffer size
+    * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
+    * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start
+    * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer start
+    * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
 
     // this is a byte where GWBASIC looks to check if it's being invoked recurisivly during a SHELL command
     * ( pbiosdata + 0x10f ) = 0;
@@ -3160,7 +3216,7 @@ int main( int argc, char ** argv )
 
         // load .com file
         FILE * fp = fopen( acAPP, "rb" );
-        if (0 == fp )
+        if ( 0 == fp )
             usage( "can't open input com file" );
     
         fseek( fp, 0, SEEK_END );
@@ -3200,7 +3256,7 @@ int main( int argc, char ** argv )
 
         // load the .exe file
         FILE * fp = fopen( acAPP, "rb" );
-        if (0 == fp )
+        if ( 0 == fp )
             usage( "can't open input exe file" );
     
         fseek( fp, 0, SEEK_END );
