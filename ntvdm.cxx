@@ -89,7 +89,7 @@ const uint32_t ScreenColumnsM1 = ScreenColumns - 1;
 const uint32_t ScreenRowsM1 = ScreenRows - 1;
 const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
 const uint32_t ScreenBufferAddress = 0xb8000;                     // location in i8086 physical RAM of CGA display. 16k, 4k per page.
-const uint32_t AppSegmentOffset = 0x2000;                         // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
+const uint32_t AppSegmentOffset = 0x1920;                         // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
 const uint16_t AppSegment = AppSegmentOffset / 16;                // works at segment 0 as well, but for fun...
 const uint16_t SegmentHardware = 0xa000;                          // where hardware starts
 const uint16_t SegmentsAvailable = SegmentHardware - AppSegment;  // hardware starts at 0xa000, apps load at AppSegment  
@@ -1473,7 +1473,6 @@ void handle_int_16( uint8_t c )
             }
             else
             {
-                //cpu.trace_instructions( true );
                 cpu.set_al( pbiosdata[ *phead ] );
                 cpu.set_ah( pbiosdata[ 1 + ( *phead ) ] );
                 cpu.fZero = false;
@@ -2614,19 +2613,21 @@ void handle_int_21( uint8_t c )
             // on return, ax = segment of block or error code if cf set
             // bx = size of largest block available if cf set and ax = not enough mem
             // cf clear on success
-            // very simplistic strategy here.
+            // very simplistic first free block strategy here.
 
             tracer.Trace( "  allocate memory %04x paragraphs\n", cpu.bx );
 
             // sort the blocks, then look for a gap large enough to hold the request
 
             size_t cEntries = g_allocEntries.size();
-            qsort( g_allocEntries.data(), cEntries, sizeof( DosAllocation ), compare_alloc_entries );
+            assert( 0 != cEntries ); // loading the app creates 1 shouldn't be freed.
 
+            tracer.Trace( "  all allocations:\n" );
             for ( size_t i = 0; i < cEntries; i++ )
-                tracer.Trace( " alloc entry %d uses segment %04x, size %04x\n", i, g_allocEntries[i].segment, g_allocEntries[i].para_length );
+                tracer.Trace( "      alloc entry %d uses segment %04x, size %04x\n", i, g_allocEntries[i].segment, g_allocEntries[i].para_length );
 
-            uint16_t freeSeg = 0;
+            uint16_t allocatedSeg = 0;
+            size_t insertLocation = 0;
             for ( size_t i = 0; i < cEntries; i++ )
             {
                 uint16_t after = g_allocEntries[ i ].segment + g_allocEntries[ i ].para_length;
@@ -2635,32 +2636,40 @@ void handle_int_21( uint8_t c )
                     uint16_t freePara = g_allocEntries[ i + 1 ].segment - after;
                     if ( freePara >= cpu.bx )
                     {
-                        tracer.Trace( "  using a gap from free memory\n" );
-                        freeSeg = after;
+                        tracer.Trace( "  using gap from previously freed memory: %02x\n", after );
+                        allocatedSeg = after;
+                        insertLocation = i + 1;
                         break;
                     }
                 }
-                else
-                    freeSeg = after;
+                else if ( ( after + cpu.bx ) <= SegmentHardware )
+                {
+                    tracer.Trace( "  using gap after allocated memory: %02x\n", after );
+                    allocatedSeg = after;
+                    insertLocation = i + 1;
+                    break;
+                }
             }
 
-            if ( ( 0 == freeSeg ) || ( freeSeg + cpu.bx ) > SegmentHardware )
+            if ( 0 == allocatedSeg )
             {
-                tracer.Trace( "  ERROR: unable to allocate memory\n" );
                 cpu.fCarry = true;
                 cpu.ax = 8; // insufficient memory
-                cpu.bx = SegmentHardware - freeSeg;
+                DosAllocation & last = g_allocEntries[ cEntries - 1 ];
+                uint16_t firstFreeSeg = last.segment + last.para_length;
+                assert( firstFreeSeg <= SegmentHardware );
+                cpu.bx = SegmentHardware - firstFreeSeg;
+                tracer.Trace( "  ERROR: unable to allocate memory. returning that %02x paragraphs are free\n", cpu.bx );
                 return;
             }
 
-            tracer.Trace( "  allocation succeeded. segment %04x length %04x\n", freeSeg, cpu.bx );
             DosAllocation da;
-            da.segment = freeSeg;
+            da.segment = allocatedSeg;
             da.para_length = cpu.bx;
-            g_allocEntries.push_back( da );
+            g_allocEntries.insert( insertLocation + g_allocEntries.begin(), da );
             cpu.fCarry = false;
-            cpu.bx = SegmentHardware - freeSeg;
-            cpu.ax = freeSeg;
+            cpu.bx = SegmentHardware - allocatedSeg;
+            cpu.ax = allocatedSeg;
 
             return;
         }
