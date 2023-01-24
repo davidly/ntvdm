@@ -23,7 +23,7 @@ i8086 emulation performance is similar to other C/C++ emulators.
 I validated that ntvdm works on Arm64 with both native and x64 binaries.
 
 I can't vouch for 100% i8086 emulation because I can't find any apps that perform such validation, unlike
-hat's out there for the 6502, 8080, Z80, and other earlier CPUs. But I have done a fair bit of testing 
+what's out there for the 6502, 8080, Z80, and other earlier CPUs. But I have done a fair bit of testing 
 with many apps and compared instruction + register traces with other emulators.
 
 djl8086d.hxx is an 8086 disassembler that's used when tracing instructions. It's useful when debugging why
