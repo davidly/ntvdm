@@ -7,6 +7,7 @@
 //    CDisassemble8086 dis;
 //    const char * p = dis.Disassemble( byte * pcode );
 //    printf( "next instruction: %s\n", p );
+//    printf( "  it was %d bytes long\n", dis.BytesConsumed() );
 //
 // first byte: (for those opcodes where this applies)
 //   bits 7:2  shortened opcode, referred to as top6 below
@@ -56,7 +57,7 @@ class CDisassemble8086
         
         const char * reg_strings[16];
         const char * rm_strings[8];
-        const char * sr_strings[8];
+        const char * sr_strings[4];
         const char * jmp_strings[16];
         const char * i_opBits[16]; // bitwise/add/sub
         const char * i_opRot[8];  // rotates/shifts
@@ -155,7 +156,7 @@ class CDisassemble8086
                         else if ( 2 == _mod || directAddress )
                             immoffset += 2;
             
-                        char acI[ 10 ];
+                        char acI[ 10 ]; // immediate
                         if ( _isword )
                         {
                             sprintf( acI, "%04xh", _pcode[ immoffset ] | ( (WORD) _pcode[ 1 + immoffset ] << 8 )  );
@@ -221,7 +222,6 @@ class CDisassemble8086
             rm_strings[4] = "si";    rm_strings[5] = "di";    rm_strings[6] = "bp";    rm_strings[7] = "bx";
 
             sr_strings[0] = "es"; sr_strings[1] = "cs"; sr_strings[2] = "ss"; sr_strings[3] = "ds";
-            sr_strings[4] = "es"; sr_strings[5] = "cs"; sr_strings[6] = "ss"; sr_strings[7] = "ds";
 
             jmp_strings[0]  = "jo "; jmp_strings[1]  = "jno"; jmp_strings[2]  = "jc "; jmp_strings[3]  = "jnc";
             jmp_strings[4]  = "je "; jmp_strings[5]  = "jne"; jmp_strings[6]  = "jbe"; jmp_strings[7]  = "ja ";
@@ -264,10 +264,6 @@ class CDisassemble8086
         
             switch ( _b0 )
             {
-                case 0x00: _da( "add    %s, %s", getrm( _rm ), reg_strings[ _reg ] ); _bc++; break;
-                case 0x01: _da( "add    %s, %s", getrm( _rm ), reg_strings[ 8 | _reg ] ); _bc++; break;
-                case 0x02: // fall through
-                case 0x03: _da( "add    %s, %s", reg_strings[ _isword ? ( _reg + 8 ) : _reg ], getrmAsWord() ); _bc++; break;
                 case 0x04: _da( "add    al, %02xh", _b1 ); _bc = 2; break;
                 case 0x05: _da( "add    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x06: _da( "push   es" ); break;
@@ -275,12 +271,10 @@ class CDisassemble8086
                 case 0x0c: _da( "or     al, %02xh", _b1 ); _bc = 2; break;
                 case 0x0d: _da( "or     ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x0e: _da( "push   cs" ); break;
-                case 0x13: _da( "adc    %s, %s", reg_strings[ _isword ? ( _reg + 8 ) : _reg ], getrmAsWord() ); _bc++; break;
                 case 0x14: _da( "adc    al, %02xh", _b1 ); _bc = 2; break;
                 case 0x15: _da( "adc    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x16: _da( "push   ss" ); break;
                 case 0x17: _da( "pop    ss" ); break;
-                case 0x1b: _da( "sbb    %s, %s", reg_strings[ _isword ? ( _reg + 8 ) : _reg ], getrmAsWord() ); _bc++; break;
                 case 0x1c: _da( "sbb    al, %02xh", _b1 ); _bc = 2; break;
                 case 0x1d: _da( "sbb    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x1e: _da( "push   ds" ); break;
@@ -306,9 +300,9 @@ class CDisassemble8086
                 case 0x85: _da( "test   %s", opargs( true ) ); _bc++; break;
                 case 0x86: _da( "xchg   %s", opargs( true ) ); _bc++; break;
                 case 0x87: _da( "xchg   %s", opargs( true ) ); _bc++; break;
-                case 0x8c: _da( "mov    %s, %s", getrmAsWord(), sr_strings[ _reg ] ); _bc++; break;
+                case 0x8c: _da( "mov    %s, %s", getrmAsWord(), sr_strings[ _reg & 0x3 ] ); _bc++; break;
                 case 0x8d: _da( "lea    %s, %s", reg_strings[ 8 | _reg ], getrmAsWord() ); _bc++; break;
-                case 0x8e: _da( "mov    %s, %s", sr_strings[ _reg ], getrmAsWord() ); _bc++; break;
+                case 0x8e: _da( "mov    %s, %s", sr_strings[ _reg & 0x3 ], getrmAsWord() ); _bc++; break;
                 case 0x8f: _da( "pop    %s", getrm( _rm ) ); _bc++; break;
                 case 0x90: _da( "nop" ); break;
                 case 0x98: _da( "cbw" ); break;
@@ -450,7 +444,7 @@ class CDisassemble8086
                     {
                         _bc++;
                         _daa( "%s, ", getrm( _rm ) );
-                        if ( 0x83 == _b0 || 0x80 == _b0 )
+                        if ( 0x83 == _b0 ) // low bit is on, but it's an 8-bit immediate value
                             _daa( "%02xh", pcode[ immoffset ] );
                         else
                         {
@@ -499,7 +493,6 @@ class CDisassemble8086
                      break;
                 }
                 case 0xfc: _da( "%s   %s", i_opMix[ _reg ], getrm( _rm ) ); _pcode = 0; break;
-                default:   _da( "NYI" ); break;
             }
 
             return acOut;
