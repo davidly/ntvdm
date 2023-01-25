@@ -12,8 +12,11 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     WordStar Professional Release 4 for DOS
     GWBasic in both command-line and full-screen text mode
     Brief 3.1. -k must be passed on the Brief command line to enable "compatible" keyboard handling
+    ExeHr.exe: Microsoft (R) EXE File Header Utility  Version 2.01  
+    BC.exe: Microsoft Basic compiler 7.10, part of Quick Basic.
+    Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10 
     
-For all of the above apps, attempts to run nested apps like command.com and the QuickBasic compiler fail.
+For all of the above apps, attempts to run nested apps like command.com or the QuickBasic compiler fail.
 However, running Turbo Pascal apps created within those apps works.
 
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
