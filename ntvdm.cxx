@@ -12,7 +12,10 @@
 //    GWBASIC.COM.
 //    QBASIC works aside from commands that invoke other executables (e.g. the compiler)
 //    Apps the QBASIC compiler creates.
-//    Brief 3.1. Use b.exe's -k flag for compatible keyboard handling.
+//    Brief 3.1. Use b.exe's -k flag for compatible keyboard handling. (automatically set in code below)
+//    ExeHdr: Microsoft (R) EXE File Header Utility  Version 2.01
+//    Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10
+//    BC.exe: Microsoft Basic compiler 7.10 
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
 // Windows to OS/2 to NT, and mostly skipped DOS programming. Hence this fills a gap
 // in my knowledge.
@@ -112,7 +115,6 @@ static bool g_haltExecution = false;           // true when the app is shutting 
 static uint8_t * g_DiskTransferAddress;        // where apps read/write data for i/o
 static vector<FileEntry> g_fileEntries;        // vector of currently open files
 static vector<DosAllocation> g_allocEntries;   // vector of blocks allocated to DOS apps
-static uint16_t g_nextFileHandle = 10;         // 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
 static bool g_use80x25 = false;                // true to force 80x25 with cursor positioning
 static uint8_t g_videoMode = 3;                // 2=80x25 16 grey, 3=80x25 16 colors
 static HANDLE g_hConsole = 0;                  // the Windows console handle
@@ -121,6 +123,7 @@ static ConsoleConfiguration g_consoleConfig;   // to get into and out of 80x25 m
 static bool g_int16_1_loop = false;            // true if an app is looping to get keyboard input. don't busy loop.
 static bool g_KbdIntWaitingForRead = false;    // true when a kbd int happens and no read has happened since
 static bool g_injectControlC = false;          // true when ^c is hit and it must be put in the keyboard buffer
+static char g_acApp[ MAX_PATH ];               // the DOS .com or .exe being run
 
 #pragma pack( push, 1 )
 struct DosFindFile
@@ -135,6 +138,26 @@ struct DosFindFile
 };
 #pragma pack(pop)
 
+static int compare_alloc_entries( const void * a, const void * b )
+{
+    // sort by segment, low to high
+
+    DosAllocation const * pa = (DosAllocation const *) a;
+    DosAllocation const * pb = (DosAllocation const *) b;
+
+    return pa->segment - pb->segment;
+} //compare_alloc_entries
+
+static int compare_file_entries( const void * a, const void * b )
+{
+    // sort by file handle, low to high
+
+    FileEntry const * pa = (FileEntry const *) a;
+    FileEntry const * pb = (FileEntry const *) b;
+
+    return pa->handle - pb->handle;
+} //compare_file_entries
+
 FILE * RemoveFileEntry( uint16_t handle )
 {
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
@@ -142,13 +165,13 @@ FILE * RemoveFileEntry( uint16_t handle )
         if ( handle == g_fileEntries[ i ].handle )
         {
             FILE * fp = g_fileEntries[ i ].fp;
-            tracer.Trace( "removing file entry %s: %p\n", g_fileEntries[ i ].path, fp );
+            tracer.Trace( "  removing file entry %s: %p\n", g_fileEntries[ i ].path, fp );
             g_fileEntries.erase( g_fileEntries.begin() + i );
             return fp;
         }
     }
 
-    tracer.Trace( "ERROR: could not remove file entry for handle %u\n", handle );
+    tracer.Trace( "ERROR: could not remove file entry for handle %04x\n", handle );
     return 0;
 } //RemoveFileEntry
 
@@ -158,12 +181,12 @@ FILE * FindFileEntry( uint16_t handle )
     {
         if ( handle == g_fileEntries[ i ].handle )
         {
-            tracer.Trace( "found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
+            tracer.Trace( "  found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
             return g_fileEntries[ i ].fp;
         }
     }
 
-    tracer.Trace( "ERROR: could not find file entry for handle %u\n", handle );
+    tracer.Trace( "ERROR: could not find file entry for handle %04x\n", handle );
     return 0;
 } //FindFileEntry
 
@@ -173,14 +196,34 @@ const char * FindFileEntryPath( uint16_t handle )
     {
         if ( handle == g_fileEntries[ i ].handle )
         {
-            tracer.Trace( "found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
+            tracer.Trace( "  found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
             return g_fileEntries[ i ].path;
         }
     }
 
-    tracer.Trace( "ERROR: could not find file entry for handle %u\n", handle );
+    tracer.Trace( "ERROR: could not find file entry for handle %04x\n", handle );
     return 0;
 } //FindFileEntryPath
+
+uint16_t FindFirstFreeFileHandle()
+{
+    // Apps like the QuickBasic compiler (bc.exe) depend on the side effect that after a file
+    // is closed and a new file is opened the lowest possible free handle value is used for the
+    // newly opened file. It's a bug in the app, but it's not getting fixed.
+
+    qsort( g_fileEntries.data(), g_fileEntries.size(), sizeof FileEntry, compare_file_entries );
+    uint16_t freehandle = 0xa;
+
+    for ( size_t i = 0; i < g_fileEntries.size(); i++ )
+    {
+        if ( g_fileEntries[ i ].handle != freehandle )
+            return freehandle;
+        else
+            freehandle++;
+    }
+
+    return freehandle;
+} //FindFirstFreeFileHandle
 
 size_t FindAllocationEntry( uint16_t segment )
 {
@@ -196,16 +239,6 @@ size_t FindAllocationEntry( uint16_t segment )
     tracer.Trace( "ERROR: could not find alloc entry for segment %04x\n", segment );
     return -1;
 } //FindAllocationEntry
-
-static int compare_alloc_entries( const void * a, const void * b )
-{
-    // sort by segment, low to high
-
-    DosAllocation const * pa = (DosAllocation const *) a;
-    DosAllocation const * pb = (DosAllocation const *) b;
-
-    return pa->segment - pb->segment;
-} //compareClusters
 
 bool isPressed( int vkey )
 {
@@ -621,6 +654,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x42, "move file pointer (seek)" },
     { 0x21, 0x43, "get/put file attributes" },
     { 0x21, 0x44, "ioctl" },
+    { 0x21, 0x45, "create duplicate handle" },
     { 0x21, 0x47, "get current directory" },
     { 0x21, 0x48, "allocate memory" },
     { 0x21, 0x49, "free memory" },
@@ -630,6 +664,9 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x4f, "find next asciz" },
     { 0x21, 0x56, "rename file" },
     { 0x21, 0x57, "get/set file date and time using handle" },
+    { 0x21, 0x58, "get/set memory allocation strategy" },
+    { 0x21, 0x59, "get extended error code" },
+    { 0x21, 0x63, "get lead byte table" },
 };
 
 const char * get_interrupt_string( uint8_t i, uint8_t c )
@@ -2164,7 +2201,7 @@ void handle_int_21( uint8_t c )
             // create file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
             char * path = (char *) GetMem( cpu.ds, cpu.dx );
-            tracer.Trace( "create file '%s'\n", path );
+            tracer.Trace( "  create file '%s'\n", path );
             cpu.ax = 3;
     
             FILE * fp = fopen( path, "w+b" );
@@ -2173,10 +2210,11 @@ void handle_int_21( uint8_t c )
                 FileEntry fe = {0};
                 strcpy( fe.path, path );
                 fe.fp = fp;
-                fe.handle = g_nextFileHandle++;
+                fe.handle = FindFirstFreeFileHandle();
                 g_fileEntries.push_back( fe );
                 cpu.ax = fe.handle;
                 cpu.fCarry = false;
+                tracer.Trace( "  successfully created file and returning handle %04x\n", cpu.ax );
             }
             else
             {
@@ -2202,10 +2240,11 @@ void handle_int_21( uint8_t c )
                 FileEntry fe = {0};
                 strcpy( fe.path, path );
                 fe.fp = fp;
-                fe.handle = g_nextFileHandle++;
+                fe.handle = FindFirstFreeFileHandle();
                 g_fileEntries.push_back( fe );
                 cpu.ax = fe.handle;
                 cpu.fCarry = false;;
+                tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.ax );
             }
             else
             {
@@ -2223,13 +2262,13 @@ void handle_int_21( uint8_t c )
             FILE * fp = RemoveFileEntry( cpu.bx );
             if ( fp )
             {
-                tracer.Trace( "close file handle %u\n", cpu.bx );
+                tracer.Trace( "  close file handle %04x\n", cpu.bx );
                 fclose( fp );
                 cpu.fCarry = false;;
             }
             else
             {
-                tracer.Trace( "ERROR: close file handle couldn't find handle %u\n", cpu.bx );
+                tracer.Trace( "ERROR: close file handle couldn't find handle %04x\n", cpu.bx );
                 cpu.ax = 6;
                 cpu.fCarry = true;
             }
@@ -2278,7 +2317,7 @@ void handle_int_21( uint8_t c )
                 else
                 {
                     cpu.fCarry = true;
-                    tracer.Trace( "attempt to read from handle %d\n", h );
+                    tracer.Trace( "attempt to read from handle %04x\n", h );
                 }
     
                 return;
@@ -2289,7 +2328,7 @@ void handle_int_21( uint8_t c )
             {
                 uint16_t len = cpu.cx;
                 uint8_t * p = GetMem( cpu.ds, cpu.dx );
-                tracer.Trace( "read from file using handle %u bytes at address %02x:%02x\n", len, cpu.ds, cpu.dx );
+                tracer.Trace( "read from file using handle %04x bytes at address %02x:%02x\n", len, cpu.ds, cpu.dx );
     
                 uint32_t cur = ftell( fp );
                 fseek( fp, 0, SEEK_END );
@@ -2316,7 +2355,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "ERROR: read from file handle couldn't find handle %u\n", cpu.bx );
+                tracer.Trace( "ERROR: read from file handle couldn't find handle %04x\n", cpu.bx );
                 cpu.ax = 6;
                 cpu.fCarry = true;
             }
@@ -2405,7 +2444,7 @@ void handle_int_21( uint8_t c )
             {
                 uint16_t len = cpu.cx;
                 uint8_t * p = GetMem( cpu.ds, cpu.dx );
-                tracer.Trace( "write file using handle, %u bytes at address %p\n", len, p );
+                tracer.Trace( "write file using handle, %04x bytes at address %p\n", len, p );
     
                 cpu.ax = 0;
     
@@ -2423,7 +2462,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "ERROR: write to file handle couldn't find handle %u\n", cpu.bx );
+                tracer.Trace( "ERROR: write to file handle couldn't find handle %04x\n", cpu.bx );
                 cpu.ax = 6;
                 cpu.fCarry = true;
             }
@@ -2468,14 +2507,14 @@ void handle_int_21( uint8_t c )
                     return;
                 }
     
-                tracer.Trace( "move file pointer using handle %u to %u bytes from %s\n", handle, offset,
+                tracer.Trace( "  move file pointer using handle %04x to %u bytes from %s\n", handle, offset,
                               0 == origin ? "end" : 1 == origin ? "current" : "end" );
     
                 uint32_t cur = ftell( fp );
                 fseek( fp, 0, SEEK_END );
                 uint32_t size = ftell( fp );
                 fseek( fp, cur, SEEK_SET );
-                tracer.Trace( "file size is %u\n", size );
+                tracer.Trace( "  file size is %u\n", size );
     
                 if ( 0 == origin )
                     fseek( fp, offset, SEEK_SET );
@@ -2492,7 +2531,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "ERROR: move file pointer file handle couldn't find handle %u\n", handle );
+                tracer.Trace( "ERROR: move file pointer file handle couldn't find handle %04x\n", handle );
                 cpu.ax = 6;
                 cpu.fCarry = true;
             }
@@ -2538,40 +2577,60 @@ void handle_int_21( uint8_t c )
             uint8_t subfunction = cpu.al();
             // handles 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
             uint16_t handle = cpu.bx;
-            uint16_t count = cpu.cx;
             uint8_t * pbuf = GetMem( cpu.ds, cpu.dx );
             cpu.fCarry = false;
     
-            tracer.Trace( "ioctl subfunction %u, get device information for handle %u, count %u\n", subfunction, handle, count );
+            tracer.Trace( "  ioctl subfunction %u, get device information for handle %04x\n", subfunction, handle );
+
             switch ( subfunction )
             {
                 case 0:
                 {
-                    // get device information
-    
-                    cpu.dx = 0;
-                    cpu.fCarry = false;
-
-                    // this distinction is important for gwbasic and qbasic-generated-apps for both input and output to work in both modes.
-                    // The 0x80 bit indicates it's a character device (cursor movement, etc.) vs. a file (or a teletype)
-
-                    if ( g_use80x25 )
+                    if ( handle <= 4 )
                     {
-                        if ( 0 == handle ) // stdin
-                            cpu.dx = 0x81;
-                        else if ( 1 == handle ) //stdout
-                            cpu.dx = 0x82;
-                        else if ( handle < 10 ) // stderr, etc.
-                            cpu.dx = 0x80;
+                        // get device information
+        
+                        cpu.dx = 0;
+                        cpu.fCarry = false;
+    
+                        // this distinction is important for gwbasic and qbasic-generated-apps for both input and output to work in both modes.
+                        // The 0x80 bit indicates it's a character device (cursor movement, etc.) vs. a file (or a teletype)
+    
+                        if ( g_use80x25 )
+                        {
+                            if ( 0 == handle ) // stdin
+                                cpu.dx = 0x81;
+                            else if ( 1 == handle ) //stdout
+                                cpu.dx = 0x82;
+                            else if ( handle < 10 ) // stderr, etc.
+                                cpu.dx = 0x80;
+                        }
+                        else
+                        {
+                            if ( 0 == handle ) // stdin
+                                cpu.dx = 0x1;
+                            else if ( 1 == handle ) //stdout
+                                cpu.dx = 0x2;
+                            else if ( handle < 10 ) // stderr, etc.
+                                cpu.dx = 0x0;
+                        }
                     }
                     else
                     {
-                        if ( 0 == handle ) // stdin
-                            cpu.dx = 0x1;
-                        else if ( 1 == handle ) //stdout
-                            cpu.dx = 0x2;
-                        else if ( handle < 10 ) // stderr, etc.
-                            cpu.dx = 0x0;
+                        FILE * fp = FindFileEntry( handle );
+                        if ( !fp )
+                        {
+                            cpu.fCarry = true;
+                            tracer.Trace( "    ERROR: ioctl on handle %04x failed because it's not a valid handle\n", handle );
+                        }
+                        else
+                        {
+                            cpu.fCarry = false;
+                            cpu.dx = 0x20; // binary (raw) mode
+                            int location = ftell( fp );
+                            if ( 0 == location )
+                                cpu.dx |= 0x40; // file has not been written to
+                        }
                     }
     
                     break;
@@ -2589,6 +2648,41 @@ void handle_int_21( uint8_t c )
                 }
             }
     
+            return;
+        }
+        case 0x45:
+        {
+            // create duplicate handle (dup)
+            cpu.fCarry = true;
+            uint16_t existing_handle = cpu.bx;
+            const char * path = FindFileEntryPath( existing_handle );
+
+            if ( path )
+            {
+                FILE * fp = fopen( path, "r+b" );
+                if ( fp )
+                {
+                    FileEntry fe = {0};
+                    strcpy( fe.path, path );
+                    fe.fp = fp;
+                    fe.handle = FindFirstFreeFileHandle();
+                    g_fileEntries.push_back( fe );
+                    cpu.ax = fe.handle;
+                    cpu.fCarry = false;;
+                    tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", existing_handle, cpu.ax );
+                }
+                else
+                {
+                    cpu.ax = 2; // file not found
+                    tracer.Trace( "ERROR: attempt to duplicate file handle failed opening file %s error %d: %s\n", path, errno, strerror( errno ) );
+                }
+            }
+            else
+            {
+                cpu.ax = 2; // file not found
+                tracer.Trace( "ERROR: attempt to duplicate non-existent handle %04x\n", existing_handle );
+            }
+
             return;
         }
         case 0x47:
@@ -2621,8 +2715,13 @@ void handle_int_21( uint8_t c )
 
             tracer.Trace( "  allocate memory %04x paragraphs\n", cpu.bx );
 
+            // sometimes allocate an extra spaceBetween paragraphs between blocks for overly optimistic resize requests.
+            // I'm looking at you link.exe v5.10 from 1990.
+
+            const uint16_t spaceBetween = ( !stricmp( g_acApp, "LINK.EXE" ) ) ? 0x30 : 0;
+
             size_t cEntries = g_allocEntries.size();
-            assert( 0 != cEntries ); // loading the app creates 1 shouldn't be freed.
+            assert( 0 != cEntries ); // loading the app creates one that shouldn't be freed.
             assert( 0 != cpu.bx ); // not legal to allocate 0 bytes
 
             tracer.Trace( "  all allocations:\n" );
@@ -2637,7 +2736,7 @@ void handle_int_21( uint8_t c )
                 if ( i < ( cEntries - 1 ) )
                 {
                     uint16_t freePara = g_allocEntries[ i + 1 ].segment - after;
-                    if ( freePara >= cpu.bx )
+                    if ( freePara >= ( cpu.bx + spaceBetween) )
                     {
                         tracer.Trace( "  using gap from previously freed memory: %02x\n", after );
                         allocatedSeg = after;
@@ -2645,10 +2744,10 @@ void handle_int_21( uint8_t c )
                         break;
                     }
                 }
-                else if ( ( after + cpu.bx ) <= SegmentHardware )
+                else if ( ( after + cpu.bx + spaceBetween ) <= SegmentHardware )
                 {
                     tracer.Trace( "  using gap after allocated memory: %02x\n", after );
-                    allocatedSeg = after;
+                    allocatedSeg = after + spaceBetween;
                     insertLocation = i + 1;
                     break;
                 }
@@ -2687,6 +2786,8 @@ void handle_int_21( uint8_t c )
             size_t entry = FindAllocationEntry( cpu.es );
             if ( -1 == entry )
             {
+                // The Microsoft Basic compiler BC.EXE 7.10 attempts to free segment 0x80, which it doesn't own.
+
                 tracer.Trace( "  ERROR: memory corruption; can't find freed segment\n" );
                 cpu.fCarry = true;
                 cpu.ax = 07; // memory corruption
@@ -2702,40 +2803,47 @@ void handle_int_21( uint8_t c )
         case 0x4a:
         {
             // modify memory allocation. VGA and other hardware start at a0000
-            // lots of opportunity for improvement here, but the typical scenario is that
-            // apps initially free RAM at startup then do a handful of small allocations
-            // and that's it. The code here just barely supports that.
+            // lots of opportunity for improvement here.
 
             size_t entry = FindAllocationEntry( cpu.es );
             if ( -1 == entry )
             {
                 cpu.fCarry = 1;
                 cpu.bx = 0;
+                tracer.Trace( "ERROR: attempt to modify an allocation that doesn't exist\n" );
                 return;
             }
 
-            if ( 1 == g_allocEntries.size() )
+            size_t cEntries = g_allocEntries.size();
+            assert( 0 != cEntries ); // loading the app creates 1 shouldn't be freed.
+            assert( 0 != cpu.bx ); // not legal to allocate 0 bytes
+
+            tracer.Trace( "  all allocations:\n" );
+            for ( size_t i = 0; i < cEntries; i++ )
+                tracer.Trace( "      alloc entry %d uses segment %04x, size %04x\n", i, g_allocEntries[i].segment, g_allocEntries[i].para_length );
+
+            uint16_t maxParas;
+            if ( entry == ( cEntries - 1 ) )
+                maxParas = SegmentHardware - g_allocEntries[ entry ].segment;
+            else
+                maxParas = g_allocEntries[ entry + 1 ].segment - g_allocEntries[ entry ].segment;
+
+            tracer.Trace( "  maximum reallocation paragraphs: %04x, requested size %04x\n", maxParas, cpu.bx );
+
+            if ( cpu.bx > maxParas )
             {
-                if ( cpu.bx > SegmentsAvailable )
-                {
-                    cpu.fCarry = true;
-                    cpu.ax = 8; // insufficient memory
-                    tracer.Trace( "  insufficient RAM for allocation request of %04x\n", cpu.bx );
-                    cpu.bx = SegmentsAvailable;
-                }
-                else
-                {
-                    cpu.fCarry = false;
-                    tracer.Trace( "  allocation changed from %04x to %04x\n", g_allocEntries[ 0 ].para_length, cpu.bx );
-                    g_allocEntries[ 0 ].para_length = cpu.bx;
-                    cpu.bx = SegmentsAvailable;
-                }
-
-                return;
+                cpu.fCarry = true;
+                cpu.ax = 8; // insufficient memory
+                tracer.Trace( "  insufficient RAM for allocation request of %04x\n", cpu.bx );
+                cpu.bx = maxParas;
+            }
+            else
+            {
+                cpu.fCarry = false;
+                tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length, cpu.bx );
+                g_allocEntries[ entry ].para_length = cpu.bx;
             }
 
-            cpu.fCarry = true;
-            cpu.bx = 0;
             return;
         }
         case 0x4c:
@@ -2880,10 +2988,52 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "ERROR: can't get/set file date and time; file handle not valid\n" );
+                tracer.Trace( "ERROR: can't get/set file date and time; file handle %04x not valid\n", handle );
                 cpu.ax = 6;
             }
     
+            return;
+        }
+        case 0x58:
+        {
+            // get/set memory allocation strategy
+            // al = 0 for get, 1 for set
+            // bl = strategy in/out 0 == first fit, 1 = best fit, 2 = last fit (from top of memory down)
+            // cf set on failure, clear on success
+
+            if ( 0 == cpu.al() )
+            {
+                cpu.set_bl( 0 );
+                cpu.fCarry = false;
+            }
+            else if ( 1 == cpu.al() )
+            {
+                tracer.Trace( " set memory allocation strategy to %u\n", cpu.bl() );
+                cpu.fCarry = false;
+            }
+            else
+            {
+                tracer.Trace( " ERROR: memory allocation has unrecognized al: %u\n", cpu.al() );
+                cpu.fCarry = true;
+            }
+
+            return;
+        }
+        case 0x59:
+        {
+            // get extended error code. stub for now until some app really needs it
+
+            cpu.ax = 2; // last error. file not found
+            cpu.set_bh( 1 ); // class. out of resources
+            cpu.set_bl( 5 ); // suggestion action code. immediate abort.
+            cpu.set_ch( 1 ); // suggestion action code. unknown
+            return;
+        }
+        case 0x63:
+        {
+            // get lead byte table
+
+            cpu.fCarry = true; // not supported;
             return;
         }
         default:
@@ -3044,7 +3194,10 @@ void InitializePSP( uint16_t segment, char * acAppArgs, const char * pcAPP )
     const uint16_t EnvironmentSegment = 0x80; 
     * (uint16_t *)  ( GetMem( segment, 0x2c ) ) = EnvironmentSegment;
     char * penvdata = (char *) GetMem( EnvironmentSegment, 0 );
-    strcpy( penvdata, "BFLAGS=-kzr -mDJL" ); // not generally useful, I know. Brief: keyboard compat, no ^z at end, fast screen updates, my macros
+    if ( !stricmp( g_acApp, "B.EXE" ) )
+        strcpy( penvdata, "BFLAGS=-kzr -mDJL" ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
+    else
+        strcpy( penvdata, "" );
     len = strlen( penvdata );
     penvdata[ len + 1 ] = 0; // extra 0 for no more environment variables
     * (uint16_t *)  ( penvdata + len + 2 ) = 0x0001; // one more additional item per DOS 3.0+
@@ -3142,30 +3295,29 @@ int main( int argc, char ** argv )
     if ( 0 == pcAPP )
         usage( "no command specified" );
 
-    char acAPP[ MAX_PATH ];
-    strcpy( acAPP, pcAPP );
-    _strupr( acAPP );
-    DWORD attr = GetFileAttributesA( acAPP );
+    strcpy( g_acApp, pcAPP );
+    _strupr( g_acApp );
+    DWORD attr = GetFileAttributesA( g_acApp );
     if ( INVALID_FILE_ATTRIBUTES == attr )
     {
-        if ( strstr( acAPP, ".COM" ) || strstr( acAPP, ".EXE" ) )
+        if ( strstr( g_acApp, ".COM" ) || strstr( g_acApp, ".EXE" ) )
             usage( "can't find command file .com or .exe" );
         else
         {
-            strcat( acAPP, ".COM" );
-            attr = GetFileAttributesA( acAPP );
+            strcat( g_acApp, ".COM" );
+            attr = GetFileAttributesA( g_acApp );
             if ( INVALID_FILE_ATTRIBUTES == attr )
             {
-                char * dot = strstr( acAPP, ".COM" );
+                char * dot = strstr( g_acApp, ".COM" );
                 strcpy( dot, ".EXE" );
-                attr = GetFileAttributesA( acAPP );
+                attr = GetFileAttributesA( g_acApp );
                 if ( INVALID_FILE_ATTRIBUTES == attr )
                     usage( "can't find command file" );
             }
         }
     }
 
-    bool isCOM = !strcmp( acAPP + strlen( acAPP ) - 4, ".COM" );
+    bool isCOM = !strcmp( g_acApp + strlen( g_acApp ) - 4, ".COM" );
 
     cpu.cs = 0xF000;
     cpu.fTrap = false;
@@ -3222,12 +3374,12 @@ int main( int argc, char ** argv )
         }
     }
 
-    InitializePSP( AppSegment, acAppArgs, acAPP );
+    InitializePSP( AppSegment, acAppArgs, g_acApp );
 
     if ( isCOM )
     {
         // load .com file
-        FILE * fp = fopen( acAPP, "rb" );
+        FILE * fp = fopen( g_acApp, "rb" );
         if ( 0 == fp )
             usage( "can't open input com file" );
     
@@ -3248,7 +3400,7 @@ int main( int argc, char ** argv )
         cpu.sp = 0xffff;
         cpu.ip = 0x100;
 
-        tracer.Trace( "loaded %s, app segment %04x, ip %04x\n", acAPP, cpu.cs, cpu.ip );
+        tracer.Trace( "loaded %s, app segment %04x, ip %04x\n", g_acApp, cpu.cs, cpu.ip );
     }
     else // EXE
     {
@@ -3264,7 +3416,7 @@ int main( int argc, char ** argv )
         tracer.Trace( "app given %04x segments, which is %u bytes\n", da.para_length, da.para_length * 16 );
 
         // load the .exe file
-        FILE * fp = fopen( acAPP, "rb" );
+        FILE * fp = fopen( g_acApp, "rb" );
         if ( 0 == fp )
             usage( "can't open input exe file" );
     
@@ -3281,7 +3433,7 @@ int main( int argc, char ** argv )
         if ( 0x5a4d != head.signature )
             usage( "exe isn't MZ" );  // he was my hiring manager
 
-        tracer.Trace( "loading app %s\n", acAPP );
+        tracer.Trace( "loading app %s\n", g_acApp );
         tracer.Trace( "looks like an MZ exe... size %u, size from blocks %u, bytes in last block %u\n",
                       file_size, ( (uint32_t) head.blocks_in_file ) * 512, head.bytes_in_last_block );
         tracer.Trace( "relocation entry count %u, header paragraphs %u (%u bytes)\n",
@@ -3331,7 +3483,7 @@ int main( int argc, char ** argv )
         tracer.Trace( "CS: %#x, SS: %#x, DS: %#x, SP: %#x, IP: %#x\n", cpu.cs, cpu.ss, cpu.ds, cpu.sp, cpu.ip );
     }
 
-    if ( !stricmp( acAPP, "gwbasic.exe" ) )
+    if ( !stricmp( g_acApp, "gwbasic.exe" ) )
     {
         // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
 
