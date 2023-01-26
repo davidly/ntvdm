@@ -41,11 +41,12 @@ about 32% slower than this simulated 8086 at 4.77Mhz, which seems reasonably clo
 
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
-                -c     don't auto-detect apps that want 80x25 then set window to that size
-                -C     always set window to 80x25
-                -i     trace instructions as they are executed (this is verbose!)
+                -c     don't auto-detect apps that want 80x25 then set window to that size;
+                       stay in teletype mode.
+                -C     always set window to 80x25; don't use teletype mode.
+                -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
                 -p     show performance information
-                -s:X   speed in Hz. Default is 0, which is as fast as possible.
+                -s:X   emulated speed in Hz. Default is to run as fast as possible.
                        for 4.77Mhz, use -s:4770000
                 -t     enable debug tracing to ntvdm.log
      [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command
