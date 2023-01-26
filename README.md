@@ -35,7 +35,9 @@ apps don't work properly.
 Cycle counts are conditionally computed based on a #define in i8086.hxx. Using this, the emulator can
 simulate running at a given clock rate. Cycle counts vary widely between various spec docs I found online,
 and the code doesn't check for misaligned memory access, get details of mult/div correct, or otherwise
-get any closer than about 25% of what would be accurate. It's in the ballpark.
+get any closer than about 25% of what would be accurate. It's in the ballpark. I tested against a physical
+8088 running at 4.77Mhz. That CPU takes extra cycles for memory access because of the narrower bus. It runs
+about 32% slower than this simulated 8086 at 4.77Mhz, which seems reasonably close.
 
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
