@@ -280,7 +280,7 @@ class CDisassemble8086
                 case 0x1e: _da( "push   ds" ); break;
                 case 0x1f: _da( "pop    ds" ); break;
                 case 0x24: _da( "and    al, %02xh", _b1 ); _bc = 2; break;
-                case 0x25: _da( "and    ax, %04xh", _b2 ); _bc = 3; break;
+                case 0x25: _da( "and    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x26: _da( "es segment override" ); break;
                 case 0x27: _da( "daa" ); break;
                 case 0x2c: _da( "sub    al, %02xh", _b1 ); _bc = 2; break;
