@@ -15,6 +15,7 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     ExeHr.exe: Microsoft (R) EXE File Header Utility  Version 2.01  
     BC.exe: Microsoft Basic compiler 7.10, part of Quick Basic.
     Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10 
+    Mips.com Version 1.20 from Chips and Technologies.
     
 For all of the above apps, attempts to run nested apps like command.com or the QuickBasic compiler fail.
 However, running Turbo Pascal apps created within those apps works.
