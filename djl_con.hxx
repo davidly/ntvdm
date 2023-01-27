@@ -92,11 +92,12 @@ class ConsoleConfiguration
             printf( "\x1b[1d" ); // cursor to left side
         } //EstablishConsole
         
-        void RestoreConsole()
+        void RestoreConsole( bool clearScreen = true )
         {
             if ( 0 != consoleOutputHandle )
             {
-                printf( "\x1b[2J" ); // clear the screen
+                if ( clearScreen )
+                    printf( "\x1b[2J" ); // clear the screen
                 SetConsoleScreenBufferInfoEx( consoleOutputHandle, & oldScreenInfo );
                 SetWindowPlacement( GetConsoleWindow(), & oldWindowPlacement );
                 SetConsoleMode( consoleOutputHandle, oldConsoleMode );

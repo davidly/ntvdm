@@ -10,12 +10,12 @@
 //    ba BASIC compiler in my ttt repo
 //    Wordstar Release 4
 //    GWBASIC.COM.
-//    QBASIC works aside from commands that invoke other executables (e.g. the compiler)
+//    QBASIC 7.1 works aside from commands that invoke other executables (e.g. the compiler)
 //    Apps the QBASIC compiler creates.
 //    Brief 3.1. Use b.exe's -k flag for compatible keyboard handling. (automatically set in code below)
 //    ExeHdr: Microsoft (R) EXE File Header Utility  Version 2.01
 //    Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10
-//    BC.exe: Microsoft Basic compiler 7.10 
+//    BC.exe: Microsoft Basic compiler 7.10 (part of Quick Basic 7.1)
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
 // Windows to OS/2 to NT, and mostly skipped DOS programming. Hence this fills a gap
 // in my knowledge.
@@ -108,7 +108,6 @@ const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.'
 
 static uint16_t blankLine[ScreenColumns] = {0};
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
-static bool g_TimerInterrupt1CHooked = false;
 
 CDJLTrace tracer;
 static bool g_haltExecution = false;           // true when the app is shutting down
@@ -496,6 +495,7 @@ bool UpdateDisplay()
         return true;
     }
 
+    //tracer.Trace( "UpdateDisplay not updated; no changes\n" );
     return false;
 } //UpdateDisplay
 
@@ -1890,11 +1890,7 @@ void handle_int_21( uint8_t c )
             pvec[1] = cpu.ds;
     
             if ( 0x1c == cpu.al() )
-            {
                 uint32_t dw = ( (uint32_t) cpu.ds << 16 ) | cpu.dx;
-                g_TimerInterrupt1CHooked = ( cpu.ds != 0xc0 );
-                tracer.Trace( "timer 4c hooked: %d\n", g_TimerInterrupt1CHooked );
-            }
             return;
         }           
         case 0x27:
@@ -3213,12 +3209,14 @@ static void usage( char const * perr )
     printf( "NT Virtual DOS Machine: emulates an MS-DOS 3.00 runtime environment enough to run some COM/EXE files on Win64\n" );
     printf( "usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]\n" );
     printf( "  notes:\n" );
-    printf( "            -c     don't auto-detect apps that want 80x25 then set window to that size\n" );
-    printf( "            -C     always set window to 80x25\n" );
-    printf( "            -i     trace instructions as they are executed (this is verbose!)\n" );
+    printf( "            -c     don't auto-detect apps that want 80x25 then set window to that size;\n" );
+    printf( "                   stay in teletype mode.\n" );
+    printf( "            -C     always set window to 80x25; don't use teletype mode.\n" );
+    printf( "            -d     don't clear the display when in 80x25 mode on app exit\n" );
+    printf( "            -i     trace instructions as they are executed to ntvdm.log (this is verbose!)\n" );
     printf( "            -p     show performance information\n" ); 
 #ifdef I8086_TRACK_CYCLES
-    printf( "            -s:X   speed in Hz. Default is 0, which is as fast as possible.\n" );
+    printf( "            -s:X   speed in Hz. Default is to run as fast as possible.\n" );
     printf( "                   for 4.77Mhz, use -s:4770000\n" );
 #endif
     printf( "            -t     enable debug tracing to ntvdm.log\n" );
@@ -3228,6 +3226,7 @@ static void usage( char const * perr )
     printf( "      ntvdm turbo.com\n" );
     printf( "      ntvdm s:\\github\\MS-DOS\\v2.0\\bin\\masm small,,,small\n" );
     printf( "      ntvdm s:\\github\\MS-DOS\\v2.0\\bin\\link small,,,small\n" );
+    printf( "      ntvdm -t b -k myfile.asm\n" );
     exit( 1 );
 } //usage
 
@@ -3244,6 +3243,7 @@ int main( int argc, char ** argv )
     char acAppArgs[80] = {0};
     bool traceInstructions = false;
     bool force80x25 = false;
+    bool clearDisplayOnExit = true;
 
     for ( int i = 1; i < argc; i++ )
     {
@@ -3254,7 +3254,9 @@ int main( int argc, char ** argv )
         {
             char ca = tolower( parg[1] );
 
-            if ( 's' == ca )
+            if ( 'd' == ca )
+                clearDisplayOnExit = false;
+            else if ( 's' == ca )
             {
                 if ( ':' == parg[2] )
                     clockrate = _strtoui64( parg+ 3 , 0, 10 );
@@ -3519,7 +3521,9 @@ int main( int argc, char ** argv )
             continue;
         }
 
-        if ( g_TimerInterrupt1CHooked ) // optimization since the default handler is just an iret
+        // if interrupt 0x1c (tick tock) is hooked by the app, invoke it
+
+        if ( 0x00c0 != ( (uint16_t *) memory )[ 4 * 0x1c + 2 ] ) // optimization since the default handler is just an iret
         {
             // this won't be precise enough to provide a clock, but it's good for delay loops
 
@@ -3535,6 +3539,9 @@ int main( int argc, char ** argv )
         }
     } while ( true );
 
+    if ( g_use80x25 )  // get any last-second screen updates displayed
+        UpdateDisplay();
+
     LONGLONG elapsed = 0;
     FILETIME creationFT, exitFT, kernelFT, userFT;
     if ( showPerformance )
@@ -3543,7 +3550,7 @@ int main( int argc, char ** argv )
         GetProcessTimes( GetCurrentProcess(), &creationFT, &exitFT, &kernelFT, &userFT );
     }
 
-    g_consoleConfig.RestoreConsole();
+    g_consoleConfig.RestoreConsole( clearDisplayOnExit );
 
     if ( showPerformance )
     {
