@@ -49,6 +49,7 @@ seems close.
                 -c     don't auto-detect apps that want 80x25 then set window to that size;
                        stay in teletype mode.
                 -C     always set window to 80x25; don't use teletype mode.
+                -d     don't clear the display when in 80x25 mode on app exit
                 -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
                 -p     show performance information
                 -s:X   emulated speed in Hz. Default is to run as fast as possible.
