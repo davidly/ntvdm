@@ -39,6 +39,11 @@ get any closer than about 25% of what would be accurate. It's in the ballpark. I
 8088 running at 4.77Mhz. That CPU takes extra cycles for memory access because of the narrower bus. It runs
 about 32% slower than this simulated 8086 at 4.77Mhz, which seems reasonably close.
 
+Using mips.com Version 1.20, a benchmark app from 1986 written by Chips and Technologies, if the clock
+is set to /s:3900000 (3.9 Mhz) the 8086 emulator runs at about the same speed as a 4.77Mhz 8088. Given the
+wide variability online regarding the performance differences between the 8088 and 8086 (5%-50%) this 
+seems close.
+
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
                 -c     don't auto-detect apps that want 80x25 then set window to that size;
