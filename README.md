@@ -42,7 +42,7 @@ about 32% slower than this simulated 8086 at 4.77Mhz, which seems reasonably clo
 Using mips.com Version 1.20, a benchmark app from 1986 written by Chips and Technologies, if the clock
 is set to /s:3900000 (3.9 Mhz) the 8086 emulator runs at about the same speed as a 4.77Mhz 8088. Given the
 wide variability online regarding the performance differences between the 8088 and 8086 (5%-50%) this 
-seems close.
+seems close. I validated the mips.com results on an actual 8088 running at 4.77Mhz.
 
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
