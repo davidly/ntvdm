@@ -12,8 +12,11 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     WordStar Professional Release 4 for DOS
     GWBasic in both command-line and full-screen text mode
     Brief 3.1. -k must be passed on the Brief command line to enable "compatible" keyboard handling
+    ExeHr.exe: Microsoft (R) EXE File Header Utility  Version 2.01  
+    BC.exe: Microsoft Basic compiler 7.10, part of Quick Basic.
+    Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10 
     
-For all of the above apps, attempts to run nested apps like command.com and the QuickBasic compiler fail.
+For all of the above apps, attempts to run nested apps like command.com or the QuickBasic compiler fail.
 However, running Turbo Pascal apps created within those apps works.
 
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
@@ -32,15 +35,18 @@ apps don't work properly.
 Cycle counts are conditionally computed based on a #define in i8086.hxx. Using this, the emulator can
 simulate running at a given clock rate. Cycle counts vary widely between various spec docs I found online,
 and the code doesn't check for misaligned memory access, get details of mult/div correct, or otherwise
-get any closer than about 25% of what would be accurate. It's in the ballpark.
+get any closer than about 25% of what would be accurate. It's in the ballpark. I tested against a physical
+8088 running at 4.77Mhz. That CPU takes extra cycles for memory access because of the narrower bus. It runs
+about 32% slower than this simulated 8086 at 4.77Mhz, which seems reasonably close.
 
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
-                -c     don't auto-detect apps that want 80x25 then set window to that size
-                -C     always set window to 80x25
-                -i     trace instructions as they are executed (this is verbose!)
+                -c     don't auto-detect apps that want 80x25 then set window to that size;
+                       stay in teletype mode.
+                -C     always set window to 80x25; don't use teletype mode.
+                -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
                 -p     show performance information
-                -s:X   speed in Hz. Default is 0, which is as fast as possible.
+                -s:X   emulated speed in Hz. Default is to run as fast as possible.
                        for 4.77Mhz, use -s:4770000
                 -t     enable debug tracing to ntvdm.log
      [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command
