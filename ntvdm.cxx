@@ -62,6 +62,7 @@ struct FileEntry
     char path[ MAX_PATH ];
     FILE * fp;
     uint16_t handle; // DOS handle, not host OS
+    bool writeable;
 };
 
 struct ExeHeader
@@ -105,6 +106,7 @@ const uint16_t AppSegment = AppSegmentOffset / 16;                // works at se
 const uint16_t SegmentHardware = 0xa000;                          // where hardware starts
 const uint16_t SegmentsAvailable = SegmentHardware - AppSegment;  // hardware starts at 0xa000, apps load at AppSegment  
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
+const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
 
 static uint16_t blankLine[ScreenColumns] = {0};
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
@@ -188,6 +190,21 @@ FILE * FindFileEntry( uint16_t handle )
     tracer.Trace( "ERROR: could not find file entry for handle %04x\n", handle );
     return 0;
 } //FindFileEntry
+
+size_t FindFileEntryIndex( uint16_t handle )
+{
+    for ( size_t i = 0; i < g_fileEntries.size(); i++ )
+    {
+        if ( handle == g_fileEntries[ i ].handle )
+        {
+            tracer.Trace( "  found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
+            return i;
+        }
+    }
+
+    tracer.Trace( "ERROR: could not find file entry for handle %04x\n", handle );
+    return -1;
+} //FindFileEntryIndex
 
 const char * FindFileEntryPath( uint16_t handle )
 {
@@ -2207,6 +2224,7 @@ void handle_int_21( uint8_t c )
                 strcpy( fe.path, path );
                 fe.fp = fp;
                 fe.handle = FindFirstFreeFileHandle();
+                fe.writeable = true;
                 g_fileEntries.push_back( fe );
                 cpu.ax = fe.handle;
                 cpu.fCarry = false;
@@ -2229,14 +2247,16 @@ void handle_int_21( uint8_t c )
             DumpBinaryData( (uint8_t *) path, 0x100, 0 );
             tracer.Trace( "open file '%s'\n", path );
             cpu.ax = 2;
-    
-            FILE * fp = fopen( path, "r+b" );
+
+            bool readOnly = ( 0 == cpu.al() );
+            FILE * fp = fopen( path, readOnly ? "rb" : "r+b" );
             if ( fp )
             {
                 FileEntry fe = {0};
                 strcpy( fe.path, path );
                 fe.fp = fp;
                 fe.handle = FindFirstFreeFileHandle();
+                fe.writeable = !readOnly;
                 g_fileEntries.push_back( fe );
                 cpu.ax = fe.handle;
                 cpu.fCarry = false;;
@@ -2649,19 +2669,23 @@ void handle_int_21( uint8_t c )
         case 0x45:
         {
             // create duplicate handle (dup)
+
             cpu.fCarry = true;
             uint16_t existing_handle = cpu.bx;
-            const char * path = FindFileEntryPath( existing_handle );
+            size_t index = FindFileEntryIndex( existing_handle );
 
-            if ( path )
+            if ( -1 != index )
             {
-                FILE * fp = fopen( path, "r+b" );
+                FileEntry & entry = g_fileEntries[ index ];
+
+                FILE * fp = fopen( entry.path, entry.writeable ? "r+b" : "rb" );
                 if ( fp )
                 {
                     FileEntry fe = {0};
-                    strcpy( fe.path, path );
+                    strcpy( fe.path, entry.path );
                     fe.fp = fp;
                     fe.handle = FindFirstFreeFileHandle();
+                    fe.writeable = entry.writeable;
                     g_fileEntries.push_back( fe );
                     cpu.ax = fe.handle;
                     cpu.fCarry = false;;
@@ -2670,7 +2694,7 @@ void handle_int_21( uint8_t c )
                 else
                 {
                     cpu.ax = 2; // file not found
-                    tracer.Trace( "ERROR: attempt to duplicate file handle failed opening file %s error %d: %s\n", path, errno, strerror( errno ) );
+                    tracer.Trace( "ERROR: attempt to duplicate file handle failed opening file %s error %d: %s\n", entry.path, errno, strerror( errno ) );
                 }
             }
             else
@@ -2714,7 +2738,7 @@ void handle_int_21( uint8_t c )
             // sometimes allocate an extra spaceBetween paragraphs between blocks for overly optimistic resize requests.
             // I'm looking at you link.exe v5.10 from 1990.
 
-            const uint16_t spaceBetween = ( !stricmp( g_acApp, "LINK.EXE" ) ) ? 0x30 : 0;
+            const uint16_t spaceBetween = ( !stricmp( g_acApp, "LINK.EXE" ) ) ? 0x40 : 0;
 
             size_t cEntries = g_allocEntries.size();
             assert( 0 != cEntries ); // loading the app creates one that shouldn't be freed.
@@ -3349,7 +3373,7 @@ int main( int argc, char ** argv )
     * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
     * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
 
-    * (uint8_t *) ( GetMem( 0xffff, 0xe ) ) = 0x69; // machine ID. nice.
+    * (uint8_t *) ( GetMem( 0xffff, 0xe ) ) = 0x69;       // machine ID. nice.
 
     // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
     // routines starting at 0xc00. The routines are almost all the same -- fake opcode, interrupt #, then a
@@ -3358,11 +3382,11 @@ int main( int argc, char ** argv )
     // The functions are all 5 bytes long.
 
     uint32_t * pVectors = (uint32_t *) GetMem( 0, 0 );
-    uint8_t * pRoutines = (uint8_t *) GetMem( 0xc0, 0 ); // that's address 0xc00
+    uint8_t * pRoutines = (uint8_t *) GetMem( InterruptRoutineSegment, 0 );
     for ( uint32_t intx = 0; intx < 0x40; intx++ )
     {
         uint32_t offset = intx * 5;
-        pVectors[ intx ] = ( 0xc0 << 16 ) | ( offset );
+        pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset );
         uint8_t * routine = pRoutines + offset;
         if ( 0x1c == intx )
             routine[ 0 ] = 0xcf; // iret
@@ -3523,7 +3547,7 @@ int main( int argc, char ** argv )
 
         // if interrupt 0x1c (tick tock) is hooked by the app, invoke it
 
-        if ( 0x00c0 != ( (uint16_t *) memory )[ 4 * 0x1c + 2 ] ) // optimization since the default handler is just an iret
+        if ( InterruptRoutineSegment != ( (uint16_t *) memory )[ 4 * 0x1c + 2 ] ) // optimization since the default handler is just an iret
         {
             // this won't be precise enough to provide a clock, but it's good for delay loops
 
