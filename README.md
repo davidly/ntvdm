@@ -15,6 +15,7 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     ExeHr.exe: Microsoft (R) EXE File Header Utility  Version 2.01  
     BC.exe: Microsoft Basic compiler 7.10, part of Quick Basic.
     Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10 
+    Mips.com Version 1.20 from Chips and Technologies.
     
 For all of the above apps, attempts to run nested apps like command.com or the QuickBasic compiler fail.
 However, running Turbo Pascal apps created within those apps works.
@@ -39,11 +40,17 @@ get any closer than about 25% of what would be accurate. It's in the ballpark. I
 8088 running at 4.77Mhz. That CPU takes extra cycles for memory access because of the narrower bus. It runs
 about 32% slower than this simulated 8086 at 4.77Mhz, which seems reasonably close.
 
+Using mips.com Version 1.20, a benchmark app from 1986 written by Chips and Technologies, if the clock
+is set to /s:3900000 (3.9 Mhz) the 8086 emulator runs at about the same speed as a 4.77Mhz 8088. Given the
+wide variability online regarding the performance differences between the 8088 and 8086 (5%-50%) this 
+seems close. I validated the mips.com results on an actual 8088 running at 4.77Mhz.
+
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
                 -c     don't auto-detect apps that want 80x25 then set window to that size;
                        stay in teletype mode.
                 -C     always set window to 80x25; don't use teletype mode.
+                -d     don't clear the display when in 80x25 mode on app exit
                 -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
                 -p     show performance information
                 -s:X   emulated speed in Hz. Default is to run as fast as possible.
