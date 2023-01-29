@@ -12,17 +12,6 @@ extern uint8_t memory[ 1024 * 1024 ];
 
 struct i8086
 {
-    uint16_t ax, bx, cx, dx;
-    uint16_t si, di, bp, sp, ip;
-    uint16_t es, cs, ss, ds;
-    uint16_t flags;
-    uint8_t prefix_segment_override; // 0xff for none, 0..3 for es, cs, ss, ds
-    uint8_t prefix_repeat_opcode;
-    void * reg_pointers[ 16 ];
-
-    // bits   0,           2,         4,     6,     7,     8,          9,         10,        11
-    bool fCarry, fParityEven, fAuxCarry, fZero, fSign, fTrap, fInterrupt, fDirection, fOverflow;
-
     uint8_t al() { return * (uint8_t *) & ax; }
     uint8_t ah() { return * ( 1 + (uint8_t *) & ax ); }
     uint8_t bl() { return * (uint8_t *) & bx; }
@@ -40,6 +29,41 @@ struct i8086
     void set_bh( uint8_t val ) { * ( 1 + (uint8_t *) & bx ) = val; }
     void set_ch( uint8_t val ) { * ( 1 + (uint8_t *) & cx ) = val; }
     void set_dh( uint8_t val ) { * ( 1 + (uint8_t *) & dx ) = val; }
+
+    uint16_t get_ax() { return ax; }
+    uint16_t get_bx() { return bx; }
+    uint16_t get_cx() { return cx; }
+    uint16_t get_dx() { return dx; }
+    uint16_t get_si() { return si; }
+    uint16_t get_di() { return di; }
+    uint16_t get_bp() { return bp; }
+    uint16_t get_sp() { return sp; }
+    uint16_t get_ip() { return ip; }
+    uint16_t get_es() { return es; }
+    uint16_t get_cs() { return cs; }
+    uint16_t get_ss() { return ss; }
+    uint16_t get_ds() { return ds; }
+
+    void set_ax( uint16_t val ) { ax = val; }
+    void set_bx( uint16_t val ) { bx = val; }
+    void set_cx( uint16_t val ) { cx = val; }
+    void set_dx( uint16_t val ) { dx = val; }
+    void set_si( uint16_t val ) { si = val; }
+    void set_di( uint16_t val ) { di = val; }
+    void set_bp( uint16_t val ) { bp = val; }
+    void set_sp( uint16_t val ) { sp = val; }
+    void set_ip( uint16_t val ) { ip = val; }
+    void set_es( uint16_t val ) { es = val; }
+    void set_cs( uint16_t val ) { cs = val; }
+    void set_ss( uint16_t val ) { ss = val; }
+    void set_ds( uint16_t val ) { ds = val; }
+
+    void set_carry( bool f ) { fCarry = f; }
+    void set_zero( bool f ) { fZero = f; }
+    void set_trap( bool f ) { fTrap = f; }
+
+    bool get_carry() { return fCarry; }
+    bool get_zero() { return fZero; }
 
     // emulator API
 
@@ -71,6 +95,18 @@ struct i8086
     } //i8086
 
   private:
+
+    uint16_t ax, bx, cx, dx;
+    uint16_t si, di, bp, sp, ip;
+    uint16_t es, cs, ss, ds;
+    uint16_t flags;
+    uint8_t prefix_segment_override; // 0xff for none, 0..3 for es, cs, ss, ds
+    uint8_t prefix_repeat_opcode;
+    void * reg_pointers[ 16 ];
+
+    // bits   0,           2,         4,     6,     7,     8,          9,         10,        11
+    bool fCarry, fParityEven, fAuxCarry, fZero, fSign, fTrap, fInterrupt, fDirection, fOverflow;
+
     void materializeFlags()
     {
         flags = 0;
@@ -411,7 +447,7 @@ struct i8086
     uint8_t op_dec8( uint8_t val );
     uint16_t op_inc16( uint16_t val );
     uint16_t op_dec16( uint16_t val );
-    void op_interrupt( bool simulated_hardware = false );
+    void op_interrupt( uint8_t instruction_length );
     void op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount );
     void op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount );
 

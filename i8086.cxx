@@ -34,7 +34,7 @@ void i8086::end_emulation() { g_State |= stateEndEmulation; }
 void i8086::external_interrupt( uint8_t interrupt_num )
 {
     _b1 = interrupt_num;
-    op_interrupt( true );
+    op_interrupt( 0 ); // 0 since it's not in the instruction stream
 } //external_interrupt
 
 extern void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
@@ -650,14 +650,14 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
     }
 } //op_rotate16
 
-void i8086::op_interrupt( bool external_interrupt )
+void i8086::op_interrupt( uint8_t instruction_length )
 {
     uint32_t offset = 4 * _b1;
     uint16_t * vectorItem = (uint16_t *) ( memory + offset );
     materializeFlags();
     push( flags );
     push( cs );
-    push( external_interrupt ? ip : ( ip + 2 ) ); // external interrupts aren't in the instruction stream; don't advance
+    push( ip + instruction_length );
     ip = vectorItem[ 0 ];
     cs = vectorItem[ 1 ];
 } //op_interrupt
@@ -1193,7 +1193,7 @@ _after_prefix:
             case 0xcc: { DebugBreak(); break; } // int 3
             case 0xcd: // int
             {
-                op_interrupt();
+                op_interrupt( 2 );
                 continue;
             }
             case 0xce: // into
@@ -1201,7 +1201,8 @@ _after_prefix:
                 if ( fOverflow )
                 {
                     AddCycles( cycles, 69 );
-                    op_interrupt();
+                    _b1 = 4; // implied overflow interrupt
+                    op_interrupt( 1 );
                     continue;
                 }
             }

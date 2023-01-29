@@ -1347,7 +1347,7 @@ void handle_int_10( uint8_t c )
 
             GetCursorPosition( row, col );
             tracer.Trace( "  output character %#x, '%c', %#x times, attribute %#x, row %u, col %u\n",
-                          cpu.al(), printable( cpu.al() ), cpu.cx, cpu.bl(), row, col );
+                          cpu.al(), printable( cpu.al() ), cpu.get_cx(), cpu.bl(), row, col );
 
             char ch = cpu.al();
 
@@ -1357,7 +1357,7 @@ void handle_int_10( uint8_t c )
                 uint8_t * pbuf = GetVideoMem();
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
 
-                for ( uint16_t t = 0; t < cpu.cx; t++ )
+                for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                 {
                     pbuf[ offset ] = ch;
                     pbuf[ 1 + offset ] = cpu.bl();
@@ -1382,7 +1382,7 @@ void handle_int_10( uint8_t c )
 
             GetCursorPosition( row, col );
             tracer.Trace( "  output character only %#x, %#x times, row %u, col %u\n",
-                          cpu.al(), cpu.cx, row, col );
+                          cpu.al(), cpu.get_cx(), row, col );
 
             char ch = cpu.al();
             if ( 0x1b == ch ) // escape should be a left arrow, but it just confuses the console
@@ -1393,7 +1393,7 @@ void handle_int_10( uint8_t c )
                 uint8_t * pbuf = GetVideoMem();
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
 
-                for ( uint16_t t = 0; t < cpu.cx; t++ )
+                for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                     pbuf[ offset ] = ch;
 
                 throttled_UpdateDisplay();
@@ -1436,8 +1436,8 @@ void handle_int_10( uint8_t c )
 
             if ( 0x10 == cpu.bl() )
             {
-                cpu.bx = 0;
-                cpu.cx = 0;
+                cpu.set_bx( 0 );
+                cpu.set_cx( 0 );
             }
 
             return;
@@ -1446,7 +1446,7 @@ void handle_int_10( uint8_t c )
         {
             // get physical display charactics
 
-            cpu.ax = 0; // none
+            cpu.set_ax( 0 ); // none
 
             return;
         }
@@ -1504,7 +1504,7 @@ void handle_int_16( uint8_t c )
             if ( *phead >= 0x3e )
                 *phead = 0x1e;
 
-            tracer.Trace( "  returning character %#x '%c'\n", cpu.ax, printable( cpu.ax ) );
+            tracer.Trace( "  returning character %#x '%c'\n", cpu.get_ax(), printable( cpu.get_ax() ) );
             tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
         }
@@ -1525,7 +1525,7 @@ void handle_int_16( uint8_t c )
 
             if ( *phead == *ptail )
             {
-                cpu.fZero = true;
+                cpu.set_zero( true );
                 if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
                     SleepEx( 1, FALSE );
             }
@@ -1533,10 +1533,10 @@ void handle_int_16( uint8_t c )
             {
                 cpu.set_al( pbiosdata[ *phead ] );
                 cpu.set_ah( pbiosdata[ 1 + ( *phead ) ] );
-                cpu.fZero = false;
+                cpu.set_zero( false );
             }
 
-            tracer.Trace( "  returning flag %d, ax %04x\n", cpu.fZero, cpu.ax );
+            tracer.Trace( "  returning flag %d, ax %04x\n", cpu.get_zero(), cpu.get_ax() );
             tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             g_int16_1_loop = true;
             return;
@@ -1610,7 +1610,7 @@ void handle_int_21( uint8_t c )
                 if ( *phead != *ptail )
                 {
                     static bool mid_scancode_read = false;
-                    cpu.fZero = false;
+                    cpu.set_zero( false );
 
                     if ( mid_scancode_read )
                     {
@@ -1629,7 +1629,7 @@ void handle_int_21( uint8_t c )
                     }
                 }
                 else
-                    cpu.fZero = true;
+                    cpu.set_zero( true );
             }
             else
             {
@@ -1647,7 +1647,7 @@ void handle_int_21( uint8_t c )
         {
             // print string. prints chars up to a dollar sign $
     
-            char * p = (char *) GetMem( cpu.ds, cpu.dx );
+            char * p = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             DumpBinaryData( (uint8_t *) p, 0x40, 2 );
             while ( *p && '$' != *p )
                 printf( "%c", *p++ );
@@ -1658,7 +1658,7 @@ void handle_int_21( uint8_t c )
         {
             // Buffered Keyboard input. DS::DX pointer to buffer. byte 0 count in, byte 1 count out excluding CR, byte 2 starts the response
     
-            uint8_t * p = GetMem( cpu.ds, cpu.dx );
+            uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
             uint8_t maxLen = p[0];
     
             char * result = gets_s( (char *) p + 2, maxLen );
@@ -1686,8 +1686,8 @@ void handle_int_21( uint8_t c )
         {
             // open using FCB
     
-            tracer.Trace( "open using FCB. ds %u dx %u\n", cpu.ds, cpu.dx );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.ds, cpu.dx );
+            tracer.Trace( "open using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             DumpBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
     
@@ -1727,7 +1727,7 @@ void handle_int_21( uint8_t c )
             // close file using FCB
     
             tracer.Trace( "close file using FCB\n" );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.ds, cpu.dx );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
     
             FILE * fp = pfcb->GetFP();
@@ -1745,7 +1745,7 @@ void handle_int_21( uint8_t c )
         {
             // delete file using FCB
     
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.ds, cpu.dx );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             DumpBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
     
@@ -1773,8 +1773,8 @@ void handle_int_21( uint8_t c )
         {
             // create using FCB
     
-            tracer.Trace( "create using FCB. ds %u dx %u\n", cpu.ds, cpu.dx );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.ds, cpu.dx );
+            tracer.Trace( "create using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             DumpBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
             cpu.set_al( 0xff );
@@ -1811,7 +1811,7 @@ void handle_int_21( uint8_t c )
             // rename file using FCB. Returns AL 0 if success and 0xff on failure.
     
             cpu.set_al( 0xff );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.ds, cpu.dx );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             DumpBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
             DOSFCB * pfcbNew = (DOSFCB * ) ( 0x10 + (uint8_t *) pfcb );
@@ -1854,8 +1854,8 @@ void handle_int_21( uint8_t c )
             // set disk transfer address
     
             uint8_t * old = g_DiskTransferAddress;
-            g_DiskTransferAddress = (uint8_t *) GetMem( cpu.ds, cpu.dx );
-            tracer.Trace( "  set disk transfer address updated from %p to %p (bx %u)\n", old, g_DiskTransferAddress, cpu.dx );
+            g_DiskTransferAddress = (uint8_t *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            tracer.Trace( "  set disk transfer address updated from %p to %p (bx %u)\n", old, g_DiskTransferAddress, cpu.get_dx() );
     
             return;
         }
@@ -1865,9 +1865,9 @@ void handle_int_21( uint8_t c )
             // CX has # of records written on exit
     
             cpu.set_al( 1 );
-            uint16_t recsToWrite = cpu.cx;
-            cpu.cx = 0;
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.ds, cpu.dx );
+            uint16_t recsToWrite = cpu.get_cx();
+            cpu.set_cx( 0 );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -1881,7 +1881,7 @@ void handle_int_21( uint8_t c )
                     if ( num_written )
                     {
                          tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
-                         cpu.cx = recsToWrite;
+                         cpu.set_cx( recsToWrite );
                          cpu.set_al( 0 );
     
                          // don't update the fcb's record number for this version of the API
@@ -1901,13 +1901,13 @@ void handle_int_21( uint8_t c )
         {
             // set interrupt vector
     
-            tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0 ), cpu.ds, cpu.dx );
+            tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0 ), cpu.get_ds(), cpu.get_dx() );
             uint16_t * pvec = (uint16_t *) GetMem( 0, 4 * (uint16_t) cpu.al() );
-            pvec[0] = cpu.dx;
-            pvec[1] = cpu.ds;
+            pvec[0] = cpu.get_dx();
+            pvec[1] = cpu.get_ds();
     
             if ( 0x1c == cpu.al() )
-                uint32_t dw = ( (uint32_t) cpu.ds << 16 ) | cpu.dx;
+                uint32_t dw = ( (uint32_t) cpu.get_ds() << 16 ) | cpu.get_dx();
             return;
         }           
         case 0x27:
@@ -1918,9 +1918,9 @@ void handle_int_21( uint8_t c )
             // on exit, AL 0 success, 1 EOF no data read, 2 dta too small, 3 eof partial read (filled with 0s)
     
             cpu.set_al( 1 ); // eof
-            ULONG cRecords = cpu.cx;
-            cpu.cx = 0;
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.ds, cpu.dx );
+            ULONG cRecords = cpu.get_cx();
+            cpu.set_cx( 0 );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "random block read using FCBs\n" );
             pfcb->Trace();
             ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
@@ -1954,8 +1954,8 @@ void handle_int_21( uint8_t c )
                             else
                                 cpu.set_al( 3 ); // eof encountered, last record is partial
     
-                            cpu.cx = toRead / pfcb->recSize;
-                            tracer.Trace( "  successfully read %u bytes, CX set to %u:\n", toRead, cpu.cx );
+                            cpu.set_cx( toRead / pfcb->recSize );
+                            tracer.Trace( "  successfully read %u bytes, CX set to %u:\n", toRead, cpu.get_cx() );
                             DumpBinaryData( g_DiskTransferAddress, toRead, 0 );
                             pfcb->curRecord += cRecords;;
                             pfcb->recNumber += cRecords;
@@ -1979,9 +1979,9 @@ void handle_int_21( uint8_t c )
             // out: al = 0 if success, 1 if disk full, 2 if data too smaoo, cx = number of records written
     
             cpu.set_al( 1 );
-            uint16_t recsToWrite = cpu.cx;
-            cpu.cx = 0;
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.ds, cpu.dx );
+            uint16_t recsToWrite = cpu.get_cx();
+            cpu.set_cx( 0 );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -1995,7 +1995,7 @@ void handle_int_21( uint8_t c )
                     if ( num_written )
                     {
                          tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
-                         cpu.cx = recsToWrite;
+                         cpu.set_cx( recsToWrite );
                          cpu.set_al( 0 );
     
                          pfcb->recNumber += recsToWrite;
@@ -2030,11 +2030,11 @@ void handle_int_21( uint8_t c )
             //      ds:si:  first byte after parsed string
             //      es:di:  buffer filled with unopened fcb
     
-            char * pfile = (char *) GetMem( cpu.ds, cpu.si );
+            char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_si() );
             tracer.Trace( "parse filename '%s'\n", pfile );
             DumpBinaryData( (uint8_t *) pfile, 64, 0 );
     
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.es, cpu.di );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_es(), cpu.get_di() );
             char * pf = pfile;
     
             if ( 0 == pfile[0] )
@@ -2061,7 +2061,7 @@ void handle_int_21( uint8_t c )
             else
                 cpu.set_al( 0 );
     
-            cpu.si += 1 + (uint16_t) ( pf - pfile );
+            cpu.set_si( cpu.get_si() + 1 + (uint16_t) ( pf - pfile ) );
     
             return;
         }
@@ -2072,7 +2072,7 @@ void handle_int_21( uint8_t c )
             SYSTEMTIME st = {0};
             GetLocalTime( &st );
             cpu.set_al( (uint8_t) st.wDayOfWeek );
-            cpu.cx = st.wYear;
+            cpu.set_cx( st.wYear );
             cpu.set_dh( (uint8_t) st.wMonth );
             cpu.set_dl( (uint8_t) st.wDay );
     
@@ -2115,9 +2115,9 @@ void handle_int_21( uint8_t c )
             // get interrupt vector. 
     
             uint16_t * pvec = (uint16_t *) GetMem( 0, 4 * (uint16_t) cpu.al() );
-            cpu.bx = pvec[ 0 ];
-            cpu.es = pvec[ 1 ];
-            tracer.Trace( "  getting interrupt vector %02x %s which is %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0 ), cpu.es, cpu.bx );
+            cpu.set_bx( pvec[ 0 ] );
+            cpu.set_es( pvec[ 1 ] );
+            tracer.Trace( "  getting interrupt vector %02x %s which is %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0 ), cpu.get_es(), cpu.get_bx() );
             return;
         }
         case 0x36:
@@ -2126,10 +2126,10 @@ void handle_int_21( uint8_t c )
             // output: ax: sectors per cluster, bx = # of available clusters, cx = bytes per sector, dx = total clusters
             // use believable numbers for DOS for lots of disk space free.
     
-            cpu.ax = 8;
-            cpu.bx = 0x6fff;
-            cpu.cx = 512;
-            cpu.dx = 0x7fff;
+            cpu.set_ax( 8 );
+            cpu.set_bx( 0x6fff );
+            cpu.set_cx( 512 );
+            cpu.set_dx( 0x7fff );
             return;
         }
         case 0x37:
@@ -2146,9 +2146,9 @@ void handle_int_21( uint8_t c )
             // some apps (um, Brief 3.1) call this in a tight loop along with get system time and keyboard status
             SleepEx( 1, FALSE );
     
-            cpu.fCarry = false;
-            cpu.bx = 1; // USA
-            uint8_t * pinfo = GetMem( cpu.ds, cpu.dx );
+            cpu.set_carry( false );
+            cpu.set_bx( 1 ); // USA
+            uint8_t * pinfo = GetMem( cpu.get_ds(), cpu.get_dx() );
             memset( pinfo, 0, 0x20 );
             pinfo[ 2 ] = '$';
             pinfo[ 4 ] = ',';
@@ -2158,16 +2158,16 @@ void handle_int_21( uint8_t c )
         case 0x39:
         {
             // create directory ds:dx asciz directory name. cf set on error with code in ax
-            char * path = (char *) GetMem( cpu.ds, cpu.dx );
+            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "create directory '%s'\n", path );
 
             int ret = mkdir( path );
             if ( 0 == ret )
-                cpu.fCarry = false;
+                cpu.set_carry( false );
             else
             {
-                cpu.fCarry = true;
-                cpu.ax = 3; // path not found
+                cpu.set_carry( true );
+                cpu.set_ax( 3 ); // path not found
                 tracer.Trace( "ERROR: create directory sz failed with error %d = %s\n", errno, strerror( errno ) );
             }
 
@@ -2176,16 +2176,16 @@ void handle_int_21( uint8_t c )
         case 0x3a:
         {
             // remove directory ds:dx asciz directory name. cf set on error with code in ax
-            char * path = (char *) GetMem( cpu.ds, cpu.dx );
+            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "remove directory '%s'\n", path );
 
             int ret = rmdir( path );
             if ( 0 == ret )
-                cpu.fCarry = false;
+                cpu.set_carry( false );
             else
             {
-                cpu.fCarry = true;
-                cpu.ax = 3; // path not found
+                cpu.set_carry( true );
+                cpu.set_ax( 3 ); // path not found
                 tracer.Trace( "ERROR: remove directory sz failed with error %d = %s\n", errno, strerror( errno ) );
             }
 
@@ -2194,16 +2194,16 @@ void handle_int_21( uint8_t c )
         case 0x3b:
         {
             // change directory ds:dx asciz directory name. cf set on error with code in ax
-            char * path = (char *) GetMem( cpu.ds, cpu.dx );
+            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "change directory to '%s'\n", path );
 
             int ret = chdir( path );
             if ( 0 == ret )
-                cpu.fCarry = false;
+                cpu.set_carry( false );
             else
             {
-                cpu.fCarry = true;
-                cpu.ax = 3; // path not found
+                cpu.set_carry( true );
+                cpu.set_ax( 3 ); // path not found
                 tracer.Trace( "ERROR: change directory sz failed with error %d = %s\n", errno, strerror( errno ) );
             }
 
@@ -2213,9 +2213,9 @@ void handle_int_21( uint8_t c )
         {
             // create file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
-            char * path = (char *) GetMem( cpu.ds, cpu.dx );
+            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  create file '%s'\n", path );
-            cpu.ax = 3;
+            cpu.set_ax( 3 );
     
             FILE * fp = fopen( path, "w+b" );
             if ( fp )
@@ -2226,15 +2226,15 @@ void handle_int_21( uint8_t c )
                 fe.handle = FindFirstFreeFileHandle();
                 fe.writeable = true;
                 g_fileEntries.push_back( fe );
-                cpu.ax = fe.handle;
-                cpu.fCarry = false;
-                tracer.Trace( "  successfully created file and returning handle %04x\n", cpu.ax );
+                cpu.set_ax( fe.handle );
+                cpu.set_carry( false );
+                tracer.Trace( "  successfully created file and returning handle %04x\n", cpu.get_ax() );
             }
             else
             {
                 tracer.Trace( "ERROR: create file sz failed with error %d = %s\n", errno, strerror( errno ) );
-                cpu.ax = 2;
-                cpu.fCarry = true;
+                cpu.set_ax( 2 );
+                cpu.set_carry( true );
             }
     
             return;
@@ -2243,10 +2243,10 @@ void handle_int_21( uint8_t c )
         {
             // open file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
-            char * path = (char *) GetMem( cpu.ds, cpu.dx );
+            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             DumpBinaryData( (uint8_t *) path, 0x100, 0 );
             tracer.Trace( "open file '%s'\n", path );
-            cpu.ax = 2;
+            cpu.set_ax( 2 );
 
             bool readOnly = ( 0 == cpu.al() );
             FILE * fp = fopen( path, readOnly ? "rb" : "r+b" );
@@ -2258,15 +2258,15 @@ void handle_int_21( uint8_t c )
                 fe.handle = FindFirstFreeFileHandle();
                 fe.writeable = !readOnly;
                 g_fileEntries.push_back( fe );
-                cpu.ax = fe.handle;
-                cpu.fCarry = false;;
-                tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.ax );
+                cpu.set_ax( fe.handle );
+                cpu.set_carry( false );;
+                tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.get_ax() );
             }
             else
             {
                 tracer.Trace( "ERROR: open file sz failed with error %d = %s\n", errno, strerror( errno ) );
-                cpu.ax = 2;
-                cpu.fCarry = true;
+                cpu.set_ax( 2 );
+                cpu.set_carry( true );
             }
     
             return;
@@ -2275,18 +2275,18 @@ void handle_int_21( uint8_t c )
         {
             // close file handle in BX
     
-            FILE * fp = RemoveFileEntry( cpu.bx );
+            FILE * fp = RemoveFileEntry( cpu.get_bx() );
             if ( fp )
             {
-                tracer.Trace( "  close file handle %04x\n", cpu.bx );
+                tracer.Trace( "  close file handle %04x\n", cpu.get_bx() );
                 fclose( fp );
-                cpu.fCarry = false;;
+                cpu.set_carry( false );;
             }
             else
             {
-                tracer.Trace( "ERROR: close file handle couldn't find handle %04x\n", cpu.bx );
-                cpu.ax = 6;
-                cpu.fCarry = true;
+                tracer.Trace( "ERROR: close file handle couldn't find handle %04x\n", cpu.get_bx() );
+                cpu.set_ax( 6 );
+                cpu.set_carry( true );
             }
     
             return;
@@ -2296,7 +2296,7 @@ void handle_int_21( uint8_t c )
             // read from file using handle. BX=handle, CX=num bytes, DS:DX: buffer
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
     
-            uint16_t h = cpu.bx;
+            uint16_t h = cpu.get_bx();
             if ( h <= 4 )
             {
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
@@ -2311,9 +2311,9 @@ void handle_int_21( uint8_t c )
                     if ( g_use80x25 )
                         UpdateDisplay();
     
-                    uint8_t * p = GetMem( cpu.ds, cpu.dx );
-                    cpu.fCarry = false;
-                    cpu.ax = 1;
+                    uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
+                    cpu.set_carry( false );
+                    cpu.set_ax( 1 );
     
                     while ( 0 == acBuffer[ 0 ] )
                     {
@@ -2332,25 +2332,25 @@ void handle_int_21( uint8_t c )
                 }
                 else
                 {
-                    cpu.fCarry = true;
+                    cpu.set_carry( true );
                     tracer.Trace( "attempt to read from handle %04x\n", h );
                 }
     
                 return;
             }
     
-            FILE * fp = FindFileEntry( cpu.bx );
+            FILE * fp = FindFileEntry( cpu.get_bx() );
             if ( fp )
             {
-                uint16_t len = cpu.cx;
-                uint8_t * p = GetMem( cpu.ds, cpu.dx );
-                tracer.Trace( "read from file using handle %04x bytes at address %02x:%02x\n", len, cpu.ds, cpu.dx );
+                uint16_t len = cpu.get_cx();
+                uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
+                tracer.Trace( "read from file using handle %04x bytes at address %02x:%02x\n", len, cpu.get_ds(), cpu.get_dx() );
     
                 uint32_t cur = ftell( fp );
                 fseek( fp, 0, SEEK_END );
                 uint32_t size = ftell( fp );
                 fseek( fp, cur, SEEK_SET );
-                cpu.ax = 0;
+                cpu.set_ax( 0 );
     
                 if ( cur < size )
                 {
@@ -2359,7 +2359,7 @@ void handle_int_21( uint8_t c )
                     size_t numRead = fread( p, toRead, 1, fp );
                     if ( numRead )
                     {
-                        cpu.ax = toRead;
+                        cpu.set_ax( toRead );
                         tracer.Trace( "  successfully read %u bytes\n", toRead );
                         DumpBinaryData( p, toRead, 0 );
                     }
@@ -2367,13 +2367,13 @@ void handle_int_21( uint8_t c )
                 else
                     tracer.Trace( "ERROR: attempt to read beyond the end of file\n" );
     
-                cpu.fCarry = false;;
+                cpu.set_carry( false );;
             }
             else
             {
-                tracer.Trace( "ERROR: read from file handle couldn't find handle %04x\n", cpu.bx );
-                cpu.ax = 6;
-                cpu.fCarry = true;
+                tracer.Trace( "ERROR: read from file handle couldn't find handle %04x\n", cpu.get_bx() );
+                cpu.set_ax( 6 );
+                cpu.set_carry( true );
             }
     
             return;
@@ -2383,15 +2383,15 @@ void handle_int_21( uint8_t c )
             // write to file using handle. BX=handle, CX=num bytes, DS:DX: buffer
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
     
-            uint16_t h = cpu.bx;
-            cpu.fCarry = false;
+            uint16_t h = cpu.get_bx();
+            cpu.set_carry( false );
             if ( h <= 4 )
             {
-                cpu.ax = cpu.cx;
+                cpu.set_ax( cpu.get_cx() );
     
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
     
-                uint8_t * p = GetMem( cpu.ds, cpu.dx );
+                uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
     
                 if ( 1 == h || 2 == h )
                 {
@@ -2399,9 +2399,9 @@ void handle_int_21( uint8_t c )
                     {
                         uint8_t * pbuf = GetVideoMem();
                         GetCursorPosition( row, col );
-                        tracer.Trace( "  starting to write pbuf %p, %u chars at row %u col %u\n", pbuf, cpu.cx, row, col );
+                        tracer.Trace( "  starting to write pbuf %p, %u chars at row %u col %u\n", pbuf, cpu.get_cx(), row, col );
         
-                        for ( uint16_t t = 0; t < cpu.cx; t++ )
+                        for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                         {
                             uint8_t ch = p[ t ];
                             if ( 0x0d == ch )
@@ -2442,7 +2442,7 @@ void handle_int_21( uint8_t c )
                     }
                     else
                     {
-                        for ( uint16_t x = 0; x < cpu.cx; x++ )
+                        for ( uint16_t x = 0; x < cpu.get_cx(); x++ )
                         {
                             if ( 0x0d != p[ x ] && 0x0b != p[ x ] )
                             {
@@ -2455,32 +2455,32 @@ void handle_int_21( uint8_t c )
                 return;
             }
     
-            FILE * fp = FindFileEntry( cpu.bx );
+            FILE * fp = FindFileEntry( cpu.get_bx() );
             if ( fp )
             {
-                uint16_t len = cpu.cx;
-                uint8_t * p = GetMem( cpu.ds, cpu.dx );
+                uint16_t len = cpu.get_cx();
+                uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
                 tracer.Trace( "write file using handle, %04x bytes at address %p\n", len, p );
     
-                cpu.ax = 0;
+                cpu.set_ax( 0 );
     
                 size_t numWritten = fwrite( p, len, 1, fp );
                 if ( numWritten || ( 0 == len ) )
                 {
-                    cpu.ax = len;
+                    cpu.set_ax( len );
                     tracer.Trace( "  successfully wrote %u bytes\n", len );
                     DumpBinaryData( p, len, 0 );
                 }
                 else
                     tracer.Trace( "ERROR: attempt to write to file failed, error %d = %s\n", errno, strerror( errno ) );
     
-                cpu.fCarry = false;;
+                cpu.set_carry( false );;
             }
             else
             {
-                tracer.Trace( "ERROR: write to file handle couldn't find handle %04x\n", cpu.bx );
-                cpu.ax = 6;
-                cpu.fCarry = true;
+                tracer.Trace( "ERROR: write to file handle couldn't find handle %04x\n", cpu.get_bx() );
+                cpu.set_ax( 6 );
+                cpu.set_carry( true );
             }
     
             return;
@@ -2490,16 +2490,16 @@ void handle_int_21( uint8_t c )
             // delete file: ds:dx has asciiz name of file to delete.
             // return: cf set on error, ax = error code
     
-            char * pfile = (char *) GetMem( cpu.ds, cpu.dx );
+            char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "deleting file '%s'\n", pfile );
             int removeok = ( 0 == remove( pfile ) );
             if ( removeok )
-                cpu.fCarry = false;
+                cpu.set_carry( false );
             else
             {
                 tracer.Trace( "ERROR: can't delete file '%s' error %d = %s\n", pfile, errno, strerror( errno ) );
-                cpu.fCarry = true;
-                cpu.ax = 2;
+                cpu.set_carry( true );
+                cpu.set_ax( 2 );
             }
     
             return;
@@ -2509,17 +2509,17 @@ void handle_int_21( uint8_t c )
             // move file pointer (lseek)
             // bx == handle, cx:dx: 32-bit offset, al=mode. 0=beginning, 1=current. 2=end
     
-            uint16_t handle = cpu.bx;
+            uint16_t handle = cpu.get_bx();
             FILE * fp = FindFileEntry( handle );
             if ( fp )
             {
-                uint32_t offset = ( ( (uint32_t) cpu.cx ) << 16 ) | cpu.dx;
+                uint32_t offset = ( ( (uint32_t) cpu.get_cx() ) << 16 ) | cpu.get_dx();
                 uint8_t origin = cpu.al();
                 if ( origin > 2 )
                 {
                     tracer.Trace( "ERROR: move file pointer file handle has invalid mode/origin %u\n", origin );
-                    cpu.ax = 1;
-                    cpu.fCarry = true;
+                    cpu.set_ax( 1 );
+                    cpu.set_carry( true );
                     return;
                 }
     
@@ -2540,16 +2540,16 @@ void handle_int_21( uint8_t c )
                     fseek( fp, offset, SEEK_END );
     
                 cur = ftell( fp );
-                cpu.ax = cur & 0xffff;
-                cpu.dx = ( cur >> 16 ) & 0xffff;
+                cpu.set_ax( cur & 0xffff );
+                cpu.set_dx( ( cur >> 16 ) & 0xffff );
     
-                cpu.fCarry = false;;
+                cpu.set_carry( false );;
             }
             else
             {
                 tracer.Trace( "ERROR: move file pointer file handle couldn't find handle %04x\n", handle );
-                cpu.ax = 6;
-                cpu.fCarry = true;
+                cpu.set_ax( 6 );
+                cpu.set_carry( true );
             }
     
             return;
@@ -2562,27 +2562,27 @@ void handle_int_21( uint8_t c )
             // ds:dx: asciz filename
             // returns: ax = error code if CF set. CX = file attributes on get.
     
-            char * pfile = (char *) GetMem( cpu.ds, cpu.dx );
+            char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "get/put file attributes on file '%s'\n", pfile );
-            cpu.fCarry = true;
+            cpu.set_carry( true );
     
             if ( 0 == cpu.al() ) // get
             {
                 uint32_t attr = GetFileAttributesA( pfile );
                 if ( INVALID_FILE_ATTRIBUTES != attr )
                 {
-                    cpu.fCarry = false;
-                    cpu.cx = ( attr & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
-                                        FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
+                    cpu.set_carry( false );
+                    cpu.set_cx( ( attr & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
+                                           FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) ) );
                 }
             }
             else
             {
-                BOOL ok = SetFileAttributesA( pfile, cpu.cx );
-                cpu.fCarry = !ok;
+                BOOL ok = SetFileAttributesA( pfile, cpu.get_cx() );
+                cpu.set_carry( !ok );
             }
     
-            tracer.Trace( "result of get/put file attributes: %d\n", !cpu.fCarry );
+            tracer.Trace( "result of get/put file attributes: %d\n", !cpu.get_carry() );
     
             return;
         }
@@ -2592,9 +2592,9 @@ void handle_int_21( uint8_t c )
     
             uint8_t subfunction = cpu.al();
             // handles 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
-            uint16_t handle = cpu.bx;
-            uint8_t * pbuf = GetMem( cpu.ds, cpu.dx );
-            cpu.fCarry = false;
+            uint16_t handle = cpu.get_bx();
+            uint8_t * pbuf = GetMem( cpu.get_ds(), cpu.get_dx() );
+            cpu.set_carry( false );
     
             tracer.Trace( "  ioctl subfunction %u, get device information for handle %04x\n", subfunction, handle );
 
@@ -2606,8 +2606,8 @@ void handle_int_21( uint8_t c )
                     {
                         // get device information
         
-                        cpu.dx = 0;
-                        cpu.fCarry = false;
+                        cpu.set_dx( 0 );
+                        cpu.set_carry( false );
     
                         // this distinction is important for gwbasic and qbasic-generated-apps for both input and output to work in both modes.
                         // The 0x80 bit indicates it's a character device (cursor movement, etc.) vs. a file (or a teletype)
@@ -2615,20 +2615,20 @@ void handle_int_21( uint8_t c )
                         if ( g_use80x25 )
                         {
                             if ( 0 == handle ) // stdin
-                                cpu.dx = 0x81;
+                                cpu.set_dx( 0x81 );
                             else if ( 1 == handle ) //stdout
-                                cpu.dx = 0x82;
+                                cpu.set_dx( 0x82 );
                             else if ( handle < 10 ) // stderr, etc.
-                                cpu.dx = 0x80;
+                                cpu.set_dx( 0x80 );
                         }
                         else
                         {
                             if ( 0 == handle ) // stdin
-                                cpu.dx = 0x1;
+                                cpu.set_dx( 0x1 );
                             else if ( 1 == handle ) //stdout
-                                cpu.dx = 0x2;
+                                cpu.set_dx( 0x2 );
                             else if ( handle < 10 ) // stderr, etc.
-                                cpu.dx = 0x0;
+                                cpu.set_dx( 0x0 );
                         }
                     }
                     else
@@ -2636,16 +2636,16 @@ void handle_int_21( uint8_t c )
                         FILE * fp = FindFileEntry( handle );
                         if ( !fp )
                         {
-                            cpu.fCarry = true;
+                            cpu.set_carry( true );
                             tracer.Trace( "    ERROR: ioctl on handle %04x failed because it's not a valid handle\n", handle );
                         }
                         else
                         {
-                            cpu.fCarry = false;
-                            cpu.dx = 0x20; // binary (raw) mode
+                            cpu.set_carry( false );
+                            cpu.set_dx( 0x20 ); // binary (raw) mode
                             int location = ftell( fp );
                             if ( 0 == location )
-                                cpu.dx |= 0x40; // file has not been written to
+                                cpu.set_dx( cpu.get_dx() | 0x40 ); // file has not been written to
                         }
                     }
     
@@ -2670,8 +2670,8 @@ void handle_int_21( uint8_t c )
         {
             // create duplicate handle (dup)
 
-            cpu.fCarry = true;
-            uint16_t existing_handle = cpu.bx;
+            cpu.set_carry( true );
+            uint16_t existing_handle = cpu.get_bx();
             size_t index = FindFileEntryIndex( existing_handle );
 
             if ( -1 != index )
@@ -2687,19 +2687,19 @@ void handle_int_21( uint8_t c )
                     fe.handle = FindFirstFreeFileHandle();
                     fe.writeable = entry.writeable;
                     g_fileEntries.push_back( fe );
-                    cpu.ax = fe.handle;
-                    cpu.fCarry = false;;
-                    tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", existing_handle, cpu.ax );
+                    cpu.set_ax( fe.handle );
+                    cpu.set_carry( false );;
+                    tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", existing_handle, cpu.get_ax() );
                 }
                 else
                 {
-                    cpu.ax = 2; // file not found
+                    cpu.set_ax( 2 ); // file not found
                     tracer.Trace( "ERROR: attempt to duplicate file handle failed opening file %s error %d: %s\n", entry.path, errno, strerror( errno ) );
                 }
             }
             else
             {
-                cpu.ax = 2; // file not found
+                cpu.set_ax( 2 ); // file not found
                 tracer.Trace( "ERROR: attempt to duplicate non-existent handle %04x\n", existing_handle );
             }
 
@@ -2710,14 +2710,14 @@ void handle_int_21( uint8_t c )
             // get current directory. BX = drive number, DS:SI = pointer to a 64-byte null-terminated buffer.
             // CF set on error. AX=15 for invalid drive
     
-            cpu.fCarry = true;
+            cpu.set_carry( true );
             if ( GetCurrentDirectoryA( sizeof cwd, cwd ) )
             {
                 char * paststart = cwd + 3;
                 if ( strlen( paststart ) <= 63 )
                 {
-                    strcpy( (char *) GetMem( cpu.ds, cpu.si ), paststart );
-                    cpu.fCarry = false;;
+                    strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), paststart );
+                    cpu.set_carry( false );;
                 }
             }
             else
@@ -2733,7 +2733,7 @@ void handle_int_21( uint8_t c )
             // cf clear on success
             // very simplistic first free block strategy here.
 
-            tracer.Trace( "  allocate memory %04x paragraphs\n", cpu.bx );
+            tracer.Trace( "  allocate memory %04x paragraphs\n", cpu.get_bx() );
 
             // sometimes allocate an extra spaceBetween paragraphs between blocks for overly optimistic resize requests.
             // I'm looking at you link.exe v5.10 from 1990.
@@ -2742,7 +2742,7 @@ void handle_int_21( uint8_t c )
 
             size_t cEntries = g_allocEntries.size();
             assert( 0 != cEntries ); // loading the app creates one that shouldn't be freed.
-            assert( 0 != cpu.bx ); // not legal to allocate 0 bytes
+            assert( 0 != cpu.get_bx() ); // not legal to allocate 0 bytes
 
             tracer.Trace( "  all allocations:\n" );
             for ( size_t i = 0; i < cEntries; i++ )
@@ -2756,7 +2756,7 @@ void handle_int_21( uint8_t c )
                 if ( i < ( cEntries - 1 ) )
                 {
                     uint16_t freePara = g_allocEntries[ i + 1 ].segment - after;
-                    if ( freePara >= ( cpu.bx + spaceBetween) )
+                    if ( freePara >= ( cpu.get_bx() + spaceBetween) )
                     {
                         tracer.Trace( "  using gap from previously freed memory: %02x\n", after );
                         allocatedSeg = after;
@@ -2764,7 +2764,7 @@ void handle_int_21( uint8_t c )
                         break;
                     }
                 }
-                else if ( ( after + cpu.bx + spaceBetween ) <= SegmentHardware )
+                else if ( ( after + cpu.get_bx() + spaceBetween ) <= SegmentHardware )
                 {
                     tracer.Trace( "  using gap after allocated memory: %02x\n", after );
                     allocatedSeg = after + spaceBetween;
@@ -2775,23 +2775,23 @@ void handle_int_21( uint8_t c )
 
             if ( 0 == allocatedSeg )
             {
-                cpu.fCarry = true;
-                cpu.ax = 8; // insufficient memory
+                cpu.set_carry( true );
+                cpu.set_ax( 8 ); // insufficient memory
                 DosAllocation & last = g_allocEntries[ cEntries - 1 ];
                 uint16_t firstFreeSeg = last.segment + last.para_length;
                 assert( firstFreeSeg <= SegmentHardware );
-                cpu.bx = SegmentHardware - firstFreeSeg;
-                tracer.Trace( "  ERROR: unable to allocate memory. returning that %02x paragraphs are free\n", cpu.bx );
+                cpu.set_bx( SegmentHardware - firstFreeSeg );
+                tracer.Trace( "  ERROR: unable to allocate memory. returning that %02x paragraphs are free\n", cpu.get_bx() );
                 return;
             }
 
             DosAllocation da;
             da.segment = allocatedSeg;
-            da.para_length = cpu.bx;
+            da.para_length = cpu.get_bx();
             g_allocEntries.insert( insertLocation + g_allocEntries.begin(), da );
-            cpu.fCarry = false;
-            cpu.bx = SegmentHardware - allocatedSeg;
-            cpu.ax = allocatedSeg;
+            cpu.set_carry( false );
+            cpu.set_bx( SegmentHardware - allocatedSeg );
+            cpu.set_ax( allocatedSeg );
 
             return;
         }
@@ -2801,20 +2801,20 @@ void handle_int_21( uint8_t c )
             // on return, ax = error if cf is set
             // cf clear on success
 
-            tracer.Trace( "  free memory segment %04x\n", cpu.es );
+            tracer.Trace( "  free memory segment %04x\n", cpu.get_es() );
 
-            size_t entry = FindAllocationEntry( cpu.es );
+            size_t entry = FindAllocationEntry( cpu.get_es() );
             if ( -1 == entry )
             {
                 // The Microsoft Basic compiler BC.EXE 7.10 attempts to free segment 0x80, which it doesn't own.
 
                 tracer.Trace( "  ERROR: memory corruption; can't find freed segment\n" );
-                cpu.fCarry = true;
-                cpu.ax = 07; // memory corruption
+                cpu.set_carry( true );
+                cpu.set_ax( 07 ); // memory corruption
             }
             else
             {
-                cpu.fCarry = false;
+                cpu.set_carry( false );
                 g_allocEntries.erase( g_allocEntries.begin() + entry );
             }
 
@@ -2825,18 +2825,18 @@ void handle_int_21( uint8_t c )
             // modify memory allocation. VGA and other hardware start at a0000
             // lots of opportunity for improvement here.
 
-            size_t entry = FindAllocationEntry( cpu.es );
+            size_t entry = FindAllocationEntry( cpu.get_es() );
             if ( -1 == entry )
             {
-                cpu.fCarry = 1;
-                cpu.bx = 0;
+                cpu.set_carry( true );
+                cpu.set_bx( 0 );
                 tracer.Trace( "ERROR: attempt to modify an allocation that doesn't exist\n" );
                 return;
             }
 
             size_t cEntries = g_allocEntries.size();
             assert( 0 != cEntries ); // loading the app creates 1 shouldn't be freed.
-            assert( 0 != cpu.bx ); // not legal to allocate 0 bytes
+            assert( 0 != cpu.get_bx() ); // not legal to allocate 0 bytes
 
             tracer.Trace( "  all allocations:\n" );
             for ( size_t i = 0; i < cEntries; i++ )
@@ -2848,20 +2848,20 @@ void handle_int_21( uint8_t c )
             else
                 maxParas = g_allocEntries[ entry + 1 ].segment - g_allocEntries[ entry ].segment;
 
-            tracer.Trace( "  maximum reallocation paragraphs: %04x, requested size %04x\n", maxParas, cpu.bx );
+            tracer.Trace( "  maximum reallocation paragraphs: %04x, requested size %04x\n", maxParas, cpu.get_bx() );
 
-            if ( cpu.bx > maxParas )
+            if ( cpu.get_bx() > maxParas )
             {
-                cpu.fCarry = true;
-                cpu.ax = 8; // insufficient memory
-                tracer.Trace( "  insufficient RAM for allocation request of %04x\n", cpu.bx );
-                cpu.bx = maxParas;
+                cpu.set_carry( true );
+                cpu.set_ax( 8 ); // insufficient memory
+                tracer.Trace( "  insufficient RAM for allocation request of %04x\n", cpu.get_bx() );
+                cpu.set_bx( maxParas );
             }
             else
             {
-                cpu.fCarry = false;
-                tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length, cpu.bx );
-                g_allocEntries[ entry ].para_length = cpu.bx;
+                cpu.set_carry( false );
+                tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length, cpu.get_bx() );
+                g_allocEntries[ entry ].para_length = cpu.get_bx();
             }
 
             return;
@@ -2883,9 +2883,9 @@ void handle_int_21( uint8_t c )
             //      ax: error code if CF is true.
             //      disk transfer address: DosFindFile
     
-            cpu.fCarry = true;
+            cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile* ) g_DiskTransferAddress;
-            char * psearch_string = (char *) GetMem( cpu.ds, cpu.dx );
+            char * psearch_string = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "Find First Asciz for pattern '%s'\n", psearch_string );
 
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
@@ -2899,11 +2899,11 @@ void handle_int_21( uint8_t c )
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
                 ProcessFoundFile( pff, fd );
-                cpu.fCarry = false;
+                cpu.set_carry( false );
             }
             else
             {
-                cpu.ax = GetLastError(); // interesting errors actually match
+                cpu.set_ax( GetLastError() ); // interesting errors actually match
                 tracer.Trace( "WARNING: find first file failed, error %d\n", GetLastError() );
             }
     
@@ -2913,7 +2913,7 @@ void handle_int_21( uint8_t c )
         {
             // find next asciz
     
-            cpu.fCarry = true;
+            cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile* ) g_DiskTransferAddress;
             tracer.Trace( "Find Next Asciz\n" );
     
@@ -2924,17 +2924,17 @@ void handle_int_21( uint8_t c )
                 if ( found )
                 {
                     ProcessFoundFile( pff, fd );
-                    cpu.fCarry = false;
+                    cpu.set_carry( false );
                 }
                 else
                 {
-                    cpu.ax = 12; // no more files
+                    cpu.set_ax( 12 ); // no more files
                     tracer.Trace( "WARNING: find next file found no more, error %d\n", GetLastError() );
                 }
             }
             else
             {
-                cpu.ax = 12; // no more files
+                cpu.set_ax( 12 ); // no more files
                 tracer.Trace( "ERROR: search for next without a prior successful search for first\n" );
             }
     
@@ -2945,18 +2945,18 @@ void handle_int_21( uint8_t c )
             // rename file: ds:dx old name, es:di new name
             // CF set on error, AX with error code
     
-            char * poldname = (char *) GetMem( cpu.ds, cpu.dx );
-            char * pnewname = (char *) GetMem( cpu.es, cpu.di );
+            char * poldname = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * pnewname = (char *) GetMem( cpu.get_es(), cpu.get_di() );
     
             tracer.Trace( "renaming file '%s' to '%s'\n", poldname, pnewname );
             int renameok = ( 0 == rename( poldname, pnewname ) );
             if ( renameok )
-                cpu.fCarry = false;
+                cpu.set_carry( false );
             else
             {
                 tracer.Trace( "ERROR: can't rename file '%s' as '%s' error %d = %s\n", poldname, pnewname, errno, strerror( errno ) );
-                cpu.fCarry = true;
-                cpu.ax = 2;
+                cpu.set_carry( true );
+                cpu.set_ax( 2 );
             }
     
             return;
@@ -2975,8 +2975,8 @@ void handle_int_21( uint8_t c )
             //         dx: file date if getting
             //
     
-            cpu.fCarry = true;
-            uint16_t handle = cpu.bx;
+            cpu.set_carry( true );
+            uint16_t handle = cpu.get_bx();
             const char * path = FindFileEntryPath( handle );
             if ( path )
             {
@@ -2985,31 +2985,34 @@ void handle_int_21( uint8_t c )
                     WIN32_FILE_ATTRIBUTE_DATA fad = {0};
                     if ( GetFileAttributesExA( path, GetFileExInfoStandard, &fad ) )
                     {
-                        cpu.ax = 0;
-                        cpu.fCarry = false;
-                        FileTimeToDos( fad.ftLastWriteTime, cpu.cx, cpu.dx );
+                        cpu.set_ax( 0 );
+                        cpu.set_carry( false );
+                        uint16_t dos_time, dos_date;
+                        FileTimeToDos( fad.ftLastWriteTime, dos_time, dos_date );
+                        cpu.set_cx( dos_time );
+                        cpu.set_dx( dos_date );
                     }
                     else
                     {
                         tracer.Trace( "ERROR: can't get/set file date and time; getfileattributesex failed %d\n", GetLastError() );
-                        cpu.ax = 1;
+                        cpu.set_ax( 1 );
                     }
                 }
                 else if ( 1 == cpu.al() )
                 {
                     // set not implemented...
-                    cpu.ax = 0x57;
+                    cpu.set_ax( 0x57 );
                 }
                 else
                 {
                     tracer.Trace( "ERROR: can't get/set file date and time; command in al not valid: %d\n", cpu.al() );
-                    cpu.ax = 1;
+                    cpu.set_ax( 1 );
                 }
             }
             else
             {
                 tracer.Trace( "ERROR: can't get/set file date and time; file handle %04x not valid\n", handle );
-                cpu.ax = 6;
+                cpu.set_ax( 6 );
             }
     
             return;
@@ -3024,17 +3027,17 @@ void handle_int_21( uint8_t c )
             if ( 0 == cpu.al() )
             {
                 cpu.set_bl( 0 );
-                cpu.fCarry = false;
+                cpu.set_carry( false );
             }
             else if ( 1 == cpu.al() )
             {
                 tracer.Trace( " set memory allocation strategy to %u\n", cpu.bl() );
-                cpu.fCarry = false;
+                cpu.set_carry( false );
             }
             else
             {
                 tracer.Trace( " ERROR: memory allocation has unrecognized al: %u\n", cpu.al() );
-                cpu.fCarry = true;
+                cpu.set_carry( true );
             }
 
             return;
@@ -3043,7 +3046,7 @@ void handle_int_21( uint8_t c )
         {
             // get extended error code. stub for now until some app really needs it
 
-            cpu.ax = 2; // last error. file not found
+            cpu.set_ax( 2 ); // last error. file not found
             cpu.set_bh( 1 ); // class. out of resources
             cpu.set_bl( 5 ); // suggestion action code. immediate abort.
             cpu.set_ch( 1 ); // suggestion action code. unknown
@@ -3053,7 +3056,7 @@ void handle_int_21( uint8_t c )
         {
             // get lead byte table
 
-            cpu.fCarry = true; // not supported;
+            cpu.set_carry( true ); // not supported;
             return;
         }
         default:
@@ -3068,8 +3071,8 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     unsigned char c = cpu.ah();
     tracer.Trace( "int %02x ah %02x al %02x bx %04x cx %04x dx %04x ds %04x cs %04x ss %04x es %04x %s\n",
                   interrupt_num, cpu.ah(), cpu.al(),
-                  cpu.bx, cpu.cx, cpu.dx,
-                  cpu.ds, cpu.cs, cpu.ss, cpu.es,
+                  cpu.get_bx(), cpu.get_cx(), cpu.get_dx(),
+                  cpu.get_ds(), cpu.get_cs(), cpu.get_ss(), cpu.get_es(),
                   get_interrupt_string( interrupt_num, c ) );
 
     if ( 0x16 != interrupt_num || 1 != c )
@@ -3088,14 +3091,14 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     else if ( 0x11 == interrupt_num )
     {
         // bios equipment determination
-        cpu.ax = 0x002c;
+        cpu.set_ax( 0x002c );
         return;
     }
     else if ( 0x12 == interrupt_num )
     {
         // .com apps like Turbo Pascal instead read from the Program Segment Prefix
 
-        cpu.ax = 0x280; // 640K conventional RAM
+        cpu.set_ax( 0x280 ); // 640K conventional RAM
         return;
     }
     else if ( 0x16 == interrupt_num )
@@ -3168,7 +3171,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         // dos multiplex interrupt; get installed state of xml driver and other items.
         // AL = 0 to indicate nothing is installed for the many AX values that invoke this.
 
-        if ( 0x1680 == cpu.ax ) // program idle release timeslice
+        if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
             UpdateDisplay();
             SleepEx( 1, FALSE );
@@ -3181,7 +3184,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     {
         // mouse
 
-        cpu.ax = 0; // hardware / driver not installed
+        cpu.set_ax( 0 ); // hardware / driver not installed
         return;
     }
 
@@ -3345,15 +3348,15 @@ int main( int argc, char ** argv )
 
     bool isCOM = !strcmp( g_acApp + strlen( g_acApp ) - 4, ".COM" );
 
-    cpu.cs = 0xF000;
-    cpu.fTrap = false;
+    cpu.set_cs( 0xF000 );
+    cpu.set_trap( false );
 
     // Set DL equal to the boot device: 0 for the FD.
     cpu.set_dl( 0 );
 
     // Set CX:AX equal to the hard disk image size, if present
-    cpu.cx = 0;
-    cpu.ax = 0;
+    cpu.set_cx( 0 );
+    cpu.set_ax( 0 );
 
     // global bios memory
     uint8_t * pbiosdata = GetMem( 0x40, 0 );
@@ -3419,14 +3422,14 @@ int main( int argc, char ** argv )
     
         // prepare to execute the COM file
       
-        cpu.cs = AppSegment;
-        cpu.ss = AppSegment;
-        cpu.ds = AppSegment;
-        cpu.es = AppSegment;
-        cpu.sp = 0xffff;
-        cpu.ip = 0x100;
+        cpu.set_cs( AppSegment );
+        cpu.set_ss( AppSegment );
+        cpu.set_ds( AppSegment );
+        cpu.set_es( AppSegment );
+        cpu.set_sp( 0xffff );
+        cpu.set_ip( 0x100 );
 
-        tracer.Trace( "loaded %s, app segment %04x, ip %04x\n", g_acApp, cpu.cs, cpu.ip );
+        tracer.Trace( "loaded %s, app segment %04x, ip %04x\n", g_acApp, cpu.get_cs(), cpu.get_ip() );
     }
     else // EXE
     {
@@ -3498,15 +3501,15 @@ int main( int argc, char ** argv )
             *target += CodeSegment;
         }
 
-        cpu.cs = CodeSegment + head.cs;
-        cpu.ss = CodeSegment + head.ss;
-        cpu.ds = DataSegment;
-        cpu.es = cpu.ds;
-        cpu.sp = head.sp;
-        cpu.ip = head.ip;
-        cpu.ax = 0xffff; // no drives in use
+        cpu.set_cs( CodeSegment + head.cs );
+        cpu.set_ss( CodeSegment + head.ss );
+        cpu.set_ds( DataSegment );
+        cpu.set_es( cpu.get_ds() );
+        cpu.set_sp( head.sp );
+        cpu.set_ip( head.ip );
+        cpu.set_ax( 0xffff ); // no drives in use
 
-        tracer.Trace( "CS: %#x, SS: %#x, DS: %#x, SP: %#x, IP: %#x\n", cpu.cs, cpu.ss, cpu.ds, cpu.sp, cpu.ip );
+        tracer.Trace( "CS: %#x, SS: %#x, DS: %#x, SP: %#x, IP: %#x\n", cpu.get_cs(), cpu.get_ss(), cpu.get_ds(), cpu.get_sp(), cpu.get_ip() );
     }
 
     if ( !stricmp( g_acApp, "gwbasic.exe" ) )
@@ -3520,7 +3523,7 @@ int main( int argc, char ** argv )
     if ( force80x25 )
         PerhapsFlipTo80x25();
 
-    g_DiskTransferAddress = GetMem( cpu.ds, 0x80 ); // DOS default address
+    g_DiskTransferAddress = GetMem( cpu.get_ds(), 0x80 ); // DOS default address
     g_haltExecution = false;
 
     CPerfTime perfApp;
