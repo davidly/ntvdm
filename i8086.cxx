@@ -688,7 +688,7 @@ _after_prefix:
         #ifdef I8086_TRACK_CYCLES
             cycles += i8086_cycles[ _b0 ];                 // 4% of runtime
         #else
-            cycles += 1;
+            cycles += 18; // average for the mips.com benchmark
         #endif
 
         bool handled = true;

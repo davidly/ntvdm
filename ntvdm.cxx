@@ -54,6 +54,7 @@
 #include <djl_con.hxx>
 #include <djl_perf.hxx>
 #include <djl_cycle.hxx>
+#include <djl_durat.hxx>
 #include <djl8086d.hxx>
 #include "i8086.hxx"
 
@@ -125,6 +126,7 @@ static bool g_int16_1_loop = false;            // true if an app is looping to g
 static bool g_KbdIntWaitingForRead = false;    // true when a kbd int happens and no read has happened since
 static bool g_injectControlC = false;          // true when ^c is hit and it must be put in the keyboard buffer
 static char g_acApp[ MAX_PATH ];               // the DOS .com or .exe being run
+static char g_thisApp[ MAX_PATH ];             // name of this exe (argv[0])
 
 #pragma pack( push, 1 )
 struct DosFindFile
@@ -166,7 +168,7 @@ FILE * RemoveFileEntry( uint16_t handle )
         if ( handle == g_fileEntries[ i ].handle )
         {
             FILE * fp = g_fileEntries[ i ].fp;
-            tracer.Trace( "  removing file entry %s: %p\n", g_fileEntries[ i ].path, fp );
+            tracer.Trace( "  removing file entry %s: %z\n", g_fileEntries[ i ].path, i );
             g_fileEntries.erase( g_fileEntries.begin() + i );
             return fp;
         }
@@ -182,7 +184,7 @@ FILE * FindFileEntry( uint16_t handle )
     {
         if ( handle == g_fileEntries[ i ].handle )
         {
-            tracer.Trace( "  found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
+            tracer.Trace( "  found file entry '%s': %z\n", g_fileEntries[ i ].path, i );
             return g_fileEntries[ i ].fp;
         }
     }
@@ -197,7 +199,7 @@ size_t FindFileEntryIndex( uint16_t handle )
     {
         if ( handle == g_fileEntries[ i ].handle )
         {
-            tracer.Trace( "  found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
+            tracer.Trace( "  found file entry '%s': %z\n", g_fileEntries[ i ].path, i );
             return i;
         }
     }
@@ -212,7 +214,7 @@ const char * FindFileEntryPath( uint16_t handle )
     {
         if ( handle == g_fileEntries[ i ].handle )
         {
-            tracer.Trace( "  found file entry '%s': %p\n", g_fileEntries[ i ].path, g_fileEntries[ i ].fp );
+            tracer.Trace( "  found file entry '%s': %z\n", g_fileEntries[ i ].path, i );
             return g_fileEntries[ i ].path;
         }
     }
@@ -518,14 +520,10 @@ bool UpdateDisplay()
 
 bool throttled_UpdateDisplay()
 {
-    static ULONGLONG last_call = 0;
-    ULONGLONG this_call = GetTickCount64();
+    static CDuration _duration;
 
-    if ( ( this_call - last_call ) > 50 )
-    {
-        last_call = this_call;
+    if ( _duration.HasTimeElapsedMS( 50 ) )
         return UpdateDisplay();
-    }
 
     return false;
 } //throttled_UpdateDisplay();
@@ -921,25 +919,20 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
 
 bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool update_display = false )
 {
-    static ULONGLONG last_call = 0;
-    static ULONGLONG last_update = 0;
+    static CDuration _durationLastPeek;
+    static CDuration _durationLastUpdate;
 
-    ULONGLONG this_call = GetTickCount64();
-    if ( throttle && ( this_call - last_call ) < 50 )
+    if ( throttle && !_durationLastPeek.HasTimeElapsedMS( 200 ) )
     {
-        if ( update_display && g_use80x25 && ( ( this_call - last_update ) > 333 ) )
-        {
-            last_update = this_call;
+        if ( update_display && g_use80x25 && _durationLastUpdate.HasTimeElapsedMS( 333 ) )
             UpdateDisplay();
-        }
 
         if ( sleep_on_throttle )
-            SleepEx( 1, FALSE );
+            Sleep( 1 );
 
         return false;
     }
 
-    last_call = this_call;
     uint8_t a, s;
     return peek_keyboard( a, s );
 } //peek_keyboard
@@ -1017,7 +1010,7 @@ uint8_t i8086_invoke_in_al( uint16_t port )
         uint8_t asciiChar, scancodeChar;
         if ( peek_keyboard( asciiChar, scancodeChar ) )
         {
-            tracer.Trace( "invoke_in_al, port %02x peeked a character and is returning %02x\n", port, asciiChar );
+            //tracer.Trace( "invoke_in_al, port %02x peeked a character and is returning %02x\n", port, asciiChar );
             return asciiChar;
         }
     }
@@ -1027,10 +1020,8 @@ uint8_t i8086_invoke_in_al( uint16_t port )
     else if ( 0x64 == port ) // keyboard controller read status
     {
     }
-    else
-        tracer.Trace( "reading from unimplemented port %02x\n", port );
 
-    tracer.Trace( "invoke_in_al, port %02x returning 0\n", port );
+    //tracer.Trace( "invoke_in_al, port %02x returning 0\n", port );
     return 0;
 } //i8086_invoke_in_al
 
@@ -1527,7 +1518,7 @@ void handle_int_16( uint8_t c )
             {
                 cpu.set_zero( true );
                 if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
-                    SleepEx( 1, FALSE );
+                    Sleep( 1 );
             }
             else
             {
@@ -2144,7 +2135,7 @@ void handle_int_21( uint8_t c )
             // get/set country dependent information.
 
             // some apps (um, Brief 3.1) call this in a tight loop along with get system time and keyboard status
-            SleepEx( 1, FALSE );
+            Sleep( 1 );
     
             cpu.set_carry( false );
             cpu.set_bx( 1 ); // USA
@@ -3157,7 +3148,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     {
         // dos idle loop / scheduler
 
-        SleepEx( 1, FALSE );
+        Sleep( 1 );
         return;
     }
     else if ( 0x2a == interrupt_num )
@@ -3174,7 +3165,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
             UpdateDisplay();
-            SleepEx( 1, FALSE );
+            Sleep( 1 );
         }
 
         cpu.set_al( 0x01 ); // not installed, do NOT install
@@ -3234,31 +3225,42 @@ static void usage( char const * perr )
         printf( "error: %s\n", perr );
 
     printf( "NT Virtual DOS Machine: emulates an MS-DOS 3.00 runtime environment enough to run some COM/EXE files on Win64\n" );
-    printf( "usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]\n" );
+    printf( "usage: %s [arguments] <DOS executable> [arg1] [arg2]\n", g_thisApp );
     printf( "  notes:\n" );
     printf( "            -c     don't auto-detect apps that want 80x25 then set window to that size;\n" );
     printf( "                   stay in teletype mode.\n" );
     printf( "            -C     always set window to 80x25; don't use teletype mode.\n" );
     printf( "            -d     don't clear the display when in 80x25 mode on app exit\n" );
-    printf( "            -i     trace instructions as they are executed to ntvdm.log (this is verbose!)\n" );
+    printf( "            -i     trace instructions as they are executed to %s.log (this is verbose!)\n", g_thisApp );
     printf( "            -p     show performance information\n" ); 
 #ifdef I8086_TRACK_CYCLES
     printf( "            -s:X   speed in Hz. Default is to run as fast as possible.\n" );
     printf( "                   for 4.77Mhz, use -s:4770000\n" );
 #endif
-    printf( "            -t     enable debug tracing to ntvdm.log\n" );
+    printf( "            -t     enable debug tracing to %s.log\n", g_thisApp );
     printf( " [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command\n" );
     printf( "  examples:\n" );
-    printf( "      ntvdm -c -t app.com foo bar\n" );
-    printf( "      ntvdm turbo.com\n" );
-    printf( "      ntvdm s:\\github\\MS-DOS\\v2.0\\bin\\masm small,,,small\n" );
-    printf( "      ntvdm s:\\github\\MS-DOS\\v2.0\\bin\\link small,,,small\n" );
-    printf( "      ntvdm -t b -k myfile.asm\n" );
+    printf( "      %s -c -t app.com foo bar\n", g_thisApp );
+    printf( "      %s turbo.com\n", g_thisApp );
+    printf( "      %s s:\\github\\MS-DOS\\v2.0\\bin\\masm small,,,small\n", g_thisApp );
+    printf( "      %s s:\\github\\MS-DOS\\v2.0\\bin\\link small,,,small\n", g_thisApp );
+    printf( "      %s -t b -k myfile.asm\n", g_thisApp );
     exit( 1 );
 } //usage
 
 int main( int argc, char ** argv )
 {
+    // put the app name without a path or .exe into g_thisApp
+
+    char * pname = argv[ 0 ];
+    char * plastslash = strrchr( pname, '\\' );
+    if ( 0 != plastslash )
+        pname = plastslash + 1;
+    strcpy( g_thisApp, pname );
+    char * pdot = strchr( g_thisApp, '.' );
+    if ( pdot )
+        *pdot = 0;
+
     memset( memory, 0, sizeof memory );
     g_hConsole = GetStdHandle( STD_OUTPUT_HANDLE );
     init_blankline( 0x7 ); // light grey text
@@ -3317,7 +3319,9 @@ int main( int argc, char ** argv )
         }
     }
 
-    tracer.Enable( trace, L"ntvdm.log", true );
+    WCHAR logFile[ MAX_PATH ];
+    wsprintf( logFile, L"%S.log", g_thisApp );
+    tracer.Enable( trace, logFile, true );
     tracer.SetQuiet( true );
     cpu.trace_instructions( traceInstructions );
 
@@ -3527,13 +3531,14 @@ int main( int argc, char ** argv )
     g_haltExecution = false;
 
     CPerfTime perfApp;
-    uint64_t total_cycles = 0; // this will be instructions if I8086_TRACK_CYCLES isn't defined
+    uint64_t total_cycles = 0; // this will be inacurate if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
-    ULONGLONG ms_last = GetTickCount64();
+    CDuration duration;
+    uint64_t cycles_per_loop = ( 0 == clockrate ) ? 1024 * 64 : 1024;
 
     do
     {
-        total_cycles += cpu.emulate( 1000 ); // 1000 cycles or instructions at a time
+        total_cycles += cpu.emulate( cycles_per_loop );
 
         if ( g_haltExecution )
             break;
@@ -3552,14 +3557,14 @@ int main( int argc, char ** argv )
 
         if ( InterruptRoutineSegment != ( (uint16_t *) memory )[ 4 * 0x1c + 2 ] ) // optimization since the default handler is just an iret
         {
-            // this won't be precise enough to provide a clock, but it's good for delay loops
+            // this won't be precise enough to provide a clock, but it's good for delay loops.
+            // on my machine, this is invoked about every 72 million total_cycles.
 
-            ULONGLONG ms_now = GetTickCount64();
-            if ( ms_now >= ( ms_last + 55 ) ) // On my machine GetTickCount64() changes every 16ms or so
+            if ( duration.HasTimeElapsedMS( 55 ) )
             {
                 // if the app is blocked on keyboard input this interrupt will be delivered late.
 
-                ms_last = ms_now;
+                //tracer.Trace( "sending an int 1c, total_cycles %llu\n", total_cycles );
                 cpu.external_interrupt( 0x1c );
                 continue;
             }
