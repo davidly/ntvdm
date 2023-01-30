@@ -3076,7 +3076,12 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     if ( 0x16 != interrupt_num || 1 != c )
         g_int16_1_loop = false;
 
-    if ( 0x09 == interrupt_num )
+    if ( 0 == interrupt_num )
+    {
+        tracer.Trace( "    divide by zero interrupt 0\n" );
+        return;
+    }
+    else if ( 0x09 == interrupt_num )
     {
         consume_keyboard();
         return;

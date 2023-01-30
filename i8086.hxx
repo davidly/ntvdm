@@ -108,7 +108,7 @@ struct i8086
 
     void materializeFlags()
     {
-        flags = 0;
+        flags = 0xf002; // these bits are meaningless, but always turned on on real hardware
         if ( fCarry ) flags |= ( 1 << 0 );
         if ( fParityEven ) flags |= ( 1 << 2 );
         if ( fAuxCarry ) flags |=  ( 1 << 4 );
@@ -446,7 +446,7 @@ struct i8086
     uint8_t op_dec8( uint8_t val );
     uint16_t op_inc16( uint16_t val );
     uint16_t op_dec16( uint16_t val );
-    void op_interrupt( uint8_t instruction_length );
+    void op_interrupt( uint8_t interrupt_num, uint8_t instruction_length );
     void op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount );
     void op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount );
 

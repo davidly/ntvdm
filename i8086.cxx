@@ -33,8 +33,7 @@ void i8086::end_emulation() { g_State |= stateEndEmulation; }
 
 void i8086::external_interrupt( uint8_t interrupt_num )
 {
-    _b1 = interrupt_num;
-    op_interrupt( 0 ); // 0 since it's not in the instruction stream
+    op_interrupt( interrupt_num, 0 ); // 0 since it's not in the instruction stream
 } //external_interrupt
 
 extern void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
@@ -375,7 +374,11 @@ void i8086::op_sal16( uint16_t * pval, uint8_t shift )
     fCarry = ( 0 != ( *pval & 0x8000 ) );
     *pval <<= 1;
 
-    if ( 1 == shift )
+    // the 8086 doc says that Overflow is only defined when shift == 1.
+    // actual 8088 CPUs and some emulators set overflow if shift > 0.
+    // so the same is done here for sal16
+
+    //if ( 1 == shift )
         fOverflow = ! ( ( 0 != ( *pval & 0x8000 ) ) == fCarry );
 
     set_PSZ16( *pval );
@@ -650,9 +653,9 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
     }
 } //op_rotate16
 
-void i8086::op_interrupt( uint8_t instruction_length )
+void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
 {
-    uint32_t offset = 4 * _b1;
+    uint32_t offset = 4 * interrupt_num;
     uint16_t * vectorItem = (uint16_t *) ( memory + offset );
     materializeFlags();
     push( flags );
@@ -1193,7 +1196,7 @@ _after_prefix:
             case 0xcc: { DebugBreak(); break; } // int 3
             case 0xcd: // int
             {
-                op_interrupt( 2 );
+                op_interrupt( _b1, 2 );
                 continue;
             }
             case 0xce: // into
@@ -1201,8 +1204,7 @@ _after_prefix:
                 if ( fOverflow )
                 {
                     AddCycles( cycles, 69 );
-                    _b1 = 4; // implied overflow interrupt
-                    op_interrupt( 1 );
+                    op_interrupt( 4, 1 ); // overflow
                     continue;
                 }
             }
@@ -1258,6 +1260,11 @@ _after_prefix:
                     uint8_t tempal = al();
                     set_ah( tempal / _b1 );
                     set_al( tempal % _b1 );
+                }
+                else
+                {
+                    op_interrupt( 0, _bc );
+                    continue;
                 }
                 break;
             }
@@ -1372,7 +1379,10 @@ _after_prefix:
                     AddCycles( cycles, 77 ); // assume worst-case
                     uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     ax = (uint16_t) al() * (uint16_t) rhs;
-                    fCarry = fOverflow = false;
+                    fCarry = fOverflow = ( 0 != ah() );
+                    fAuxCarry = ( ax > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
+                    set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
+                    fSign = ( 0 != ( 0x80 & al() ) ); // documentation says these bits are undefined, but real hardware does this
                 }
                 else if ( 5 == _reg ) // imul. ax = al * r/m8
                 {
@@ -1382,6 +1392,8 @@ _after_prefix:
                     ax = result & 0xffff;
                     result &= 0xffff8000;
                     fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
+                    fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
+                    set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
                 }
                 else if ( 6 == _reg ) // div m, r8 / src. al = result, ah = remainder
                 {
@@ -1392,15 +1404,38 @@ _after_prefix:
                         uint16_t lhs = ax;
                         set_al( (uint8_t) ( lhs / (uint16_t) rhs ) );
                         set_ah( lhs % rhs );
+
+                        // documentation says these bits are undefined, but real hardware does this.
+                        bool oldZero = fZero;
+                        set_PSZ16( ax );
+                        fZero = oldZero;
+                    }
+                    else
+                    {
+                        op_interrupt( 0, _bc );
+                        continue;
                     }
                 }
                 else if ( 7 == _reg ) // idiv r/m8
                 {
                     AddCycles( cycles, 112 ); // assume worst-case
                     uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
-                    int16_t lhs = ax;
-                    set_al( ( lhs / (int16_t) rhs ) & 0xff );
-                    set_ah( lhs % (int16_t) rhs );
+                    if ( 0 != rhs )
+                    {
+                        int16_t lhs = ax;
+                        set_al( ( lhs / (int16_t) rhs ) & 0xff );
+                        set_ah( lhs % (int16_t) rhs );
+
+                        // documentation says these bits are undefined, but real hardware does this.
+                        bool oldZero = fZero;
+                        set_PSZ16( ax );
+                        fZero = oldZero;
+                    }
+                    else
+                    {
+                        op_interrupt( 0, _bc );
+                        continue;
+                    }
                 }
                 else
                     assert( false );
@@ -1439,6 +1474,8 @@ _after_prefix:
                     dx = result >> 16;
                     ax = result & 0xffff;
                     fCarry = fOverflow = ( result > 0xffff );
+                    fAuxCarry = ( result > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
+                    set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
                 }
                 else if ( 5 == _reg ) // imul. dx:ax = ax * src
                 {
@@ -1449,6 +1486,8 @@ _after_prefix:
                     ax = result & 0xffff;
                     result &= 0xffff8000;
                     fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
+                    fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
+                    set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
                 }
                 else if ( 6 == _reg ) // div dx:ax / src. ax = result, dx = remainder
                 {
@@ -1459,6 +1498,16 @@ _after_prefix:
                         uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
                         ax = (uint16_t) ( lhs / (uint32_t) rhs );
                         dx = lhs % rhs;
+
+                        // documentation says these bits are undefined, but real hardware does this.
+                        bool oldZero = fZero;
+                        set_PSZ16( ax );
+                        fZero = oldZero;
+                    }
+                    else
+                    {
+                        op_interrupt( 0, _bc );
+                        continue;
                     }
                 }
                 else if ( 7 == _reg ) // idiv dx:ax / src. ax = result, dx = remainder
@@ -1470,6 +1519,16 @@ _after_prefix:
                         uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
                         ax = (uint16_t) ( (int32_t) lhs / (int32_t) (int16_t) rhs );
                         dx = (int32_t) lhs % (int32_t) rhs;
+
+                        // documentation says these bits are undefined, but real hardware does this.
+                        bool oldZero = fZero;
+                        set_PSZ16( ax );
+                        fZero = oldZero;
+                    }
+                    else
+                    {
+                        op_interrupt( 0, _bc );
+                        continue;
                     }
                 }
                 else
