@@ -26,6 +26,9 @@ i8086 emulation performance is similar to other C/C++ emulators.
 
 I validated that ntvdm works on Arm64 with both native and x64 binaries.
 
+Ntvdm works with apps that hook interrupts via the DOS mechanism or by directly writing to memory. This
+includes support for int 9 and int 0x1c in apps like Quick Basic and Brief.
+
 I can't vouch for 100% i8086 emulation because I can't find any apps that perform such validation, unlike
 what's out there for the 6502, 8080, Z80, and other earlier CPUs. But I have done a fair bit of testing 
 with many apps and compared instruction + register traces with other emulators.
