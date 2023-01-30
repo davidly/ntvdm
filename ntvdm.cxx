@@ -55,6 +55,7 @@
 #include <djl_perf.hxx>
 #include <djl_cycle.hxx>
 #include <djl_durat.hxx>
+#include <djl_thrd.hxx>
 #include <djl8086d.hxx>
 #include "i8086.hxx"
 
@@ -112,6 +113,7 @@ const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt r
 static uint16_t blankLine[ScreenColumns] = {0};
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
 
+std::mutex g_mtxEverything;                    // one mutex for all shared state
 CDJLTrace tracer;
 static bool g_haltExecution = false;           // true when the app is shutting down
 static uint8_t * g_DiskTransferAddress;        // where apps read/write data for i/o
@@ -124,6 +126,7 @@ static bool g_forceConsole = false;            // true to force teletype mode, w
 static ConsoleConfiguration g_consoleConfig;   // to get into and out of 80x25 mode
 static bool g_int16_1_loop = false;            // true if an app is looping to get keyboard input. don't busy loop.
 static bool g_KbdIntWaitingForRead = false;    // true when a kbd int happens and no read has happened since
+static bool g_KbdPeekAvailable = false;        // true when peek on the keyboard sees keystrokes
 static bool g_injectControlC = false;          // true when ^c is hit and it must be put in the keyboard buffer
 static char g_acApp[ MAX_PATH ];               // the DOS .com or .exe being run
 static char g_thisApp[ MAX_PATH ];             // name of this exe (argv[0])
@@ -518,11 +521,11 @@ bool UpdateDisplay()
     return false;
 } //UpdateDisplay
 
-bool throttled_UpdateDisplay()
+bool throttled_UpdateDisplay( int64_t delay = 50 )
 {
     static CDuration _duration;
 
-    if ( _duration.HasTimeElapsedMS( 50 ) )
+    if ( _duration.HasTimeElapsedMS( delay ) )
         return UpdateDisplay();
 
     return false;
@@ -886,6 +889,8 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
 
 bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
 {
+    lock_guard<mutex> lock( g_mtxEverything );
+
     if ( g_injectControlC )
     {
         asciiChar = 0x03;
@@ -922,7 +927,7 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
     static CDuration _durationLastPeek;
     static CDuration _durationLastUpdate;
 
-    if ( throttle && !_durationLastPeek.HasTimeElapsedMS( 200 ) )
+    if ( throttle && !_durationLastPeek.HasTimeElapsedMS( 100 ) )
     {
         if ( update_display && g_use80x25 && _durationLastUpdate.HasTimeElapsedMS( 333 ) )
             UpdateDisplay();
@@ -939,6 +944,8 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
 
 void consume_keyboard()
 {
+    lock_guard<mutex> lock( g_mtxEverything );
+
     uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
     uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
     uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
@@ -1007,11 +1014,11 @@ uint8_t i8086_invoke_in_al( uint16_t port )
     }
     else if ( 0x60 ==  port ) // keyboard data
     {
-        uint8_t asciiChar, scancodeChar;
-        if ( peek_keyboard( asciiChar, scancodeChar ) )
+        uint8_t asciiChar, scancode;
+        if ( peek_keyboard( asciiChar, scancode ) )
         {
-            //tracer.Trace( "invoke_in_al, port %02x peeked a character and is returning %02x\n", port, asciiChar );
-            return asciiChar;
+            //tracer.Trace( "invoke_in_al, port %02x peeked a character and is returning %02x\n", port, scancode );
+            return scancode;
         }
     }
     else if ( 0x61 == port ) // keyboard controller port
@@ -3248,6 +3255,30 @@ static void usage( char const * perr )
     exit( 1 );
 } //usage
 
+DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
+{
+    HANDLE hStop = (HANDLE) param;
+
+    do
+    {
+        DWORD ret = WaitForSingleObject( hStop, 20 );
+        if ( WAIT_OBJECT_0 == ret )
+            break;
+
+        if ( !g_KbdIntWaitingForRead && !g_KbdPeekAvailable && !g_injectControlC )
+        {
+            uint8_t asciiChar, scancode;
+            if ( peek_keyboard( asciiChar, scancode ) )
+            {
+                tracer.Trace( "async thread noticed that a keystroke is available: %02x%02x\n", scancode, asciiChar );
+                g_KbdPeekAvailable = true;
+            }
+        }
+    } while( true );
+
+    return 0;
+} //PeekKeyboardThreadProc
+
 int main( int argc, char ** argv )
 {
     // put the app name without a path or .exe into g_thisApp
@@ -3386,7 +3417,8 @@ int main( int argc, char ** argv )
     // routines starting at 0xc00. The routines are almost all the same -- fake opcode, interrupt #, then a
     // far ret 2 (not iret) so as to not trash the flags used as return codes.
     // The exception is tick tock interrupt 0x1c, which just does an iret for performance.
-    // The functions are all 5 bytes long.
+    // The functions are mostly all 5 bytes long.
+    // interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
 
     uint32_t * pVectors = (uint32_t *) GetMem( 0, 0 );
     uint8_t * pRoutines = (uint8_t *) GetMem( InterruptRoutineSegment, 0 );
@@ -3395,7 +3427,13 @@ int main( int argc, char ** argv )
         uint32_t offset = intx * 5;
         pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset );
         uint8_t * routine = pRoutines + offset;
-        if ( 0x1c == intx )
+        if ( 9 == intx ) 
+        {
+            routine[ 0 ] = i8086_opcode_interrupt;
+            routine[ 1 ] = (uint8_t) intx;
+            routine[ 2 ] = 0xcf; // iret
+        }
+        else if ( 0x1c == intx )
             routine[ 0 ] = 0xcf; // iret
         else
         {
@@ -3530,26 +3568,38 @@ int main( int argc, char ** argv )
     g_DiskTransferAddress = GetMem( cpu.get_ds(), 0x80 ); // DOS default address
     g_haltExecution = false;
 
+    // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
+    // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
+    // Note that kbhit() makes the same call interally to the same cross-process API. It's no faster.
+
+    CSimpleThread peekKbdThread( PeekKeyboardThreadProc );
     CPerfTime perfApp;
     uint64_t total_cycles = 0; // this will be inacurate if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
     CDuration duration;
-    uint64_t cycles_per_loop = ( 0 == clockrate ) ? 1024 * 64 : 1024;
 
     do
     {
-        total_cycles += cpu.emulate( cycles_per_loop );
+        total_cycles += cpu.emulate( 1000 );
 
         if ( g_haltExecution )
             break;
 
         delay.Delay( total_cycles );
 
-        if ( !g_KbdIntWaitingForRead && peek_keyboard( true, false, true ) )
+        // apps like mips.com write to video ram and never provide an opportunity to redraw the display
+
+        if ( g_use80x25 )
+            throttled_UpdateDisplay( 200 );
+
+        // if the keyboard peek thread has detected a keystroke, process it with an int 9
+
+        if ( !g_KbdIntWaitingForRead && g_KbdPeekAvailable )
         {
             tracer.Trace( "main loop: scheduling an int 9\n" );
-            g_KbdIntWaitingForRead = true;
             cpu.external_interrupt( 9 );
+            g_KbdIntWaitingForRead = true;
+            g_KbdPeekAvailable = false;
             continue;
         }
 
@@ -3573,6 +3623,8 @@ int main( int argc, char ** argv )
 
     if ( g_use80x25 )  // get any last-second screen updates displayed
         UpdateDisplay();
+
+    peekKbdThread.EndThread();
 
     LONGLONG elapsed = 0;
     FILETIME creationFT, exitFT, kernelFT, userFT;
