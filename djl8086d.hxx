@@ -415,6 +415,13 @@ class CDisassemble8086
                 _da( "xchg   ax, %s", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
                 return acOut;
             }
+
+            if ( _b0 >= 0xd8 && _b0 <= 0xde ) // esc
+            {
+                _bc++;
+                _da( "esc    %s", getrm( _rm ) );
+                return acOut;
+            }
         
             byte top6 = _b0 & 0xfc;
             _bc = 2;

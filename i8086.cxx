@@ -39,6 +39,9 @@ void i8086::external_interrupt( uint8_t interrupt_num )
 extern void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
 void i8086::trace_state()
 {
+//    DumpBinaryData( memory + flatten( ds, 0x71b8 ), 2, 0 );
+//    DumpBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
+
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
     tracer.TraceQuiet( "ip %4x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
@@ -46,8 +49,6 @@ void i8086::trace_state()
                        ip, pcode[0], pcode[1], pcode[2], pcode[3], pcode[4],
                        ax, bx, cx, dx, di, si, ds, es, cs, ss, bp, sp,
                        render_flags(), pdisassemble, g_Disassembler.BytesConsumed() );
-//    DumpBinaryData( memory + flatten( 0x48fa, 2 ), 4, 0 );
-//    DumpBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
 } //trace_state
 
 // base cycle count per opcode; will be higher for multi-byte instructions, memory references,
@@ -661,6 +662,7 @@ void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
     push( flags );
     push( cs );
     push( ip + instruction_length );
+
     ip = vectorItem[ 0 ];
     cs = vectorItem[ 1 ];
 } //op_interrupt
@@ -782,7 +784,14 @@ _after_prefix:
             case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt
             {
                 _bc++;
+                uint16_t old_ip = ip;
+                uint16_t old_cs = cs;
+
                 i8086_invoke_interrupt( _b1 );
+
+                if ( old_ip != ip || old_cs != cs ) // likely loaded or ended an app via int21 4b execute program or int21 4c exit app
+                    continue;
+
                 break;
             }
             case 0x84: // test reg8/mem8, reg8
@@ -1694,6 +1703,12 @@ _after_prefix:
             {
                 uint16_t * preg = get_preg16( _b0 & 7 );
                 swap( ax, * preg );
+            }
+            else if ( _b0 >= 0xd8 && _b0 <= 0xde ) // esc (8087 instructions)
+            {
+                _bc++;
+                void * p = get_rm_ptr( _rm, cycles );
+                // ignore p -- just consume the correct number of opcodes
             }
             else
                 handled = false;
