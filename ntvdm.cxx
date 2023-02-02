@@ -915,6 +915,8 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x0c, "clear input buffer and execute int 0x21 on AL" },
     { 0x21, 0x0f, "open using FCB" },
     { 0x21, 0x10, "close using FCB" },
+    { 0x21, 0x11, "search first using FCB" },
+    { 0x21, 0x12, "search next using FCB" },
     { 0x21, 0x13, "delete file using FCBs" },
     { 0x21, 0x16, "create file using FCBs" },
     { 0x21, 0x17, "rename file using FCBs" },
@@ -1356,6 +1358,37 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
     FileTimeToDos( fd.ftLastWriteTime, pff->file_time, pff->file_date );
     tracer.Trace( "  search found '%s', size %u\n", pff->file_name, pff->file_size );
 } //ProcessFoundFile
+
+void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
+{
+    tracer.Trace( "actual found filename: '%s'\n", fd.cFileName );
+    char acResult[ 13 ];
+    if ( 0 != fd.cAlternateFileName[ 0 ] )
+        strcpy( acResult, fd.cAlternateFileName );
+    else if ( strlen( fd.cFileName ) < _countof( acResult ) )
+        strcpy( acResult, fd.cFileName );
+    else
+        GetShortPathNameA( fd.cFileName, acResult, _countof( acResult ) );
+
+    // now write the file into an FCB at the transfer address
+
+    DOSFCB *pfcb = (DOSFCB *) g_DiskTransferAddress;
+    for ( int i = 0; i < _countof( pfcb->name ); i++ )
+        pfcb->name[ i ] = ' ';
+    for ( int i = 0; i < _countof( pfcb->ext ); i++ )
+        pfcb->ext[ i ] = ' ';
+    for ( int i = 0; i < _countof( pfcb->name ) && 0 != acResult[i] && '.' != acResult[i]; i++ )
+        pfcb->name[i] = acResult[i];
+    char * pdot = strchr( acResult, '.' );
+    if ( pdot )
+    {
+        pdot++;
+        for ( int i = 0; i < _countof( pfcb->ext ) && 0 != acResult[i]; i++ )
+            pfcb->ext[i] = pdot[ i ];
+    }
+
+    pfcb->TraceFirst16();
+} //ProcessFoundFileFCB
 
 void PerhapsFlipTo80x25()
 {
@@ -2054,6 +2087,74 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "ERROR: file close using FCB of a file that's not open\n" );
+    
+            return;
+        }
+        case 0x11:
+        {
+            // search first using FCB.
+            // DS:DX points to FCB
+            // returns AL = 0 if file found, FF if not found
+            //    if found, DTA is used as an FCB ready for an open or delete
+
+            if ( INVALID_HANDLE_VALUE != g_hFindFirst )
+            {
+                FindClose( g_hFindFirst );
+                g_hFindFirst = INVALID_HANDLE_VALUE;
+            }
+
+            DOSFCB *pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            pfcb->TraceFirst16();
+            char search_string[ 20 ];
+            bool ok = GetDOSFilename( *pfcb, search_string );
+            if ( ok )
+            {
+                tracer.Trace( "  searching for pattern '%s'\n", search_string );
+                WIN32_FIND_DATAA fd = {0};
+                g_hFindFirst = FindFirstFileA( search_string, &fd );
+                if ( INVALID_HANDLE_VALUE != g_hFindFirst )
+                {
+                    ProcessFoundFileFCB( fd );
+                    cpu.set_al( 0 );
+                }
+                else
+                {
+                    cpu.set_al( 0xff );
+                    tracer.Trace( "WARNING: search first using FCB failed, error %d\n", GetLastError() );
+                }
+            }
+            else
+            {
+                cpu.set_al( 0xff );
+                tracer.Trace( "ERROR: search first using FCB failed to parse the search string\n" );
+            }
+
+            return;
+        }
+        case 0x12:
+        {
+            // search next using FCB.
+            // DS:DX points to FCB
+            // returns AL = 0 if file found, FF if not found
+            //    if found, DTA is used as an FCB ready for an open or delete
+
+            if ( INVALID_HANDLE_VALUE == g_hFindFirst )
+                cpu.set_al( 0xff );
+            else
+            {
+                WIN32_FIND_DATAA fd = {0};
+                BOOL found = FindNextFileA( g_hFindFirst, &fd );
+                if ( found )
+                {
+                    ProcessFoundFileFCB( fd );
+                    cpu.set_al( 0 );
+                }
+                else
+                {
+                    cpu.set_al( 0xff );
+                    tracer.Trace( "WARNING: search next using FCB found no more, error %d\n", GetLastError() );
+                }
+            }
     
             return;
         }
@@ -2851,7 +2952,22 @@ void handle_int_21( uint8_t c )
             // return: cf set on error, ax = error code
     
             char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "deleting file '%s'\n", pfile );
+            tracer.Trace( "  deleting file '%s'\n", pfile );
+
+            // apps like the Microsoft C Compiler V3 make the assumption that you can delete open files
+
+            size_t index = FindFileEntryFromPath( pfile );
+            if ( -1 != index )
+            {
+                uint16_t handle = g_fileEntries[ index ].handle;
+                FILE * fp = RemoveFileEntry( handle );
+                if ( fp )
+                {
+                    tracer.Trace( "  closing file handle %04x prior to delete\n", handle );
+                    fclose( fp );
+                }
+            }
+
             int removeok = ( 0 == remove( pfile ) );
             if ( removeok )
                 cpu.set_carry( false );
@@ -3286,7 +3402,7 @@ void handle_int_21( uint8_t c )
             //      disk transfer address: DosFindFile
     
             cpu.set_carry( true );
-            DosFindFile * pff = (DosFindFile* ) g_DiskTransferAddress;
+            DosFindFile * pff = (DosFindFile *) g_DiskTransferAddress;
             char * psearch_string = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "Find First Asciz for pattern '%s'\n", psearch_string );
 
@@ -3316,7 +3432,7 @@ void handle_int_21( uint8_t c )
             // find next asciz
     
             cpu.set_carry( true );
-            DosFindFile * pff = (DosFindFile* ) g_DiskTransferAddress;
+            DosFindFile * pff = (DosFindFile *) g_DiskTransferAddress;
             tracer.Trace( "Find Next Asciz\n" );
     
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
