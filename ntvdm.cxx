@@ -31,7 +31,7 @@
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
 //     0x00400 -- 0x007ff   bios data
 //     0x00c00 -- 0x00fff   interrupt routines (here, not in BIOS space because it fits)
-//     0x01000 -- 0x0191f   unused (nearly 4k at offset 4k)
+//     0x01000 -- 0x0191f   unused (2336 bytes)
 //     0x01920 -- 0x9ffff   apps are loaded here, where DOS does it
 //     0xa0000 -- 0xeffff   reserved for hardware
 //     0xf0000 -- 0xfbfff   system monitor (0 for now)
@@ -59,6 +59,15 @@
 #include <djl_thrd.hxx>
 #include <djl8086d.hxx>
 #include "i8086.hxx"
+
+void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
+uint16_t AllocateChildEnvironment( uint16_t segStartingEnv, const char * pathToExecute );
+uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment );
+
+uint8_t * GetMem( uint16_t seg, uint16_t offset )
+{
+    return memory + ( ( ( (uint32_t) seg ) << 4 ) + offset );
+} //GetMem
 
 struct FileEntry
 {
@@ -120,6 +129,7 @@ struct DosAllocation
 {
     uint16_t segment;
     uint16_t para_length;
+    uint16_t seg_process; 
 };
 
 const uint32_t ScreenColumns = 80;                                // this is the only mode supported
@@ -129,35 +139,34 @@ const uint32_t ScreenRowsM1 = ScreenRows - 1;                     // rows minus 
 const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
 const uint32_t ScreenBufferAddress = 0xb8000;                     // location in i8086 physical RAM of CGA display. 16k, 4k per page.
 const uint32_t AppSegmentOffset = 0x1920;                         // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
-const uint16_t AppSegment = AppSegmentOffset / 16;                // works at segment 0 as well, but for fun...
+const uint16_t AppSegment = AppSegmentOffset / 16;                // 
 const uint16_t SegmentHardware = 0xa000;                          // where hardware starts
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
+const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
 
-static uint16_t blankLine[ScreenColumns] = {0};
-static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
-
-std::mutex g_mtxEverything;                    // one mutex for all shared state
 CDJLTrace tracer;
-static bool g_haltExecution = false;           // true when the app is shutting down
-static uint8_t * g_DiskTransferAddress;        // where apps read/write data for i/o
-static vector<FileEntry> g_fileEntries;        // vector of currently open files
-static vector<DosAllocation> g_allocEntries;   // vector of blocks allocated to DOS apps
-static bool g_use80x25 = false;                // true to force 80x25 with cursor positioning
-static uint8_t g_videoMode = 3;                // 2=80x25 16 grey, 3=80x25 16 colors
-static HANDLE g_hConsole = 0;                  // the Windows console handle
-static bool g_forceConsole = false;            // true to force teletype mode, with no cursor positioning
-static ConsoleConfiguration g_consoleConfig;   // to get into and out of 80x25 mode
-static bool g_int16_1_loop = false;            // true if an app is looping to get keyboard input. don't busy loop.
-static bool g_KbdIntWaitingForRead = false;    // true when a kbd int happens and no read has happened since
-static bool g_KbdPeekAvailable = false;        // true when peek on the keyboard sees keystrokes
-static bool g_injectControlC = false;          // true when ^c is hit and it must be put in the keyboard buffer
-static bool g_appTerminationReturnCode = 0;    // when int 21 function 4c is invoked to terminate an app, this is the app return code
-static uint16_t g_currentPSP = 0;              // psp of the currently running process
-static char g_acApp[ MAX_PATH ];               // the DOS .com or .exe being run
-static char g_thisApp[ MAX_PATH ];             // name of this exe (argv[0])
 
-uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment );
+static uint16_t blankLine[ScreenColumns] = {0};    // an optimization for filling lines with blanks
+static std::mutex g_mtxEverything;                 // one mutex for all shared state
+static ConsoleConfiguration g_consoleConfig;       // to get into and out of 80x25 mode
+static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE; // used for find first / find next
+static HANDLE g_hConsole = 0;                      // the Windows console handle
+static bool g_haltExecution = false;               // true when the app is shutting down
+static uint8_t * g_DiskTransferAddress = 0;        // where apps read/write data for i/o
+static vector<FileEntry> g_fileEntries;            // vector of currently open files
+static vector<DosAllocation> g_allocEntries;       // vector of blocks allocated to DOS apps
+static uint8_t g_videoMode = 3;                    // 2=80x25 16 grey, 3=80x25 16 colors
+static uint16_t g_currentPSP = 0;                  // psp of the currently running process
+static bool g_use80x25 = false;                    // true to force 80x25 with cursor positioning
+static bool g_forceConsole = false;                // true to force teletype mode, with no cursor positioning
+static bool g_int16_1_loop = false;                // true if an app is looping to get keyboard input. don't busy loop.
+static bool g_KbdIntWaitingForRead = false;        // true when a kbd int happens and no read has happened since
+static bool g_KbdPeekAvailable = false;            // true when peek on the keyboard sees keystrokes
+static bool g_injectControlC = false;              // true when ^c is hit and it must be put in the keyboard buffer
+static bool g_appTerminationReturnCode = 0;        // when int 21 function 4c is invoked to terminate an app, this is the app return code
+static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
+static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0])
 
 #pragma pack( push, 1 )
 struct DosFindFile
@@ -189,6 +198,7 @@ static void usage( char const * perr )
 #ifdef I8086_TRACK_CYCLES
     printf( "            -s:X   speed in Hz. Default is to run as fast as possible.\n" );
     printf( "                   for 4.77Mhz, use -s:4770000\n" );
+    printf( "                   to roughly match a 4.77Mhz 8088, use -s:3900000\n" );
 #endif
     printf( "            -t     enable debug tracing to %s.log\n", g_thisApp );
     printf( " [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command\n" );
@@ -204,7 +214,7 @@ static void usage( char const * perr )
 bool isFilenameChar( char c )
 {
     char l = tolower( c );
-    return ( ( l >= 'a' && l <= 'z' ) || ( l >= '0' && l <= '9' ) || '_' == c || '^' == c || '$' == c || '~' == c );
+    return ( ( l >= 'a' && l <= 'z' ) || ( l >= '0' && l <= '9' ) || '_' == c || '^' == c || '$' == c || '~' == c || '!' == c );
 } //isFilenameChar
 
 static int compare_alloc_entries( const void * a, const void * b )
@@ -348,6 +358,17 @@ size_t FindAllocationEntry( uint16_t segment )
     return -1;
 } //FindAllocationEntry
 
+size_t FindAllocationEntryByProcess( uint16_t segment )
+{
+    for ( size_t i = 0; i < g_allocEntries.size(); i++ )
+    {
+        if ( segment == g_allocEntries[ i ].seg_process )
+            return i;
+    }
+
+    return -1;
+} //FindAllocationEntry
+
 uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 {
     size_t cEntries = g_allocEntries.size();
@@ -363,9 +384,9 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     size_t insertLocation = 0;
 
     // sometimes allocate an extra spaceBetween paragraphs between blocks for overly optimistic resize requests.
-    // I'm looking at you link.exe v5.10 from 1990.
+    // I'm looking at you link.exe v5.10 from 1990. Also QBX, which runs link.exe as a child process
 
-    const uint16_t spaceBetween = ( !stricmp( g_acApp, "LINK.EXE" ) ) ? 0x40 : 0;
+    const uint16_t spaceBetween = ( !stricmp( g_acApp, "LINK.EXE" ) || !stricmp( g_acApp, "QBX.EXE" ) ) ? 0x40 : 0;
 
     if ( 0 == cEntries )
     {
@@ -423,6 +444,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     DosAllocation da;
     da.segment = allocatedSeg;
     da.para_length = request_paragraphs;
+    da.seg_process = g_currentPSP;
     g_allocEntries.insert( insertLocation + g_allocEntries.begin(), da );
     largest_block = SegmentHardware - allocatedSeg;
     return allocatedSeg;
@@ -454,11 +476,6 @@ bool keyState( int vkey )
     SHORT s = GetAsyncKeyState( vkey );
     return 0 != ( 0x1000 & s );
 } //keyState
-
-uint8_t * GetMem( uint16_t seg, uint16_t offset )
-{
-    return memory + ( ( ( (uint32_t) seg ) << 4 ) + offset );
-} //GetMem
 
 uint8_t * GetVideoMem()
 {
@@ -596,7 +613,7 @@ struct DOSPSP
     uint8_t  dispatcherCPM;          // obsolete cp/m-style code to call dispatcher
     uint16_t comAvailable;           // .com programs bytes available in segment (cp/m holdover)
     uint16_t farJumpCPM;
-    uint32_t int22TerminateAddress;  // DOS load jumps to this address upon exit. EXEC force child processes to return to parent via this
+    uint32_t int22TerminateAddress;  // When a child process ends, there is where execution resumes in the parent.
     uint32_t int23ControlBreak;
     uint32_t int24CriticalError;
     uint16_t segParent;              // parent process segment address of PSP
@@ -612,8 +629,8 @@ struct DOSPSP
     uint8_t  firstFCB[16];           // later parts of a real fcb shared with secondFCB
     uint8_t  secondFCB[16];          // only the first part is used
     uint32_t reserved4;
-    uint8_t  countCommandTail;       // # of characters in command tail
-    uint8_t  commandTail[127];
+    uint8_t  countCommandTail;       // # of characters in command tail. This byte and beyond later used as Disk Transfer Address
+    uint8_t  commandTail[127];       // command line characters after executable, newline terminated
 
     void Trace()
     {
@@ -623,8 +640,10 @@ struct DOSPSP
         assert( 0x80 == offsetof( DOSPSP, countCommandTail ) );
 
         tracer.Trace( "PSP:\n" );
+        DumpBinaryData( (uint8_t *) this, sizeof DOSPSP, 0 );
         tracer.Trace( "  topOfMemory: %04x\n", topOfMemory );
         tracer.Trace( "  segParent: %04x\n", segParent );
+        tracer.Trace( "  return address: %04x\n", int22TerminateAddress );
         tracer.Trace( "  command tail: len %u, '%.*s'\n", countCommandTail, countCommandTail, commandTail );
     }
 };
@@ -689,7 +708,11 @@ struct DOSFCB
         tracer.Trace( "    filename     '%c%c%c%c%c%c%c%c'\n",
                       this->name[0],this->name[1],this->name[2],this->name[3],
                       this->name[4],this->name[5],this->name[6],this->name[7] );
+        tracer.Trace( "    filename     %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x\n",
+                      this->name[0],this->name[1],this->name[2],this->name[3],
+                      this->name[4],this->name[5],this->name[6],this->name[7] );
         tracer.Trace( "    ext          '%c%c%c'\n", this->ext[0],this->ext[1],this->ext[2] );
+        tracer.Trace( "    ext          %02x, %02x, %02x\n", this->ext[0],this->ext[1],this->ext[2] );
         tracer.Trace( "    curBlock:    %u\n", this->curBlock );
         tracer.Trace( "    recSize:     %u\n", this->recSize );
     }
@@ -954,7 +977,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x48, "allocate memory" },
     { 0x21, 0x49, "free memory" },
     { 0x21, 0x4a, "modify memory allocation" },
-    { 0x21, 0x4b, "execute program" },
+    { 0x21, 0x4b, "load or execute execute program" },
     { 0x21, 0x4c, "exit app" },
     { 0x21, 0x4d, "get exit code of subprogram" },
     { 0x21, 0x4e, "find first asciz" },
@@ -1168,6 +1191,7 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
 
 bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
 {
+    // this mutex is because I don't know if PeekConsoleInput and ReadConsoleInput are individually or mutually reenterant.
     lock_guard<mutex> lock( g_mtxEverything );
 
     if ( g_injectControlC )
@@ -1223,6 +1247,7 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
 
 void consume_keyboard()
 {
+    // this mutex is because I don't know if PeekConsoleInput and ReadConsoleInput are individually or mutually reenterant.
     lock_guard<mutex> lock( g_mtxEverything );
 
     uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
@@ -1867,25 +1892,36 @@ void HandleAppExit()
     g_appTerminationReturnCode = cpu.al();
     DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
     uint16_t pspToDelete = g_currentPSP;
+    tracer.Trace( "  app exiting, segment %04x, psp: %p, environment segment %04x\n", g_currentPSP, psp, psp->segEnvironment );
+    FreeMemory( psp->segEnvironment );
 
-    if ( psp && ( 0xf000dead != psp->int22TerminateAddress ) )
+    if ( psp && ( firstAppTerminateAddress != psp->int22TerminateAddress ) )
     {
         g_currentPSP = psp->segParent;
         cpu.set_cs( ( psp->int22TerminateAddress >> 16 ) & 0xffff );
         cpu.set_ip( psp->int22TerminateAddress & 0xffff );
-        tracer.Trace( "exiting a nested app, psp seg is %04x, return address %04x:%04x\n", cpu.get_ds(), cpu.get_cs(), cpu.get_ip() );
+        tracer.Trace( "  returning from nested app to return address %04x:%04x\n", cpu.get_cs(), cpu.get_ip() );
     }
     else
     {
-        // only free the environment for the first app, because we allocated that. for nested apps the calling app allocates it.
-
-        FreeMemory( psp->segEnvironment );
 
         cpu.end_emulation();
         g_haltExecution = true;
     }
 
     FreeMemory( pspToDelete );
+
+    // free any allocations made by the app not already freed
+
+    do
+    {
+        size_t index = FindAllocationEntryByProcess( pspToDelete );
+        if ( -1 == index )
+            break;
+
+        tracer.Trace( "freeing RAM an app leaked, segment %04x length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
+        FreeMemory( g_allocEntries[ index ].segment );
+    } while( true );
 } //HandleAppExit
 
 void handle_int_21( uint8_t c )
@@ -2030,7 +2066,17 @@ void handle_int_21( uint8_t c )
             i8086_invoke_interrupt( 0x21 );
     
             return;
-        } 
+        }
+        case 0xe:
+        {
+            // select disk. dl = new default drive 0=a, 1=b...
+            // on return: al = # of logical drives
+
+            tracer.Trace( "new default drive: '%c'\n", 'A' + cpu.dl() );
+            cpu.set_al( 1 );
+
+            return;
+        }
         case 0xf:
         {
             // open using FCB
@@ -2259,11 +2305,13 @@ void handle_int_21( uint8_t c )
         }
         case 0x19:
         {
-            // get current default drive. 0 == a:, 1 == b:, etc. returned in AL
+            // get default drive. 0 == a:, 1 == b:, etc. returned in AL
     
             GetCurrentDirectoryA( sizeof cwd, cwd );
             _strupr( cwd );
             cpu.set_al( cwd[0] - 'A' );
+            tracer.Trace( "  returning default drive as '%c'\n", (char) cwd[0] );
+
             return;
         }
         case 0x1a:
@@ -2453,53 +2501,52 @@ void handle_int_21( uint8_t c )
             DumpBinaryData( (uint8_t *) pfile, 64, 0 );
     
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_es(), cpu.get_di() );
+            uint8_t input_al = cpu.al();
 
-            if ( cpu.al() & 1 )
+            if ( 0 == ( input_al & 2 ) )
+                pfcb->drive = 0;
+            if ( 0 == ( input_al & 4 ) )
+                memset( pfcb->name, ' ', _countof( pfcb->name ) );
+            if ( 0 == ( input_al & 8 ) )
+                memset( pfcb->ext, ' ', _countof( pfcb->ext ) );
+
+            pfcb->curBlock = 0;
+            pfcb->recSize = 0;
+
+            tracer.Trace( "pfile before scan: %p\n", pfile );
+
+            if ( 0 != ( input_al & 1 ) )
             {
-                do
-                {
-                    if ( isFilenameChar( *pfile ) )
-                        break;
+                // scan blanks and tabs
 
-                    if ( '-' == *pfile )
-                    {
-                        while ( *pfile && ' ' != *pfile )
-                            pfile++;
-                    }
-                    else
-                        pfile++;
-                } while ( *pfile );
+                while ( 9 == *pfile )
+                    pfile++;
+
+                while ( strchr( ":<|>+=;, ", *pfile ) )
+                    pfile++;
             }
+
+            tracer.Trace( "pfile after scan: %p\n", pfile );
 
             char * pf = pfile;
     
-            if ( 0 == pfile[0] )
-            {
-                if ( 0 == ( cpu.al() & 4 ) )
-                    memset( pfcb->name, ' ', _countof( pfcb->name ) );
-                if ( 0 == ( cpu.al() & 8 ) )
-                    memset( pfcb->ext, ' ', _countof( pfcb->ext ) );
-            }
-            else
-            {
-                memset( pfcb->name, ' ', _countof( pfcb->name ) );
-                memset( pfcb->ext, ' ', _countof( pfcb->ext ) );
-                for ( int i = 0; i < _countof( pfcb->name ) && *pf && isFilenameChar( *pf ); i++ )
-                    pfcb->name[ i ] = *pf++;
-                if ( '.' == *pf )
-                    pf++;
-                for ( int i = 0; i < _countof( pfcb->ext ) && *pf && isFilenameChar( *pf ); i++ )
-                    pfcb->ext[ i ] = *pf++;
-            }
+            for ( int i = 0; i < _countof( pfcb->name ) && *pf && isFilenameChar( *pf ); i++ )
+                pfcb->name[ i ] = *pf++;
+            if ( '.' == *pf )
+                pf++;
+            for ( int i = 0; i < _countof( pfcb->ext ) && *pf && isFilenameChar( *pf ); i++ )
+                pfcb->ext[ i ] = *pf++;
+
+            tracer.Trace( "after copying filename, on char '%c', pf %p\n", *pf, pf );
     
             if ( strchr( pfile, '*' ) || strchr( pfile, '?' ) )
                 cpu.set_al( 1 );
             else
                 cpu.set_al( 0 );
     
-            cpu.set_si( cpu.get_si() + 1 + (uint16_t) ( pf - pfile_original ) );
+            cpu.set_si( cpu.get_si() + (uint16_t) ( pf - pfile_original ) );
 
-            pfcb->Trace();
+            pfcb->TraceFirst16();
     
             return;
         }
@@ -2526,6 +2573,13 @@ void handle_int_21( uint8_t c )
             cpu.set_cl( (uint8_t) st.wMinute );
             cpu.set_dh( (uint8_t) st.wSecond );
             cpu.set_dl( (uint8_t) ( st.wMilliseconds / 10 ) );
+
+            #if false // useful when debugging
+                cpu.set_ch( (uint8_t) 1 );
+                cpu.set_cl( (uint8_t) 2 );
+                cpu.set_dh( (uint8_t) 3 );
+                cpu.set_dl( (uint8_t) 69 );
+            #endif
     
             return;
         }           
@@ -3311,7 +3365,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x4b:
         {
-            // execute program
+            // load or execute program
             // input: al: 0 = program, 3 = overlay
             //        ds:dx: ascii pathname
             //        es:bx: parameter block
@@ -3331,41 +3385,59 @@ void handle_int_21( uint8_t c )
             //                a = environment invalid
             //                b = format invalid
             // notes:     all handles, devices, and i/o redirection are inherited
-
             // crawl up the stack to the get cs:ip one frame above. that's where we'll return once the child process is complete.
+
+            if ( 0 != cpu.al() ) // only load an execute currently implemented
+            {
+                tracer.Trace( "  load or execute with al %02x is unimplemented\n", cpu.al() );
+                cpu.set_carry( true );
+                cpu.set_ax( 1 );
+            }
 
             uint16_t * pstack = (uint16_t *) GetMem( cpu.get_ss(), cpu.get_sp() );
             uint16_t save_ip = pstack[ 0 ];
             uint16_t save_cs = pstack[ 1 ];
 
-            const char * path = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * pathToExecute = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             AppExecute * pae = (AppExecute *) GetMem( cpu.get_es(), cpu.get_bx() );
             pae->Trace();
             const char * commandTail = (const char *) GetMem( pae->segCommandTail, pae->offsetCommandTail );
             DOSFCB * pfirstFCB = (DOSFCB *) GetMem( pae->segFirstFCB, pae->offsetFirstFCB );
             DOSFCB * psecondFCB = (DOSFCB *) GetMem( pae->segSecondFCB, pae->offsetSecondFCB );
 
-            tracer.Trace( "  path to execute: '%s'\n", path );
+            tracer.Trace( "  path to execute: '%s'\n", pathToExecute );
             tracer.Trace( "  command tail: len %u, '%.*s'\n", *commandTail, *commandTail, commandTail + 1 );
             tracer.Trace( "  first and second fcbs: \n" );
             pfirstFCB->TraceFirst16();
             psecondFCB->TraceFirst16();
 
             TraceOpenFiles();
-
             char acTail[ 128 ] = {0};
             memcpy( acTail, commandTail + 1, *commandTail );
-            uint16_t seg_psp = LoadBinary( path, acTail, pae->segEnvironment );
-            if ( 0 != seg_psp )
+
+            uint16_t segChildEnv = AllocateChildEnvironment( pae->segEnvironment, pathToExecute );
+            if ( 0 != segChildEnv )
             {
-                DOSPSP * psp = (DOSPSP *) GetMem( seg_psp, 0 );
-                psp->segParent = g_currentPSP;
-                g_currentPSP = seg_psp;
-                memcpy( psp->firstFCB, pfirstFCB, 16 );
-                memcpy( psp->secondFCB, psecondFCB, 16 );
-                psp->int22TerminateAddress = ( ( (uint32_t) save_cs ) << 16 ) | (uint32_t ) save_ip;
-                tracer.Trace( "set terminate address to %04x:%04x\n", save_cs, save_ip );
-                cpu.set_carry( false );
+                uint16_t seg_psp = LoadBinary( pathToExecute, acTail, segChildEnv );
+                if ( 0 != seg_psp )
+                {
+                    DOSPSP * psp = (DOSPSP *) GetMem( seg_psp, 0 );
+                    psp->segParent = g_currentPSP;
+                    g_currentPSP = seg_psp;
+                    memcpy( psp->firstFCB, pfirstFCB, 16 );
+                    memcpy( psp->secondFCB, psecondFCB, 16 );
+                    psp->int22TerminateAddress = ( ( (uint32_t) save_cs ) << 16 ) | (uint32_t ) save_ip;
+                    tracer.Trace( "set terminate address to %04x:%04x\n", save_cs, save_ip );
+                    tracer.Trace( "new child psp %p:\n", psp );
+                    psp->Trace();
+                    cpu.set_carry( false );
+                }
+                else
+                {
+                    FreeMemory( segChildEnv );
+                    cpu.set_ax( 1 );
+                    cpu.set_carry( true );
+                }
             }
             else
             {
@@ -3719,10 +3791,10 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     DOSPSP *psp = (DOSPSP *) GetMem( segment, 0 );
     memset( psp, 0, sizeof DOSPSP );
 
-    psp->int20Code = 0x20cd;        // int 20 instruction to terminate app like CP/M
-    psp->topOfMemory = 0x9fff;      // top of memorysegment in paragraph form
-    psp->comAvailable = 0xffff;     // .com programs bytes available in segment
-    psp->int22TerminateAddress = 0xf000dead;
+    psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
+    psp->topOfMemory = 0x9fff;                // top of memorysegment in paragraph form
+    psp->comAvailable = 0xffff;               // .com programs bytes available in segment
+    psp->int22TerminateAddress = firstAppTerminateAddress;
     uint8_t len = strlen( acAppArgs );
     psp->countCommandTail = len;
     strcpy( (char *) psp->commandTail, acAppArgs );
@@ -3912,6 +3984,87 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
     return 0;
 } //PeekKeyboardThreadProc
 
+uint16_t round_up_to( uint16_t x, uint16_t multiple )
+{
+    if ( 0 == ( x % multiple ) )
+        return x;
+
+    return x + ( multiple - ( x % multiple ) );
+} //round_up_to
+
+uint16_t AllocateChildEnvironment( uint16_t segStartingEnv, const char * pathToExecute )
+{
+    uint16_t len = 0;
+    char * pEnvStart = (char *) GetMem( segStartingEnv, 0 );
+    char * penv = pEnvStart;
+    do
+    {
+        int l = 1 + strlen( penv );
+        len += l;
+        penv += l;
+    } while ( 0 != *penv );
+
+    len++; // final 0 to signal end of null-terminated strings
+    uint16_t startLen = len;
+    len += strlen( pathToExecute );
+
+    tracer.Trace( "final len: %02x, startLen: %02x\n", len, startLen );
+
+    uint16_t to_allocate = len + 128; // leave extra space for apps to add more to the environment
+
+    uint16_t para_remaining;
+    uint16_t segEnvironment = AllocateMemory( round_up_to( to_allocate, 16 ) / 16, para_remaining );
+    if ( 0 == segEnvironment )
+    {
+        tracer.Trace( "can't allocate %d bytes for child environment\n", to_allocate );
+        return 0;
+    }
+
+    char * pNewEnv = (char *) GetMem( segEnvironment, 0 );
+    memset( pNewEnv, 0, to_allocate );
+    memcpy( pNewEnv, pEnvStart, startLen );
+    strcpy( pNewEnv + startLen, pathToExecute );
+
+    tracer.Trace( "new child environment:\n" );
+    DumpBinaryData( (uint8_t *) pNewEnv, to_allocate, 0 );
+
+    return segEnvironment;
+} //AllocateChildEnvironment
+
+uint16_t AllocateEnvironment()
+{
+    char fullPath[ MAX_PATH ];
+    GetFullPathNameA( g_acApp, 256, fullPath, 0 );
+    const char * pComSpec = "COMSPEC=COMMAND.COM";
+    const char * pBriefFlags = "BFLAGS=-kzr -mDJL";
+    uint16_t bytesNeeded = 20 + strlen( fullPath ) + strlen( pComSpec ) + strlen( pBriefFlags );
+
+    uint16_t para_remaining;
+    uint16_t segEnvironment = AllocateMemory( round_up_to( bytesNeeded, 16 ) / 16, para_remaining );
+    if ( 0 == segEnvironment )
+        usage( "no RAM to allocate the default environment" );
+
+    char * penvdata = (char *) GetMem( segEnvironment, 0 );
+    char * penv = penvdata;
+    strcpy( penv, pComSpec ); // it needs this or it can't load itself
+    penv += 1 + strlen( penv );
+
+    if ( !stricmp( g_acApp, "B.EXE" ) )
+    {
+        strcpy( penv, pBriefFlags ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
+        penv += 1 + strlen( penv );
+    }
+
+    *penv++ = 0; // extra 0 to indicate there are no more environment variables
+    * (uint16_t *)  ( penv ) = 0x0001; // one more additional item per DOS 3.0+
+    penv += 2;
+
+    strcpy( penv, fullPath );
+    tracer.Trace( "wrote full path path to environment: '%s'\n", penv );
+
+    return segEnvironment;
+} //AllocateEnvironment
+
 int main( int argc, char ** argv )
 {
     // put the app name without a path or .exe into g_thisApp
@@ -3926,7 +4079,9 @@ int main( int argc, char ** argv )
         *pdot = 0;
 
     memset( memory, 0, sizeof memory );
+
     g_hConsole = GetStdHandle( STD_OUTPUT_HANDLE );
+
     init_blankline( 0x7 ); // light grey text
 
     char * pcAPP = 0;
@@ -4076,32 +4231,7 @@ int main( int argc, char ** argv )
         }
     }
 
-    // initialize the environment, which (for DOS 3.0+) has the full path of the app afterwards
-    // this is a somewhat random location that appears to be free
-
-    char fullPath[ MAX_PATH ];
-    GetFullPathNameA( g_acApp, 256, fullPath, 0 );
-    uint16_t para_ask = ( strlen( fullPath ) + 40 ) / 16;
-
-    uint16_t para_remaining;
-    uint16_t segEnvironment = AllocateMemory( para_ask, para_remaining );
-    char * penvdata = (char *) GetMem( segEnvironment, 0 );
-    char * penv = penvdata;
-    strcpy( penv, "COMSPEC=COMMAND.COM" ); // it needs this or it can't load itself
-    penv += 1 + strlen( penv );
-
-    if ( !stricmp( g_acApp, "B.EXE" ) )
-    {
-        strcpy( penv, "BFLAGS=-kzr -mDJL" ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
-        penv += 1 + strlen( penv );
-    }
-
-    *penv++ = 0; // extra 0 to indicate there are no more environment variables
-    * (uint16_t *)  ( penv ) = 0x0001; // one more additional item per DOS 3.0+
-    penv += 2;
-
-    strcpy( penv, fullPath );
-    tracer.Trace( "wrote full path path to environment: '%s'\n", penv );
+    uint16_t segEnvironment = AllocateEnvironment();
 
     g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment );
     if ( 0 == g_currentPSP )
@@ -4110,7 +4240,7 @@ int main( int argc, char ** argv )
         exit( 1 );
     }
 
-    if ( !stricmp( g_acApp, "gwbasic.exe" ) )
+    if ( !stricmp( g_acApp, "gwbasic.exe" ) || !stricmp( g_acApp, "mips.com" ) )
     {
         // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
 
@@ -4121,7 +4251,7 @@ int main( int argc, char ** argv )
     if ( force80x25 )
         PerhapsFlipTo80x25();
 
-    g_DiskTransferAddress = GetMem( cpu.get_ds(), 0x80 ); // DOS default address
+    g_DiskTransferAddress = GetMem( cpu.get_ds(), 0x80 ); // same address as the second half of PSP -- the command tail
     g_haltExecution = false;
 
     // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
@@ -4129,10 +4259,10 @@ int main( int argc, char ** argv )
     // Note that kbhit() makes the same call interally to the same cross-process API. It's no faster.
 
     CSimpleThread peekKbdThread( PeekKeyboardThreadProc );
-    CPerfTime perfApp;
     uint64_t total_cycles = 0; // this will be inacurate if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
     CDuration duration;
+    CPerfTime perfApp;
 
     do
     {
@@ -4180,8 +4310,6 @@ int main( int argc, char ** argv )
     if ( g_use80x25 )  // get any last-second screen updates displayed
         UpdateDisplay();
 
-    peekKbdThread.EndThread();
-
     LONGLONG elapsed = 0;
     FILETIME creationFT, exitFT, kernelFT, userFT;
     if ( showPerformance )
@@ -4189,6 +4317,8 @@ int main( int argc, char ** argv )
         perfApp.CumulateSince( elapsed );
         GetProcessTimes( GetCurrentProcess(), &creationFT, &exitFT, &kernelFT, &userFT );
     }
+
+    peekKbdThread.EndThread();
 
     g_consoleConfig.RestoreConsole( clearDisplayOnExit );
 
