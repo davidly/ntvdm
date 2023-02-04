@@ -61,7 +61,7 @@
 #include "i8086.hxx"
 
 void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
-uint16_t AllocateChildEnvironment( uint16_t segStartingEnv, const char * pathToExecute );
+uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment );
 
 uint8_t * GetMem( uint16_t seg, uint16_t offset )
@@ -3415,7 +3415,7 @@ void handle_int_21( uint8_t c )
             char acTail[ 128 ] = {0};
             memcpy( acTail, commandTail + 1, *commandTail );
 
-            uint16_t segChildEnv = AllocateChildEnvironment( pae->segEnvironment, pathToExecute );
+            uint16_t segChildEnv = AllocateEnvironment( pae->segEnvironment, pathToExecute );
             if ( 0 != segChildEnv )
             {
                 uint16_t seg_psp = LoadBinary( pathToExecute, acTail, segChildEnv );
@@ -3992,67 +3992,64 @@ uint16_t round_up_to( uint16_t x, uint16_t multiple )
     return x + ( multiple - ( x % multiple ) );
 } //round_up_to
 
-uint16_t AllocateChildEnvironment( uint16_t segStartingEnv, const char * pathToExecute )
+uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute )
 {
-    uint16_t len = 0;
+    char fullPath[ MAX_PATH ];
+    GetFullPathNameA( pathToExecute, _countof( fullPath ), fullPath, 0 );
+
+    const char * pComSpec = "COMSPEC=COMMAND.COM";
+    const char * pBriefFlags = "BFLAGS=-kzr -mDJL";
+    uint16_t bytesNeeded = strlen( fullPath );
+    uint16_t startLen = 0;
     char * pEnvStart = (char *) GetMem( segStartingEnv, 0 );
-    char * penv = pEnvStart;
-    do
+
+    if ( 0 != segStartingEnv )
     {
-        int l = 1 + strlen( penv );
-        len += l;
-        penv += l;
-    } while ( 0 != *penv );
+        char * pe = pEnvStart;
+        do
+        {
+            int l = 1 + strlen( pe );
+            startLen += l;
+            pe += l;
+        } while ( 0 != *pe );
+    
+        bytesNeeded += startLen;
+    }
+    else
+    {
+        bytesNeeded += ( strlen( pComSpec ) + strlen( pBriefFlags ) );
+    }
 
-    len++; // final 0 to signal end of null-terminated strings
-    uint16_t startLen = len;
-    len += strlen( pathToExecute );
+    // apps assume there is space at the end to write to. It should be at least 160 bytes in size
 
-    tracer.Trace( "final len: %02x, startLen: %02x\n", len, startLen );
+    bytesNeeded += 256;
 
-    uint16_t to_allocate = len + 128; // leave extra space for apps to add more to the environment
-
-    uint16_t para_remaining;
-    uint16_t segEnvironment = AllocateMemory( round_up_to( to_allocate, 16 ) / 16, para_remaining );
+    uint16_t remaining;
+    uint16_t segEnvironment = AllocateMemory( round_up_to( bytesNeeded, 16 ) / 16, remaining );
     if ( 0 == segEnvironment )
     {
-        tracer.Trace( "can't allocate %d bytes for child environment\n", to_allocate );
+        tracer.Trace( "can't allocate %d bytes for environment\n", bytesNeeded );
         return 0;
     }
 
-    char * pNewEnv = (char *) GetMem( segEnvironment, 0 );
-    memset( pNewEnv, 0, to_allocate );
-    memcpy( pNewEnv, pEnvStart, startLen );
-    strcpy( pNewEnv + startLen, pathToExecute );
-
-    tracer.Trace( "new child environment:\n" );
-    DumpBinaryData( (uint8_t *) pNewEnv, to_allocate, 0 );
-
-    return segEnvironment;
-} //AllocateChildEnvironment
-
-uint16_t AllocateEnvironment()
-{
-    char fullPath[ MAX_PATH ];
-    GetFullPathNameA( g_acApp, 256, fullPath, 0 );
-    const char * pComSpec = "COMSPEC=COMMAND.COM";
-    const char * pBriefFlags = "BFLAGS=-kzr -mDJL";
-    uint16_t bytesNeeded = 20 + strlen( fullPath ) + strlen( pComSpec ) + strlen( pBriefFlags );
-
-    uint16_t para_remaining;
-    uint16_t segEnvironment = AllocateMemory( round_up_to( bytesNeeded, 16 ) / 16, para_remaining );
-    if ( 0 == segEnvironment )
-        usage( "no RAM to allocate the default environment" );
-
     char * penvdata = (char *) GetMem( segEnvironment, 0 );
     char * penv = penvdata;
-    strcpy( penv, pComSpec ); // it needs this or it can't load itself
-    penv += 1 + strlen( penv );
 
-    if ( !stricmp( g_acApp, "B.EXE" ) )
+    if ( 0 == segStartingEnv )
     {
-        strcpy( penv, pBriefFlags ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
+        strcpy( penv, pComSpec ); // it needs this or it can't load itself
         penv += 1 + strlen( penv );
+    
+        if ( !stricmp( g_acApp, "B.EXE" ) )
+        {
+            strcpy( penv, pBriefFlags ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
+            penv += 1 + strlen( penv );
+        }
+    }
+    else
+    {
+        memcpy( penv, pEnvStart, startLen );
+        penv += startLen;
     }
 
     *penv++ = 0; // extra 0 to indicate there are no more environment variables
@@ -4061,6 +4058,7 @@ uint16_t AllocateEnvironment()
 
     strcpy( penv, fullPath );
     tracer.Trace( "wrote full path path to environment: '%s'\n", penv );
+    DumpBinaryData( (uint8_t *) penvdata, bytesNeeded, 0 );
 
     return segEnvironment;
 } //AllocateEnvironment
@@ -4231,7 +4229,12 @@ int main( int argc, char ** argv )
         }
     }
 
-    uint16_t segEnvironment = AllocateEnvironment();
+    uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp );
+    if ( 0 == segEnvironment )
+    {
+        printf( "unable to create environment for the app\n" );
+        exit( 1 );
+    }
 
     g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment );
     if ( 0 == g_currentPSP )
