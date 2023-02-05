@@ -10,7 +10,7 @@
 //    ba BASIC compiler in my ttt repo
 //    Wordstar Release 4
 //    GWBASIC.COM.
-//    QBASIC 7.1 works aside from commands that invoke other executables (e.g. the compiler)
+//    QBASIC 7.1.
 //    Apps the QBASIC compiler creates.
 //    Brief 3.1. Use b.exe's -k flag for compatible keyboard handling. (automatically set in code below)
 //    ExeHdr: Microsoft (R) EXE File Header Utility  Version 2.01
@@ -31,9 +31,8 @@
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
 //     0x00400 -- 0x007ff   bios data
 //     0x00c00 -- 0x00fff   interrupt routines (here, not in BIOS space because it fits)
-//     0x01000 -- 0x0191f   unused (2336 bytes)
-//     0x01920 -- 0x9ffff   apps are loaded here, where DOS does it
-//     0xa0000 -- 0xeffff   reserved for hardware
+//     0x01000 -- 0xaffff   apps are loaded here. On real hardware you can only go to 0x9ffff.
+//     0xb0000 -- 0xeffff   reserved for hardware (CGA in particular)
 //     0xf0000 -- 0xfbfff   system monitor (0 for now)
 //     0xfc000 -- 0xfffff   bios code and hard-coded bios data (mostly 0 for now)
 
@@ -94,10 +93,10 @@ struct AppExecute
 
     void Trace()
     {
-        tracer.Trace( "app execute block: \n" );
-        tracer.Trace( "  segEnvironment:    %04x\n", segEnvironment );
-        tracer.Trace( "  offsetCommandTail: %04x\n", offsetCommandTail );
-        tracer.Trace( "  segCommandTail:    %04x\n", segCommandTail );
+        tracer.Trace( "  app execute block: \n" );
+        tracer.Trace( "    segEnvironment:    %04x\n", segEnvironment );
+        tracer.Trace( "    offsetCommandTail: %04x\n", offsetCommandTail );
+        tracer.Trace( "    segCommandTail:    %04x\n", segCommandTail );
     }
 };
 
@@ -138,9 +137,9 @@ const uint32_t ScreenColumnsM1 = ScreenColumns - 1;               // columns min
 const uint32_t ScreenRowsM1 = ScreenRows - 1;                     // rows minus 1
 const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
 const uint32_t ScreenBufferAddress = 0xb8000;                     // location in i8086 physical RAM of CGA display. 16k, 4k per page.
-const uint32_t AppSegmentOffset = 0x1920;                         // base address for apps in the vm. 8k. DOS uses 0x1920 == 6.4k
+const uint32_t AppSegmentOffset = 0x1000;                         // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
 const uint16_t AppSegment = AppSegmentOffset / 16;                // 
-const uint16_t SegmentHardware = 0xa000;                          // where hardware starts
+const uint16_t SegmentHardware = 0xb000;                          // where hardware starts (unlike real machines, which start at 0xa000)
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
 const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
@@ -153,7 +152,8 @@ static ConsoleConfiguration g_consoleConfig;       // to get into and out of 80x
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE; // used for find first / find next
 static HANDLE g_hConsole = 0;                      // the Windows console handle
 static bool g_haltExecution = false;               // true when the app is shutting down
-static uint8_t * g_DiskTransferAddress = 0;        // where apps read/write data for i/o
+static uint16_t g_diskTransferSegment = 0;         // segment of current disk transfer area
+static uint16_t g_diskTransferOffset = 0;          // offset of current disk transfer area
 static vector<FileEntry> g_fileEntries;            // vector of currently open files
 static vector<DosAllocation> g_allocEntries;       // vector of blocks allocated to DOS apps
 static uint8_t g_videoMode = 3;                    // 2=80x25 16 grey, 3=80x25 16 colors
@@ -167,6 +167,8 @@ static bool g_injectControlC = false;              // true when ^c is hit and it
 static bool g_appTerminationReturnCode = 0;        // when int 21 function 4c is invoked to terminate an app, this is the app return code
 static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
 static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0])
+
+uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
 #pragma pack( push, 1 )
 struct DosFindFile
@@ -374,7 +376,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     size_t cEntries = g_allocEntries.size();
     assert( 0 != request_paragraphs ); // not legal to allocate 0 bytes
 
-    tracer.Trace( "request to allocate %04x paragraphs\n", request_paragraphs );
+    tracer.Trace( "  request to allocate %04x paragraphs\n", request_paragraphs );
 
     tracer.Trace( "  all allocations, count %d:\n", cEntries );
     for ( size_t i = 0; i < cEntries; i++ )
@@ -639,8 +641,8 @@ struct DOSPSP
         assert( 0x6c == offsetof( DOSPSP, secondFCB ) );
         assert( 0x80 == offsetof( DOSPSP, countCommandTail ) );
 
-        tracer.Trace( "PSP:\n" );
-        DumpBinaryData( (uint8_t *) this, sizeof DOSPSP, 0 );
+        tracer.Trace( "  PSP:\n" );
+        DumpBinaryData( (uint8_t *) this, sizeof DOSPSP, 4 );
         tracer.Trace( "  topOfMemory: %04x\n", topOfMemory );
         tracer.Trace( "  segParent: %04x\n", segParent );
         tracer.Trace( "  return address: %04x\n", int22TerminateAddress );
@@ -936,6 +938,8 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x0a, "buffered keyboard input" },
     { 0x21, 0x0b, "check standard input status" },
     { 0x21, 0x0c, "clear input buffer and execute int 0x21 on AL" },
+    { 0x21, 0x0d, "disk reset" },
+    { 0x21, 0x0e, "select disk" },
     { 0x21, 0x0f, "open using FCB" },
     { 0x21, 0x10, "close using FCB" },
     { 0x21, 0x11, "search first using FCB" },
@@ -953,6 +957,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x29, "parse filename" },
     { 0x21, 0x2a, "get system date" },
     { 0x21, 0x2c, "get system time" },
+    { 0x21, 0x2f, "get disk transfer area address" },
     { 0x21, 0x30, "get version number" },
     { 0x21, 0x33, "get/set ctrl-break status" },
     { 0x21, 0x35, "get interrupt vector" },
@@ -1372,7 +1377,13 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
     else if ( strlen( fd.cFileName ) < _countof( pff->file_name ) )
         strcpy( pff->file_name, fd.cFileName );
     else
-        GetShortPathNameA( fd.cFileName, pff->file_name, _countof( pff->file_name ) );
+    {
+        // this only works on volumes that have the feature enabled. Most don't.
+
+        DWORD result = GetShortPathNameA( fd.cFileName, pff->file_name, _countof( pff->file_name ) );
+        if ( result > _countof( pff->file_name ) )
+            strcpy( pff->file_name, "TOOLONG.ZZZ" );
+    }
 
     pff->file_size = ( fd.nFileSizeLow );
 
@@ -1397,7 +1408,7 @@ void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
 
     // now write the file into an FCB at the transfer address
 
-    DOSFCB *pfcb = (DOSFCB *) g_DiskTransferAddress;
+    DOSFCB *pfcb = (DOSFCB *) GetDiskTransferAddress();
     for ( int i = 0; i < _countof( pfcb->name ); i++ )
         pfcb->name[ i ] = ' ';
     for ( int i = 0; i < _countof( pfcb->ext ); i++ )
@@ -1461,7 +1472,7 @@ void handle_int_10( uint8_t c )
 
             PerhapsFlipTo80x25();
             uint8_t mode = cpu.al();
-            tracer.Trace( "set video mode to %#x\n", mode );
+            tracer.Trace( "  set video mode to %#x\n", mode );
 
             if ( 2 == mode || 3 == mode ) // only 80x25 is supported with buffer address 0xb8000
             {
@@ -1481,7 +1492,7 @@ void handle_int_10( uint8_t c )
             uint8_t cur_bottom = cpu.cl() & 0x1f;
             uint8_t cur_blink = ( cpu.ch() >> 5 ) & 3;
 
-            tracer.Trace( "set cursor size to top %u, bottom %u, blink %u\n", cur_top, cur_bottom, cur_blink );
+            tracer.Trace( "  set cursor size to top %u, bottom %u, blink %u\n", cur_top, cur_bottom, cur_blink );
 
             if ( 1 == cur_blink )
                 g_consoleConfig.SetCursorInfo( 0 );
@@ -1919,7 +1930,7 @@ void HandleAppExit()
         if ( -1 == index )
             break;
 
-        tracer.Trace( "freeing RAM an app leaked, segment %04x length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
+        tracer.Trace( "  freeing RAM an app leaked, segment %04x length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
         FreeMemory( g_allocEntries[ index ].segment );
     } while( true );
 } //HandleAppExit
@@ -1935,8 +1946,8 @@ void handle_int_21( uint8_t c )
         {
             // terminate program
     
-            g_haltExecution = true;
-            cpu.end_emulation();
+            HandleAppExit();
+
             return;
         }
         case 2:
@@ -2038,6 +2049,8 @@ void handle_int_21( uint8_t c )
                 p[1] = strlen( result );
             else
                 p[1] = 0;
+
+            tracer.Trace( "  returning length %d, string '%s'\n", p[1], p + 2 );
     
             return;
         }
@@ -2065,6 +2078,14 @@ void handle_int_21( uint8_t c )
             tracer.Trace( "recursing to int 0x21 with command %#x\n", cpu.ah() );
             i8086_invoke_interrupt( 0x21 );
     
+            return;
+        }
+        case 0xd:
+        {
+            // disk reset. ensures buffers are flushed to disk
+
+            fflush( 0 ); // this flushes all open streams opened for write
+
             return;
         }
         case 0xe:
@@ -2316,11 +2337,12 @@ void handle_int_21( uint8_t c )
         }
         case 0x1a:
         {
-            // set disk transfer address
+            // set disk transfer address from ds:dx
     
-            uint8_t * old = g_DiskTransferAddress;
-            g_DiskTransferAddress = (uint8_t *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  set disk transfer address updated from %p to %p (bx %u)\n", old, g_DiskTransferAddress, cpu.get_dx() );
+            tracer.Trace( "  set disk transfer address updated from %04x:%04x to %04x:%04x\n",
+                          g_diskTransferSegment, g_diskTransferOffset, cpu.get_ds(), cpu.get_dx() );
+            g_diskTransferSegment = cpu.get_ds();
+            g_diskTransferOffset = cpu.get_dx();
     
             return;
         }
@@ -2342,7 +2364,7 @@ void handle_int_21( uint8_t c )
                 int ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
                 {
-                    size_t num_written = fwrite( g_DiskTransferAddress, recsToWrite, pfcb->recSize, fp );
+                    size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
                     if ( num_written )
                     {
                          tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
@@ -2409,9 +2431,9 @@ void handle_int_21( uint8_t c )
                     if ( ok )
                     {
                         ULONG askedBytes = pfcb->recSize * cRecords;
-                        memset( g_DiskTransferAddress, 0, askedBytes );
+                        memset( GetDiskTransferAddress(), 0, askedBytes );
                         ULONG toRead = __min( pfcb->fileSize - seekOffset, askedBytes );
-                        size_t numRead = fread( g_DiskTransferAddress, toRead, 1, fp );
+                        size_t numRead = fread( GetDiskTransferAddress(), toRead, 1, fp );
                         if ( numRead )
                         {
                             if ( toRead == askedBytes )
@@ -2421,8 +2443,8 @@ void handle_int_21( uint8_t c )
     
                             cpu.set_cx( toRead / pfcb->recSize );
                             tracer.Trace( "  successfully read %u bytes, CX set to %u:\n", toRead, cpu.get_cx() );
-                            DumpBinaryData( g_DiskTransferAddress, toRead, 0 );
-                            pfcb->curRecord += cRecords;;
+                            DumpBinaryData( GetDiskTransferAddress(), toRead, 4 );
+                            pfcb->curRecord += cRecords;
                             pfcb->recNumber += cRecords;
                         }
                         else
@@ -2456,7 +2478,7 @@ void handle_int_21( uint8_t c )
                 int ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
                 {
-                    size_t num_written = fwrite( g_DiskTransferAddress, recsToWrite, pfcb->recSize, fp );
+                    size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
                     if ( num_written )
                     {
                          tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
@@ -2497,8 +2519,8 @@ void handle_int_21( uint8_t c )
     
             char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_si() );
             char * pfile_original = pfile;
-            tracer.Trace( "parse filename '%s'\n", pfile );
-            DumpBinaryData( (uint8_t *) pfile, 64, 0 );
+            tracer.Trace( "  parse filename '%s'\n", pfile );
+            DumpBinaryData( (uint8_t *) pfile, 64, 4 );
     
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_es(), cpu.get_di() );
             uint8_t input_al = cpu.al();
@@ -2513,7 +2535,7 @@ void handle_int_21( uint8_t c )
             pfcb->curBlock = 0;
             pfcb->recSize = 0;
 
-            tracer.Trace( "pfile before scan: %p\n", pfile );
+            tracer.Trace( "  pfile before scan: %p\n", pfile );
 
             if ( 0 != ( input_al & 1 ) )
             {
@@ -2526,7 +2548,7 @@ void handle_int_21( uint8_t c )
                     pfile++;
             }
 
-            tracer.Trace( "pfile after scan: %p\n", pfile );
+            tracer.Trace( "  pfile after scan: %p\n", pfile );
 
             char * pf = pfile;
     
@@ -2537,7 +2559,7 @@ void handle_int_21( uint8_t c )
             for ( int i = 0; i < _countof( pfcb->ext ) && *pf && isFilenameChar( *pf ); i++ )
                 pfcb->ext[ i ] = *pf++;
 
-            tracer.Trace( "after copying filename, on char '%c', pf %p\n", *pf, pf );
+            tracer.Trace( "  after copying filename, on char '%c', pf %p\n", *pf, pf );
     
             if ( strchr( pfile, '*' ) || strchr( pfile, '?' ) )
                 cpu.set_al( 1 );
@@ -2582,7 +2604,16 @@ void handle_int_21( uint8_t c )
             #endif
     
             return;
-        }           
+        }
+        case 0x2f:
+        {
+            // get disk transfer area address. returns es:bx
+
+            cpu.set_es( g_diskTransferSegment );
+            cpu.set_bx( g_diskTransferOffset );
+
+            return;
+        }
         case 0x30:
         {
             // get version number
@@ -2592,7 +2623,7 @@ void handle_int_21( uint8_t c )
             cpu.set_al( 3 ); // It's getting closer
             cpu.set_ah( 0 ); 
     
-            tracer.Trace( "returning DOS version %d.%d\n", cpu.al(), cpu.ah() );
+            tracer.Trace( "  returning DOS version %d.%d\n", cpu.al(), cpu.ah() );
             return;
         }
         case 0x33:
@@ -2736,7 +2767,7 @@ void handle_int_21( uint8_t c )
             // open file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            DumpBinaryData( (uint8_t *) path, 0x100, 0 );
+            DumpBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "open file '%s'\n", path );
             cpu.set_ax( 2 );
 
@@ -2764,7 +2795,7 @@ void handle_int_21( uint8_t c )
                     fe.writeable = !readOnly;
                     g_fileEntries.push_back( fe );
                     cpu.set_ax( fe.handle );
-                    cpu.set_carry( false );;
+                    cpu.set_carry( false );
                     tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.get_ax() );
                 }
                 else
@@ -2785,7 +2816,7 @@ void handle_int_21( uint8_t c )
             if ( handle <= 4 )
             {
                 tracer.Trace( "close of built-in handle ignored\n" );
-                cpu.set_carry( false );;
+                cpu.set_carry( false );
             }
             else
             {
@@ -2794,7 +2825,7 @@ void handle_int_21( uint8_t c )
                 {
                     tracer.Trace( "  close file handle %04x\n", handle );
                     fclose( fp );
-                    cpu.set_carry( false );;
+                    cpu.set_carry( false );
                 }
                 else
                 {
@@ -2876,13 +2907,13 @@ void handle_int_21( uint8_t c )
                     {
                         cpu.set_ax( toRead );
                         tracer.Trace( "  successfully read %u bytes\n", toRead );
-                        DumpBinaryData( p, toRead, 0 );
+                        DumpBinaryData( p, toRead, 4 );
                     }
                 }
                 else
                     tracer.Trace( "ERROR: attempt to read beyond the end of file\n" );
     
-                cpu.set_carry( false );;
+                cpu.set_carry( false );
             }
             else
             {
@@ -2962,7 +2993,7 @@ void handle_int_21( uint8_t c )
                             if ( 0x0d != p[ x ] && 0x0b != p[ x ] )
                             {
                                 printf( "%c", p[ x ] );
-                                tracer.Trace( "writing %02x '%c' to display\n", p[ x ], printable( p[x] ) );
+                                tracer.Trace( "  writing %02x '%c' to display\n", p[ x ], printable( p[x] ) );
                             }
                         }
                     }
@@ -2984,12 +3015,12 @@ void handle_int_21( uint8_t c )
                 {
                     cpu.set_ax( len );
                     tracer.Trace( "  successfully wrote %u bytes\n", len );
-                    DumpBinaryData( p, len, 0 );
+                    DumpBinaryData( p, len, 4 );
                 }
                 else
                     tracer.Trace( "ERROR: attempt to write to file failed, error %d = %s\n", errno, strerror( errno ) );
     
-                cpu.set_carry( false );;
+                cpu.set_carry( false );
             }
             else
             {
@@ -3040,6 +3071,13 @@ void handle_int_21( uint8_t c )
             // bx == handle, cx:dx: 32-bit offset, al=mode. 0=beginning, 1=current. 2=end
     
             uint16_t handle = cpu.get_bx();
+
+            if ( handle <= 4 ) // built-in handle
+            {
+                cpu.set_carry( false );
+                return;
+            }
+
             FILE * fp = FindFileEntry( handle );
             if ( fp )
             {
@@ -3073,7 +3111,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( cur & 0xffff );
                 cpu.set_dx( ( cur >> 16 ) & 0xffff );
     
-                cpu.set_carry( false );;
+                cpu.set_carry( false );
             }
             else
             {
@@ -3219,7 +3257,7 @@ void handle_int_21( uint8_t c )
                     fe.writeable = entry.writeable;
                     g_fileEntries.push_back( fe );
                     cpu.set_ax( fe.handle );
-                    cpu.set_carry( false );;
+                    cpu.set_carry( false );
                     tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", existing_handle, cpu.get_ax() );
                 }
                 else
@@ -3268,7 +3306,7 @@ void handle_int_21( uint8_t c )
                 if ( strlen( paststart ) <= 63 )
                 {
                     strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), paststart );
-                    cpu.set_carry( false );;
+                    cpu.set_carry( false );
                 }
             }
             else
@@ -3427,8 +3465,8 @@ void handle_int_21( uint8_t c )
                     memcpy( psp->firstFCB, pfirstFCB, 16 );
                     memcpy( psp->secondFCB, psecondFCB, 16 );
                     psp->int22TerminateAddress = ( ( (uint32_t) save_cs ) << 16 ) | (uint32_t ) save_ip;
-                    tracer.Trace( "set terminate address to %04x:%04x\n", save_cs, save_ip );
-                    tracer.Trace( "new child psp %p:\n", psp );
+                    tracer.Trace( "  set terminate address to %04x:%04x\n", save_cs, save_ip );
+                    tracer.Trace( "  new child psp %p:\n", psp );
                     psp->Trace();
                     cpu.set_carry( false );
                 }
@@ -3474,7 +3512,7 @@ void handle_int_21( uint8_t c )
             //      disk transfer address: DosFindFile
     
             cpu.set_carry( true );
-            DosFindFile * pff = (DosFindFile *) g_DiskTransferAddress;
+            DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             char * psearch_string = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "Find First Asciz for pattern '%s'\n", psearch_string );
 
@@ -3504,7 +3542,7 @@ void handle_int_21( uint8_t c )
             // find next asciz
     
             cpu.set_carry( true );
-            DosFindFile * pff = (DosFindFile *) g_DiskTransferAddress;
+            DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             tracer.Trace( "Find Next Asciz\n" );
     
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
@@ -3659,10 +3697,10 @@ void handle_int_21( uint8_t c )
 void i8086_invoke_interrupt( uint8_t interrupt_num )
 {
     unsigned char c = cpu.ah();
-    tracer.Trace( "int %02x ah %02x al %02x bx %04x cx %04x dx %04x ds %04x cs %04x ss %04x es %04x %s\n",
+    tracer.Trace( "int %02x ah %02x al %02x bx %04x cx %04x dx %04x di %04x si %04x ds %04x cs %04x ss %04x es %04x bp %04x sp %04x %s\n",
                   interrupt_num, cpu.ah(), cpu.al(),
-                  cpu.get_bx(), cpu.get_cx(), cpu.get_dx(),
-                  cpu.get_ds(), cpu.get_cs(), cpu.get_ss(), cpu.get_es(),
+                  cpu.get_bx(), cpu.get_cx(), cpu.get_dx(), cpu.get_di(), cpu.get_si(),
+                  cpu.get_ds(), cpu.get_cs(), cpu.get_ss(), cpu.get_es(), cpu.get_bp(), cpu.get_sp(),
                   get_interrupt_string( interrupt_num, c ) );
 
     if ( 0x16 != interrupt_num || 1 != c )
@@ -3728,8 +3766,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     }
     else if ( 0x20 == interrupt_num ) // compatibility with CP/M apps for COM executables that jump to address 0 in its data segment
     {
-        g_haltExecution = true;
-        cpu.end_emulation();
+        HandleAppExit();
         return;
     }
     else if ( 0x21 == interrupt_num )
@@ -3792,7 +3829,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     memset( psp, 0, sizeof DOSPSP );
 
     psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
-    psp->topOfMemory = 0x9fff;                // top of memorysegment in paragraph form
+    psp->topOfMemory = SegmentHardware - 1;   // top of memorysegment in paragraph form
     psp->comAvailable = 0xffff;               // .com programs bytes available in segment
     psp->int22TerminateAddress = firstAppTerminateAddress;
     uint8_t len = strlen( acAppArgs );
@@ -3811,6 +3848,24 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
 
     if ( isCOM )
     {
+        // look for signature indicating it's actually a .exe file named .com
+
+        FILE * fp = fopen( acApp, "rb" );
+        if ( !fp )
+            return 0;
+
+        char ac[2];
+        int ok = fread( ac, _countof( ac ), 1, fp );
+        fclose( fp );
+
+        if ( !ok )
+            return 0;
+
+        isCOM = ! ( 'M' == ac[0] && 'Z' == ac[1] );
+    }
+
+    if ( isCOM )
+    {
         // allocate 64k for the .COM file
 
         uint16_t paragraphs_remaining, paragraphs_free = 0;
@@ -3819,11 +3874,11 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         InitializePSP( ComSegment, acAppArgs, segEnvironment );
         uint32_t ComSegmentOffset = ComSegment * 16;
 
-        tracer.Trace( "loading com, ComSegment is %04x\n", ComSegment );
+        tracer.Trace( "  loading com, ComSegment is %04x\n", ComSegment );
 
         if ( 0 == ComSegment )
         {
-            tracer.Trace( "insufficient ram available RAM to load .com, in paragraphs: %04x required, %04x available\n", 0x1000, paragraphs_free );
+            tracer.Trace( "  insufficient ram available RAM to load .com, in paragraphs: %04x required, %04x available\n", 0x1000, paragraphs_free );
             return 0;
         }
 
@@ -3849,7 +3904,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         cpu.set_sp( 0xffff );
         cpu.set_ip( 0x100 );
 
-        tracer.Trace( "loaded %s, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
+        tracer.Trace( "  loaded %s, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
     }
     else // EXE
     {
@@ -3861,11 +3916,11 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         DataSegment = AllocateMemory( paragraphs_free, paragraphs_remaining );
         const uint32_t DataSegmentOffset = DataSegment * 16;
 
-        tracer.Trace( "loading exe, DataSegment is %04x\n", DataSegment );
+        tracer.Trace( "  loading exe, DataSegment is %04x\n", DataSegment );
 
         if ( 0 == DataSegment )
         {
-            tracer.Trace( "0 ram available RAM to load .exe\n" );
+            tracer.Trace( "  0 ram available RAM to load .exe\n" );
             exit( 1 );
         }
 
@@ -3875,7 +3930,8 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         FILE * fp = fopen( acApp, "rb" );
         if ( 0 == fp )
         {
-            tracer.Trace( "can't open input exe file" );
+            tracer.Trace( "  can't open input executable '%s'\n", acApp );
+            FreeMemory( DataSegment );
             return 0;
         }
     
@@ -3887,30 +3943,33 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         fclose( fp );
         if ( !ok )
         {
-            tracer.Trace( "can't read input exe file" );
+            tracer.Trace( "  can't read input exe file" );
+            FreeMemory( DataSegment );
             return 0;
         }
 
         ExeHeader & head = * (ExeHeader *) theexe.data();
         if ( 0x5a4d != head.signature )
         {
-            tracer.Trace( "exe isn't MZ" );
+            tracer.Trace( "  exe isn't MZ" );
+            FreeMemory( DataSegment );
             return 0;
         }
 
-        tracer.Trace( "loading app %s\n", acApp );
-        tracer.Trace( "looks like an MZ exe... size %u, size from blocks %u, bytes in last block %u\n",
+        tracer.Trace( "  loading app %s\n", acApp );
+        tracer.Trace( "  looks like an MZ exe... size %u, size from blocks %u, bytes in last block %u\n",
                       file_size, ( (uint32_t) head.blocks_in_file ) * 512, head.bytes_in_last_block );
-        tracer.Trace( "relocation entry count %u, header paragraphs %u (%u bytes)\n",
+        tracer.Trace( "  relocation entry count %u, header paragraphs %u (%u bytes)\n",
                       head.num_relocs, head.header_paragraphs, head.header_paragraphs * 16 );
-        tracer.Trace( "relative value of stack segment: %#x, initial sp: %#x, initial ip %#x, initial cs relative to segment: %#x\n",
+        tracer.Trace( "  relative value of stack segment: %#x, initial sp: %#x, initial ip %#x, initial cs relative to segment: %#x\n",
                       head.ss, head.sp, head.ip, head.cs );
-        tracer.Trace( "relocation table offset %u, overlay number %u\n",
+        tracer.Trace( "  relocation table offset %u, overlay number %u\n",
                       head.reloc_table_offset, head.overlay_number );
 
         if ( head.reloc_table_offset > 64 )
         {
-            tracer.Trace( "probably not a 16-bit exe" );
+            tracer.Trace( "  probably not a 16-bit exe" );
+            FreeMemory( DataSegment );
             return 0;
         }
 
@@ -3919,11 +3978,12 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         if ( 0 != head.bytes_in_last_block )
             cbUsed -= ( 512 - head.bytes_in_last_block );
         cbUsed -= codeStart; // don't include the header
-        tracer.Trace( "bytes used by load module: %u, and code starts at %u\n", cbUsed, codeStart );
+        tracer.Trace( "  bytes used by load module: %u, and code starts at %u\n", cbUsed, codeStart );
 
         if ( ( cbUsed / 16 ) > paragraphs_free )
         {
-            tracer.Trace( "insufficient ram available RAM to load .exe, in paragraphs: %04x required, %04x available\n", cbUsed / 16, paragraphs_free );
+            tracer.Trace( "  insufficient ram available RAM to load .exe, in paragraphs: %04x required, %04x available\n", cbUsed / 16, paragraphs_free );
+            FreeMemory( DataSegment );
             return 0;
         }
 
@@ -3932,8 +3992,8 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
 
         uint8_t * pcode = GetMem( CodeSegment, 0 );
         memcpy( pcode, theexe.data() + codeStart, cbUsed );
-        tracer.Trace( "start of the code:\n" );
-        DumpBinaryData( pcode, 0x200, 0 );
+        tracer.Trace( "  start of the code:\n" );
+        DumpBinaryData( pcode, 0x200, 4 );
 
         // apply relocation entries
 
@@ -3942,7 +4002,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         {
             uint32_t offset = pRelocationEntries[ r ].offset + pRelocationEntries[ r ].segment * 16;
             uint16_t * target = (uint16_t *) ( pcode + offset );
-            //tracer.TraceQuiet( "relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + CodeSegment );
+            //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + CodeSegment );
             *target += CodeSegment;
         }
 
@@ -3954,7 +4014,8 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         cpu.set_ip( head.ip );
         cpu.set_ax( 0xffff ); // no drives in use
 
-        tracer.Trace( "CS: %#x, SS: %#x, DS: %#x, SP: %#x, IP: %#x\n", cpu.get_cs(), cpu.get_ss(), cpu.get_ds(), cpu.get_sp(), cpu.get_ip() );
+        tracer.Trace( "  loaded %s CS: %04x, SS: %04x, DS: %04x, SP: %04x, IP: %04x\n", acApp,
+                      cpu.get_cs(), cpu.get_ss(), cpu.get_ds(), cpu.get_sp(), cpu.get_ip() );
     }
 
     return psp;
@@ -4057,8 +4118,8 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     penv += 2;
 
     strcpy( penv, fullPath );
-    tracer.Trace( "wrote full path path to environment: '%s'\n", penv );
-    DumpBinaryData( (uint8_t *) penvdata, bytesNeeded, 0 );
+    tracer.Trace( "  wrote full path path to environment: '%s'\n", penv );
+    DumpBinaryData( (uint8_t *) penvdata, bytesNeeded, 4 );
 
     return segEnvironment;
 } //AllocateEnvironment
@@ -4167,16 +4228,6 @@ int main( int argc, char ** argv )
         }
     }
 
-    cpu.set_cs( 0xF000 );
-    cpu.set_trap( false );
-
-    // Set DL equal to the boot device: 0 for the FD.
-    cpu.set_dl( 0 );
-
-    // Set CX:AX equal to the hard disk image size, if present
-    cpu.set_cx( 0 );
-    cpu.set_ax( 0 );
-
     // global bios memory
     uint8_t * pbiosdata = GetMem( 0x40, 0 );
     * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
@@ -4254,7 +4305,8 @@ int main( int argc, char ** argv )
     if ( force80x25 )
         PerhapsFlipTo80x25();
 
-    g_DiskTransferAddress = GetMem( cpu.get_ds(), 0x80 ); // same address as the second half of PSP -- the command tail
+    g_diskTransferSegment = cpu.get_ds();
+    g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
     g_haltExecution = false;
 
     // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
@@ -4292,21 +4344,18 @@ int main( int argc, char ** argv )
             continue;
         }
 
-        // if interrupt 0x1c (tick tock) is hooked by the app, invoke it
+        // if interrupt 0x1c (tick tock) is hooked by the app and 55 milliseconds has elapsed, invoke it
 
-        if ( InterruptRoutineSegment != ( (uint16_t *) memory )[ 4 * 0x1c + 2 ] ) // optimization since the default handler is just an iret
+        if ( ( InterruptRoutineSegment != ( (uint16_t *) memory )[ 4 * 0x1c + 2 ] ) && // optimization since the default handler is just an iret
+             ( duration.HasTimeElapsedMS( 55 ) ) )
         {
             // this won't be precise enough to provide a clock, but it's good for delay loops.
             // on my machine, this is invoked about every 72 million total_cycles.
+            // if the app is blocked on keyboard input this interrupt will be delivered late.
 
-            if ( duration.HasTimeElapsedMS( 55 ) )
-            {
-                // if the app is blocked on keyboard input this interrupt will be delivered late.
-
-                //tracer.Trace( "sending an int 1c, total_cycles %llu\n", total_cycles );
-                cpu.external_interrupt( 0x1c );
-                continue;
-            }
+            //tracer.Trace( "sending an int 1c, total_cycles %llu\n", total_cycles );
+            cpu.external_interrupt( 0x1c );
+            continue;
         }
     } while ( true );
 
