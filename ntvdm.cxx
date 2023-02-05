@@ -74,6 +74,7 @@ struct FileEntry
     FILE * fp;
     uint16_t handle; // DOS handle, not host OS
     bool writeable;
+    uint16_t seg_process; // process that opened the file
 
     void Trace()
     {
@@ -285,6 +286,16 @@ size_t FindFileEntryIndex( uint16_t handle )
     tracer.Trace( "ERROR: could not find file entry for handle %04x\n", handle );
     return -1;
 } //FindFileEntryIndex
+
+size_t FindFileEntryIndexByProcess( uint16_t seg )
+{
+    for ( size_t i = 0; i < g_fileEntries.size(); i++ )
+    {
+        if ( seg == g_fileEntries[ i ].seg_process )
+            return i;
+    }
+    return -1;
+} //FindFileEntryIndexByProcess
 
 const char * FindFileEntryPath( uint16_t handle )
 {
@@ -1351,8 +1362,10 @@ void i8086_invoke_halt()
     g_haltExecution = true;
 } // i8086_invoke_halt
 
-void FileTimeToDos( FILETIME & ft, uint16_t & dos_time, uint16_t & dos_date )
+void FileTimeToDos( FILETIME & ftSystem, uint16_t & dos_time, uint16_t & dos_date )
 {
+    FILETIME ft;
+    FileTimeToLocalFileTime( &ftSystem, &ft );
     SYSTEMTIME st = {0};
     FileTimeToSystemTime( &ft, &st );
 
@@ -1906,6 +1919,21 @@ void handle_int_16( uint8_t c )
 
 void HandleAppExit()
 {
+    // flush and close any files opened by this process
+
+    fflush( 0 ); // the app may have written to files and not flushed or closed them
+
+    do
+    {
+        size_t index = FindFileEntryIndexByProcess( g_currentPSP );
+        if ( -1 == index )
+            break;
+        tracer.Trace( "  closing file an app leaked: '%s'\n", g_fileEntries[ index ].path );
+        uint16_t handle = g_fileEntries[ index ].handle;
+        FILE * fp = RemoveFileEntry( handle );
+        fclose( fp );
+    } while ( true );
+
     g_appTerminationReturnCode = cpu.al();
     DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
     uint16_t pspToDelete = g_currentPSP;
@@ -2754,6 +2782,7 @@ void handle_int_21( uint8_t c )
                 fe.fp = fp;
                 fe.handle = FindFirstFreeFileHandle();
                 fe.writeable = true;
+                fe.seg_process = g_currentPSP;
                 g_fileEntries.push_back( fe );
                 cpu.set_ax( fe.handle );
                 cpu.set_carry( false );
@@ -2799,6 +2828,7 @@ void handle_int_21( uint8_t c )
                     fe.fp = fp;
                     fe.handle = FindFirstFreeFileHandle();
                     fe.writeable = !readOnly;
+                    fe.seg_process = g_currentPSP;
                     g_fileEntries.push_back( fe );
                     cpu.set_ax( fe.handle );
                     cpu.set_carry( false );
@@ -3261,6 +3291,7 @@ void handle_int_21( uint8_t c )
                     fe.fp = fp;
                     fe.handle = FindFirstFreeFileHandle();
                     fe.writeable = entry.writeable;
+                    fe.seg_process = g_currentPSP;
                     g_fileEntries.push_back( fe );
                     cpu.set_ax( fe.handle );
                     cpu.set_carry( false );
@@ -4059,6 +4090,30 @@ uint16_t round_up_to( uint16_t x, uint16_t multiple )
     return x + ( multiple - ( x % multiple ) );
 } //round_up_to
 
+const char * stristr( const char * str, const char * search )
+{
+    const char * p = str;
+
+    while ( *p )
+    {
+        const char * s = search;
+        const char * location = p;
+
+        while ( *p && ( toupper( *s ) == toupper( *p ) ) )
+        {
+            p++;
+            s++;
+        }
+
+        if ( 0 == *s )
+            return location;
+
+        p = location + 1;
+    }
+
+    return 0;
+} /*stristr*/
+
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute )
 {
     char fullPath[ MAX_PATH ];
@@ -4106,12 +4161,6 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     {
         strcpy( penv, pComSpec ); // it needs this or it can't load itself
         penv += 1 + strlen( penv );
-    
-        if ( !stricmp( g_acApp, "B.EXE" ) )
-        {
-            strcpy( penv, pBriefFlags ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
-            penv += 1 + strlen( penv );
-        }
     }
     else
     {
@@ -4119,12 +4168,18 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
         penv += startLen;
     }
 
+    if ( stristr( fullPath, "B.EXE" ) )
+    {
+        strcpy( penv, pBriefFlags ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
+        penv += 1 + strlen( penv );
+    }
+
     *penv++ = 0; // extra 0 to indicate there are no more environment variables
     * (uint16_t *)  ( penv ) = 0x0001; // one more additional item per DOS 3.0+
     penv += 2;
 
     strcpy( penv, fullPath );
-    tracer.Trace( "  wrote full path path to environment: '%s'\n", penv );
+    tracer.Trace( "  wrote full path to the environment: '%s'\n", penv );
     DumpBinaryData( (uint8_t *) penvdata, bytesNeeded, 4 );
 
     return segEnvironment;

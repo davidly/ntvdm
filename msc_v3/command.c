@@ -13,6 +13,7 @@
 #include <process.h>
 
 #define MAX_CMD_LEN 128
+#define MAX_ARGUMENTS 30
 #define EXTERNAL_CMD_NOT_FOUND -1111
 #define INTERNAL_CMD_NOT_FOUND -1
 #define EXIT_CMD 1
@@ -314,6 +315,8 @@ int parse_arguments( cmdline, argv ) char * cmdline; char * argv[];
             o++;
     }
 
+    argv[ count ] = 0; /* last argument must be null */
+
     /*
     printf( "there are %d elements\n", count );
     for ( o = 0; o < count; o++ )
@@ -327,7 +330,7 @@ int main( argc, argv ) int argc; char * argv[];
 {
     static char cmdline[ MAX_CMD_LEN ];
     int j, ret;
-    static char * sub_argv[ 20 ];
+    static char * sub_argv[ MAX_ARGUMENTS ];
     int  sub_argc = 0;
 
     if ( argc > 1 )
@@ -351,7 +354,7 @@ int main( argc, argv ) int argc; char * argv[];
                 sub_argc++;
             }
 
-            sub_argv[ sub_argc ] = 0;
+            sub_argv[ sub_argc ] = 0; /* last argument must be null */
 
             ret = run_internal( argv[ 2 ], sub_argc, sub_argv );
 
