@@ -47,6 +47,17 @@ is set to /s:3900000 (3.9 Mhz) the 8086 emulator runs at about the same speed as
 wide variability online regarding the performance differences between the 8088 and 8086 (5%-50%) this 
 seems close. I validated the mips.com results on an actual 8088 running at 4.77Mhz.
 
+Folders with test apps:
+
+    gwbasic -- gwbasic 3.22
+    msc_v3 -- Microsoft C Compiler Version 3.00
+    turbodos -- Turbo Pascal 1.00A
+    turbo3dos -- Turbo Pascal 3.02A
+    qbx -- Quick Basic 7.1
+    wordstar -- WordStar Professional Release 4
+
+Usage information:
+
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
                 -c     don't auto-detect apps that want 80x25 then set window to that size;
