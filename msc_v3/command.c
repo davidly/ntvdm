@@ -155,7 +155,7 @@ void dir_command( argc, argv ) int argc; char * argv[];
     }
 
     if ( 0 == g_acbuf[ 0 ] )
-        strcpy( g_acbuf, "*" );
+        strcpy( g_acbuf, "*.*" ); /* on real dos, *.* finds files * does not */
 
     inregs.h.ah = 0x4e; /* find first */
     inregs.x.dx = FP_OFF( g_acbuf );
@@ -209,15 +209,133 @@ void mem_command( argc, argv ) int argc; char * argv[];
     printf( "%ld Kb free conventional memory\n", freemem / 1024 );
 } /*mem_command*/
 
+void cd_command( argc, argv ) int argc; char * argv[];
+{
+    int ret;
+    if ( 2 != argc )
+    {
+        printf( "usage: cd <directory>\n" );
+        return;
+    }
+
+    ret = chdir( argv[ 1 ] );
+    if ( 0 != ret )
+        perror( "unable to change directory" );
+} /*cd_command*/
+
+void md_command( argc, argv ) int argc; char * argv[];
+{
+    int ret;
+    if ( 2 != argc )
+    {
+        printf( "usage: md <directory>\n" );
+        return;
+    }
+
+    ret = mkdir( argv[ 1 ] );
+    if ( 0 != ret )
+        perror( "unable to make directory" );
+} /*md_command*/
+
+void rd_command( argc, argv ) int argc; char * argv[];
+{
+    int ret;
+    if ( 2 != argc )
+    {
+        printf( "usage: rd <directory>\n" );
+        return;
+    }
+
+     ret = rmdir( argv[ 1 ] );
+    if ( 0 != ret )
+        perror( "unable to remove directory" );
+} /*rd_command*/
+
+void ren_command( argc, argv ) int argc; char * argv[];
+{
+    int ret;
+    if ( 3 != argc )
+    {
+        printf( "usage: ren <old name> <new name>\n" );
+        return;
+    }
+
+    /* the C runtime for Microsoft C V3.00 reverses the arguments to rename(). So don't use it. */
+
+#if 1
+
+    inregs.h.ah = 0x56; /* rename */
+    inregs.x.dx = FP_OFF( argv[1] );
+    inregs.x.di = FP_OFF( argv[2] );
+    segread( &sregs );
+    sregs.ds = FP_SEG( argv[1] );
+    sregs.es = FP_SEG( argv[2] );
+    intdosx( &inregs, &outregs, &sregs );
+
+    if ( 1 == outregs.x.cflag )
+        printf( "unable to rename the file, error %d\n", outregs.x.ax );
+
+#else
+
+    ret = rename( argv[ 1 ], argv[ 2 ] );
+    if ( 0 != ret )
+        perror( "unable to rename" );
+
+#endif
+
+} /*ren_command*/
+
+void set_command( argc, argv ) int argc; char * argv[];
+{
+    int i = 0;
+
+    if ( 1 == argc )
+    {
+        printf( "\n" );
+        while ( environ[ i ] )
+        {
+            printf( "%s\n", environ[ i ] );
+            i++;
+        }
+    }
+    else
+        printf( "this form of SET is not implemented\n" );
+} /*set_command*/
+
 int run_internal( cmd, argc, argv ) char * cmd; int argc; char * argv[];
 {
-    if ( !stricmp( "exit", cmd ) )
+    if ( !stricmp( "cd", cmd ) || !stricmp( "chdir", cmd ) )
     {
-        return EXIT_CMD;
+        cd_command( argc, argv );
+        return 0;
     }
     else if ( !stricmp( "dir", cmd ) )
     {
         dir_command( argc, argv );
+        return 0;
+    }
+    else if ( !stricmp( "exit", cmd ) )
+    {
+        return EXIT_CMD;
+    }
+    else if ( !stricmp( "md", cmd ) || !stricmp( "mkdir", cmd ) )
+    {
+        md_command( argc, argv );
+        return 0;
+    }
+    else if ( !stricmp( "ren", cmd ) || !stricmp( "rename", cmd ) )
+    {
+        ren_command( argc, argv );
+        return 0;
+    }
+    else if ( !stricmp( "rd", cmd ) || !stricmp( "rmdir", cmd ) )
+    {
+        rd_command( argc, argv );
+        return 0;
+    }
+    else if ( !stricmp( "set", cmd ) )
+    {
+        set_command( argc, argv );
         return 0;
     }
     else if ( !stricmp( "type", cmd ) )
@@ -236,11 +354,14 @@ int run_internal( cmd, argc, argv ) char * cmd; int argc; char * argv[];
 
 int file_exists( filename ) char * filename;
 {
-    FILE * fp = fopen( filename, "r" );
-    if ( !fp )
-        return false;
-    fclose( fp );
-    return true;
+    inregs.h.ah = 0x43; /* get/put file attributes */
+    inregs.h.al = 0; /* get */
+    inregs.x.dx = FP_OFF( filename );
+    segread( &sregs );
+    sregs.ds = FP_SEG( filename );
+    intdosx( &inregs, &outregs, &sregs );
+
+    return ( 0 == outregs.x.cflag && ( 0 == ( 0x10 & outregs.x.cx ) ) ); /* success and not a directory */
 } /*file_exists*/
 
 char * stristr( str, search ) char * str; char * search;
@@ -271,6 +392,7 @@ char * stristr( str, search ) char * str; char * search;
 
 int run_external( cmd, argc, argv ) char * cmd; int argc; char * argv[];
 {
+    int ret;
     strcpy( g_acbuffer, cmd );
     if ( !stristr( g_acbuffer, ".com" ) && !stristr( g_acbuffer, ".exe" ) )
     {
@@ -289,7 +411,10 @@ int run_external( cmd, argc, argv ) char * cmd; int argc; char * argv[];
             return EXTERNAL_CMD_NOT_FOUND;
     }
 
-    return spawnv( P_WAIT, g_acbuffer, argv );
+    ret = spawnv( P_WAIT, g_acbuffer, argv );
+    if ( -1 == ret )
+        printf( "failure to start or execute external program '%s', return code %d errno %d\n", g_acbuffer, ret, errno );
+    return ret;
 } /*run_external*/
 
 int parse_arguments( cmdline, argv ) char * cmdline; char * argv[];
@@ -370,7 +495,7 @@ int main( argc, argv ) int argc; char * argv[];
         }
     }
 
-    printf( "ntvdm v%d.%d command prompt.\n", _osmajor, _osminor );
+    printf( "ntvdm command prompt on DOS v%d.%d\n", _osmajor, _osminor );
 
     do
     {
@@ -401,5 +526,4 @@ int main( argc, argv ) int argc; char * argv[];
     printf( "exiting ntvdm command prompt\n" );
     return 0;
 } /*main*/
-
 

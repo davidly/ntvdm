@@ -3881,12 +3881,13 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
 uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment )
 {
     uint16_t psp = 0;
-    bool isCOM = !strcmp( acApp + strlen( acApp ) - 4, ".COM" );
+    bool isCOM = !stricmp( acApp + strlen( acApp ) - 4, ".COM" );
 
     if ( isCOM )
     {
-        // look for signature indicating it's actually a .exe file named .com
+        // look for signature indicating it's actually a .exe file named .com. Later versions of DOS really do this.
 
+        tracer.Trace( "checking if '%s' is actually a .exe\n", acApp );
         FILE * fp = fopen( acApp, "rb" );
         if ( !fp )
             return 0;
