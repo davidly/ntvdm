@@ -31,8 +31,8 @@
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
 //     0x00400 -- 0x007ff   bios data
 //     0x00c00 -- 0x00fff   interrupt routines (here, not in BIOS space because it fits)
-//     0x01000 -- 0xaffff   apps are loaded here. On real hardware you can only go to 0x9ffff.
-//     0xb0000 -- 0xeffff   reserved for hardware (CGA in particular)
+//     0x01000 -- 0xb7fff   apps are loaded here. On real hardware you can only go to 0x9ffff.
+//     0xb8000 -- 0xeffff   reserved for hardware (CGA in particular)
 //     0xf0000 -- 0xfbfff   system monitor (0 for now)
 //     0xfc000 -- 0xfffff   bios code and hard-coded bios data (mostly 0 for now)
 
@@ -139,7 +139,7 @@ const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attr
 const uint32_t ScreenBufferAddress = 0xb8000;                     // location in i8086 physical RAM of CGA display. 16k, 4k per page.
 const uint32_t AppSegmentOffset = 0x1000;                         // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
 const uint16_t AppSegment = AppSegmentOffset / 16;                // 
-const uint16_t SegmentHardware = 0xb000;                          // where hardware starts (unlike real machines, which start at 0xa000)
+const uint16_t SegmentHardware = 0xb800;                          // where hardware starts (unlike real machines, which start at 0xa000)
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
 const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
@@ -1398,13 +1398,19 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
 void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
 {
     tracer.Trace( "actual found filename: '%s'\n", fd.cFileName );
-    char acResult[ 13 ];
+    char acResult[ DOS_FILENAME_SIZE ];
     if ( 0 != fd.cAlternateFileName[ 0 ] )
         strcpy( acResult, fd.cAlternateFileName );
     else if ( strlen( fd.cFileName ) < _countof( acResult ) )
         strcpy( acResult, fd.cFileName );
     else
-        GetShortPathNameA( fd.cFileName, acResult, _countof( acResult ) );
+    {
+        // this only works on volumes that have the feature enabled. Most don't.
+
+        DWORD result = GetShortPathNameA( fd.cFileName, acResult, _countof( acResult ) );
+        if ( result > _countof( acResult ) )
+            strcpy( acResult, "TOOLONG.ZZZ" );
+    }
 
     // now write the file into an FCB at the transfer address
 

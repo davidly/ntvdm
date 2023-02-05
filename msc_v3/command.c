@@ -6,10 +6,18 @@
 
 #define LINT_ARGS
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 #include <ctype.h>
 #include <dos.h>
 #include <process.h>
+
+#define MAX_CMD_LEN 128
+#define EXTERNAL_CMD_NOT_FOUND -1111
+#define INTERNAL_CMD_NOT_FOUND -1
+#define EXIT_CMD 1
+#define false 0
+#define true 1
 
 union REGS inregs, outregs;
 struct SREGS sregs;
@@ -24,15 +32,18 @@ struct FINDENTRY
     char filename[ 13 ];
 };
 
-char g_acbuffer[ 100 ];
+/* shared global buffer for various commands to use */
+char g_acbuffer[ MAX_CMD_LEN ];
 char far * g_acbuf = g_acbuffer;
+
+/* the DOS DiskTransfer address. The C runtime changes this, so poll just before use */
 char far * g_transfer = 0;
 
-void get_disk_transfer_buffer()
+void update_disk_transfer_buffer()
 {
     unsigned long adr;
 
-    inregs.h.ah = 0x2f;
+    inregs.h.ah = 0x2f; /* get disk transfer address */
     segread( &sregs );
     intdosx( &inregs, &outregs, &sregs );
 
@@ -40,15 +51,12 @@ void get_disk_transfer_buffer()
     adr <<= 16;
     adr |= outregs.x.bx;
     g_transfer = (char far *) adr;
-
-    /*printf( "disk transfer address: %04x:%04x == %ld == %ld\n", sregs.es, outregs.x.bx, g_transfer, adr ); */
-} /*get_disk_transfer_buffer*/
+} /*update_disk_transfer_buffer*/
 
 void show_prompt()
 {
-    char acdir[ 128 ];
-    getcwd( acdir, sizeof acdir );
-    printf( "<%s> ", acdir );
+    getcwd( g_acbuffer, sizeof g_acbuffer );
+    printf( "<%s>", g_acbuffer );
 } /*show_prompt*/
 
 int stricmp( a, b ) char * a; char * b;
@@ -68,14 +76,6 @@ int stricmp( a, b ) char * a; char * b;
 
     return toupper( *a ) - toupper( *b );
 } /*stricmp*/
-
-void copy_until_space( to, from ) char * to; char * from;
-{
-    while ( *from && ' ' != *from )
-        *to++ = *from++;
-
-    *to = 0;
-} /*copy_until_space*/
 
 unsigned long show_find_result( wide, shown ) int wide; int shown;
 {
@@ -126,6 +126,7 @@ void dir_command( argc, argv ) int argc; char * argv[];
         return;
     }
 
+    update_disk_transfer_buffer();
     g_acbuf[ 0 ] = 0;
 
     if ( argc > 1 )
@@ -180,30 +181,114 @@ void dir_command( argc, argv ) int argc; char * argv[];
     printf( " %15ld bytes\n", size );
 } /*dir_command*/
 
+void type_command( argc, argv ) int argc; char * argv[];
+{
+    int c;
+    FILE * fp = fopen( argv[ 1 ], "r" );
+    if ( 0 != fp )
+    {
+        while ( !feof( fp ) )
+            printf( "%c", fgetc( fp ) );
+        fclose( fp );
+    }
+    else
+        printf( "unable to find file '%s'\n", argv[ 1 ] );
+} /*type_command*/
+
+void mem_command( argc, argv ) int argc; char * argv[];
+{
+    unsigned long freemem;
+
+    inregs.h.ah = 0x48; /* allocate memory */
+    inregs.x.bx = 0xffff; /* ask for an impossible amount to see how much is available */
+    intdos( &inregs, &outregs );
+
+    freemem = outregs.x.bx;
+    freemem <<= 4;
+    printf( "%ld Kb free conventional memory\n", freemem / 1024 );
+} /*mem_command*/
+
 int run_internal( cmd, argc, argv ) char * cmd; int argc; char * argv[];
 {
     if ( !stricmp( "exit", cmd ) )
     {
-        return 1;
+        return EXIT_CMD;
     }
     else if ( !stricmp( "dir", cmd ) )
     {
         dir_command( argc, argv );
         return 0;
     }
+    else if ( !stricmp( "type", cmd ) )
+    {
+        type_command( argc, argv );
+        return 0;
+    }
+    else if ( !stricmp( "mem", cmd ) )
+    {
+        mem_command( argc, argv );
+        return 0;
+    }
 
-    return -1;
+    return INTERNAL_CMD_NOT_FOUND;
 } /*run_internal*/
+
+int file_exists( filename ) char * filename;
+{
+    FILE * fp = fopen( filename, "r" );
+    if ( !fp )
+        return false;
+    fclose( fp );
+    return true;
+} /*file_exists*/
+
+char * stristr( str, search ) char * str; char * search;
+{
+    char * p = str;
+    char * s;
+    char * location;
+
+    while ( *p )
+    {
+        s = search;
+        location = p;
+
+        while ( *p && ( toupper( *s ) == toupper( *p ) ) )
+        {
+            p++;
+            s++;
+        }
+
+        if ( 0 == *s )
+            return location;
+
+        p = location + 1;
+    }
+
+    return 0;
+} /*stristr*/
 
 int run_external( cmd, argc, argv ) char * cmd; int argc; char * argv[];
 {
-    /* validate the file exists */
-    FILE * fp = fopen( cmd, "r" );
-    if ( !fp )
-        return -1111;
-    fclose( fp );
+    strcpy( g_acbuffer, cmd );
+    if ( !stristr( g_acbuffer, ".com" ) && !stristr( g_acbuffer, ".exe" ) )
+    {
+        strcat( g_acbuffer, ".com" );
+        if ( !file_exists( g_acbuffer ) )
+        {
+            strcpy( g_acbuffer, cmd );
+            strcat( g_acbuffer, ".exe" );
+            if ( !file_exists( g_acbuffer ) )
+                return EXTERNAL_CMD_NOT_FOUND;
+        }
+    }
+    else
+    {
+        if ( !file_exists( g_acbuffer ) )
+            return EXTERNAL_CMD_NOT_FOUND;
+    }
 
-    return spawnv( P_WAIT, cmd, argv );
+    return spawnv( P_WAIT, g_acbuffer, argv );
 } /*run_external*/
 
 int parse_arguments( cmdline, argv ) char * cmdline; char * argv[];
@@ -240,13 +325,10 @@ int parse_arguments( cmdline, argv ) char * cmdline; char * argv[];
 
 int main( argc, argv ) int argc; char * argv[];
 {
+    static char cmdline[ MAX_CMD_LEN ];
     int j, ret;
-    char cmdline[ 128 ];
-    char cmd[ 128 ];
-    char * sub_argv[ 20 ];
+    static char * sub_argv[ 20 ];
     int  sub_argc = 0;
-
-    get_disk_transfer_buffer();
 
     if ( argc > 1 )
     {
@@ -273,7 +355,7 @@ int main( argc, argv ) int argc; char * argv[];
 
             ret = run_internal( argv[ 2 ], sub_argc, sub_argv );
 
-            if ( -1 == ret )
+            if ( INTERNAL_CMD_NOT_FOUND == ret )
                 ret = run_external( argv[ 2 ], sub_argc, sub_argv );
 
             return ret;
@@ -285,7 +367,7 @@ int main( argc, argv ) int argc; char * argv[];
         }
     }
 
-    printf( "ntvdm command prompt\n" );
+    printf( "ntvdm v%d.%d command prompt.\n", _osmajor, _osminor );
 
     do
     {
@@ -300,13 +382,13 @@ int main( argc, argv ) int argc; char * argv[];
         {
             ret = run_internal( sub_argv[ 0 ], sub_argc, sub_argv );
     
-            if ( 1 == ret )
+            if ( EXIT_CMD == ret )
                 break;
     
-            if ( -1 == ret )
+            if ( INTERNAL_CMD_NOT_FOUND == ret )
                 ret = run_external( sub_argv[ 0 ], sub_argc, sub_argv );
 
-            if ( -1111 == ret )
+            if ( EXTERNAL_CMD_NOT_FOUND == ret )
                 printf( "'%s' not recognized as an internal or external command\n", sub_argv[ 0 ] );
         }
 
