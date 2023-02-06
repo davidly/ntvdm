@@ -768,9 +768,15 @@ void UpdateWindowsCursorPosition()
     SetConsoleCursorPosition( g_hConsole, pos );
 } //UpdateWindowsCursorPosition
 
+static uint8_t bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
+
+void ClearLastUpdateBuffer()
+{
+    memset( bufferLastUpdate, 0, sizeof bufferLastUpdate );
+} //ClearLastUpdateBuffer
+
 bool UpdateDisplay()
 {
-    static uint8_t bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
     assert( g_use80x25 );
     uint8_t * pbuf = GetVideoMem();
 
@@ -1470,7 +1476,7 @@ void scroll_up( uint8_t * pbuf, int lines, int rul, int cul, int rlr, int clr )
         if ( targetrow >= rul )
             memcpy( pbuf + ( targetrow * ScreenColumns * 2 + cul * 2 ),
                     pbuf + ( row * ScreenColumns * 2 + cul * 2 ),
-                    2 * ( clr - cul ) );
+                    2 * ( 1 + clr - cul ) );
 
         if ( row > ( rlr - lines ) )
             memcpy( pbuf + ( row * ScreenColumns * 2 + cul * 2 ),
@@ -2879,6 +2885,7 @@ void handle_int_21( uint8_t c )
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
     
             uint16_t h = cpu.get_bx();
+            uint16_t request_len = cpu.get_cx();
             if ( h <= 4 )
             {
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
@@ -2895,7 +2902,6 @@ void handle_int_21( uint8_t c )
     
                     uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
                     cpu.set_carry( false );
-                    cpu.set_ax( 1 );
     
                     while ( 0 == acBuffer[ 0 ] )
                     {
@@ -2907,15 +2913,41 @@ void handle_int_21( uint8_t c )
                             break;
                         }
                     }
-    
-                    *p = acBuffer[0];
-                    strcpy( acBuffer, acBuffer + 1 );
+
+                    uint16_t string_len = strlen( acBuffer );
+                    uint16_t min_len = __min( string_len, request_len );
+                    cpu.set_ax( min_len );
+                    uint8_t * pvideo = GetVideoMem();
+                    GetCursorPosition( row, col );
+                    tracer.Trace( "  min len: %d\n", min_len );
+                    for ( uint16_t x = 0; x < min_len; x++ )
+                    {
+                         p[x] = acBuffer[x];
+                         tracer.Trace( "  returning character %02x = '%c'\n", p[x], printable( p[x] ) );
+
+                         if ( g_use80x25 )
+                         {
+                             uint32_t offset = row * 2 * ScreenColumns + col * 2;
+                             pvideo[ offset ] = printable( p[x] );
+                             col++;
+                             SetCursorPosition( row, col );
+                         }
+                    }
+
+                    strcpy( acBuffer, acBuffer + min_len );
+                    tracer.Trace( "  returning %u characters\n", min_len );
+
+                    // gets_s writes to the display directly. redraw everything 
+
+                    if ( g_use80x25 )
+                        ClearLastUpdateBuffer();
+
                     return;
                 }
                 else
                 {
                     cpu.set_carry( true );
-                    tracer.Trace( "attempt to read from handle %04x\n", h );
+                    tracer.Trace( "  attempt to read from handle %04x\n", h );
                 }
     
                 return;
@@ -2926,7 +2958,7 @@ void handle_int_21( uint8_t c )
             {
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
-                tracer.Trace( "read from file using handle %04x bytes at address %02x:%02x\n", len, cpu.get_ds(), cpu.get_dx() );
+                tracer.Trace( "  read from file using handle %04x bytes at address %02x:%02x\n", len, cpu.get_ds(), cpu.get_dx() );
     
                 uint32_t cur = ftell( fp );
                 fseek( fp, 0, SEEK_END );
@@ -3535,7 +3567,7 @@ void handle_int_21( uint8_t c )
 
             cpu.set_al( g_appTerminationReturnCode );
             cpu.set_ah( 0 );
-            tracer.Trace( " exit code of subprogram: %d\n", g_appTerminationReturnCode );
+            tracer.Trace( "  exit code of subprogram: %d\n", g_appTerminationReturnCode );
 
             return;
         }
