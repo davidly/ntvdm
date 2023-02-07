@@ -168,6 +168,7 @@ static bool g_injectControlC = false;              // true when ^c is hit and it
 static bool g_appTerminationReturnCode = 0;        // when int 21 function 4c is invoked to terminate an app, this is the app return code
 static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
 static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0])
+static char g_lastLoadedApp[ MAX_PATH ] = {0};     // path of most recenly loaded program (though it may have terminated)
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -213,6 +214,30 @@ static void usage( char const * perr )
     printf( "      %s -t b -k myfile.asm\n", g_thisApp );
     exit( 1 );
 } //usage
+
+const char * stristr( const char * str, const char * search )
+{
+    const char * p = str;
+
+    while ( *p )
+    {
+        const char * s = search;
+        const char * location = p;
+
+        while ( *p && ( toupper( *s ) == toupper( *p ) ) )
+        {
+            p++;
+            s++;
+        }
+
+        if ( 0 == *s )
+            return location;
+
+        p = location + 1;
+    }
+
+    return 0;
+} /*stristr*/
 
 bool isFilenameChar( char c )
 {
@@ -399,7 +424,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     // sometimes allocate an extra spaceBetween paragraphs between blocks for overly optimistic resize requests.
     // I'm looking at you link.exe v5.10 from 1990. Also QBX, which runs link.exe as a child process
 
-    const uint16_t spaceBetween = ( !stricmp( g_acApp, "LINK.EXE" ) || !stricmp( g_acApp, "QBX.EXE" ) ) ? 0x40 : 0;
+    const uint16_t spaceBetween = ( !stricmp( g_acApp, "LINK.EXE" ) || stristr( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
 
     if ( 0 == cEntries )
     {
@@ -3532,6 +3557,7 @@ void handle_int_21( uint8_t c )
                 uint16_t seg_psp = LoadBinary( pathToExecute, acTail, segChildEnv );
                 if ( 0 != seg_psp )
                 {
+                    strcpy( g_lastLoadedApp, pathToExecute );
                     DOSPSP * psp = (DOSPSP *) GetMem( seg_psp, 0 );
                     psp->segParent = g_currentPSP;
                     g_currentPSP = seg_psp;
@@ -4129,30 +4155,6 @@ uint16_t round_up_to( uint16_t x, uint16_t multiple )
 
     return x + ( multiple - ( x % multiple ) );
 } //round_up_to
-
-const char * stristr( const char * str, const char * search )
-{
-    const char * p = str;
-
-    while ( *p )
-    {
-        const char * s = search;
-        const char * location = p;
-
-        while ( *p && ( toupper( *s ) == toupper( *p ) ) )
-        {
-            p++;
-            s++;
-        }
-
-        if ( 0 == *s )
-            return location;
-
-        p = location + 1;
-    }
-
-    return 0;
-} /*stristr*/
 
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute )
 {
