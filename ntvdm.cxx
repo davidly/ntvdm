@@ -78,7 +78,7 @@ struct FileEntry
 
     void Trace()
     {
-        tracer.Trace( "    handle %04x, path %s\n", handle, path );
+        tracer.Trace( "      handle %04x, path %s, owning process %04x\n", handle, path, seg_process );
     }
 };
 
@@ -316,7 +316,7 @@ void TraceOpenFiles()
 {
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
     {
-        tracer.Trace( "  file index %z\n", i );
+        tracer.Trace( "    file index %z\n", i );
         g_fileEntries[ i ].Trace();
     }
 } //TraceOpenFiles
@@ -1934,8 +1934,8 @@ void HandleAppExit()
         size_t index = FindFileEntryIndexByProcess( g_currentPSP );
         if ( -1 == index )
             break;
-        tracer.Trace( "  closing file an app leaked: '%s'\n", g_fileEntries[ index ].path );
         uint16_t handle = g_fileEntries[ index ].handle;
+        tracer.Trace( "  closing file an app leaked: '%s', handle %04x\n", g_fileEntries[ index ].path, handle );
         FILE * fp = RemoveFileEntry( handle );
         fclose( fp );
     } while ( true );
@@ -2260,6 +2260,8 @@ void handle_int_21( uint8_t c )
                 {
                     cpu.set_al( 0xff );
                     tracer.Trace( "WARNING: search next using FCB found no more, error %d\n", GetLastError() );
+                    FindClose( g_hFindFirst );
+                    g_hFindFirst = INVALID_HANDLE_VALUE;
                 }
             }
     
@@ -3215,6 +3217,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
+                tracer.Trace( "  put file attributes on '%s' to %04x\n", pfile, cpu.get_cx() );
                 BOOL ok = SetFileAttributesA( pfile, cpu.get_cx() );
                 cpu.set_carry( !ok );
             }
@@ -3518,6 +3521,7 @@ void handle_int_21( uint8_t c )
             pfirstFCB->TraceFirst16();
             psecondFCB->TraceFirst16();
 
+            tracer.Trace( "  list of open files\n" );
             TraceOpenFiles();
             char acTail[ 128 ] = {0};
             memcpy( acTail, commandTail + 1, *commandTail );
@@ -3608,7 +3612,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x4f:
         {
-            // find next asciz
+            // find next asciz. ds:dx should be unchanged from find first, but they are not used below.
     
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
@@ -3625,13 +3629,16 @@ void handle_int_21( uint8_t c )
                 }
                 else
                 {
-                    cpu.set_ax( 12 ); // no more files
+                    memset( pff, 0, sizeof DosFindFile );
+                    cpu.set_ax( 0x12 ); // no more files
                     tracer.Trace( "WARNING: find next file found no more, error %d\n", GetLastError() );
+                    FindClose( g_hFindFirst );
+                    g_hFindFirst = INVALID_HANDLE_VALUE;
                 }
             }
             else
             {
-                cpu.set_ax( 12 ); // no more files
+                cpu.set_ax( 0x12 ); // no more files
                 tracer.Trace( "ERROR: search for next without a prior successful search for first\n" );
             }
     
