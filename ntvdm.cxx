@@ -2841,6 +2841,7 @@ void handle_int_21( uint8_t c )
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             DumpBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "open file '%s'\n", path );
+            uint8_t openmode = cpu.al();
             cpu.set_ax( 2 );
 
             size_t index = FindFileEntryFromPath( path );
@@ -2856,7 +2857,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                bool readOnly = ( 0 == cpu.al() );
+                bool readOnly = ( 0 == openmode );
                 FILE * fp = fopen( path, readOnly ? "rb" : "r+b" );
                 if ( fp )
                 {
