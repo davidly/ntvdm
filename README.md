@@ -47,6 +47,9 @@ is set to /s:3900000 (3.9 Mhz) the 8086 emulator runs at about the same speed as
 wide variability online regarding the performance differences between the 8088 and 8086 (5%-50%) this 
 seems close. I validated the mips.com results on an actual 8088 running at 4.77Mhz.
 
+The msc_v3 folder contains command.c, a greatly simplified replacement for command.com that can be built
+with that compiler. It's handy for when apps like WordStar and QBX shell out to command.com.
+
 Folders with test apps:
 
     gwbasic -- gwbasic 3.22
