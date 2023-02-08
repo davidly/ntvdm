@@ -121,11 +121,12 @@ void print_dir( name ) char far * name;
         printf( " " );
 } /*print_dir*/
 
-unsigned long show_find_result( wide, shown ) int wide; int shown;
+unsigned long show_dir_result( wide, shown ) int wide; int shown;
 {
     char far * pfile;
     int day, month, year, minute, hour;
     struct FINDENTRY far * fe = (struct FINDENTRY far *) g_transfer;
+    char attrib[7]; /* read only, hidden, system, volume, subdirectory, archive */
 
     if ( wide )
     {
@@ -148,13 +149,27 @@ unsigned long show_find_result( wide, shown ) int wide; int shown;
         minute = ( fe->filetime >> 5 ) & 0x3f;
         hour = ( fe->filetime >> 11 ) & 0x1f;
 
+        strcpy( attrib, "      " );
+        if ( fe->attr & 1 )
+            attrib[ 0 ] = 'r';
+        if ( fe->attr & 2 )
+            attrib[ 1 ] = 'h';
+        if ( fe->attr & 4 )
+            attrib[ 2 ] = 's';
+        if ( fe->attr & 8 )
+            attrib[ 3 ] = 'v';
+        if ( fe->attr & 16 )
+            attrib[ 4 ] = 'd';
+        if ( fe->attr & 32 )
+            attrib[ 5 ] = 'a';
+
         if ( fe->attr & 0x10 )
         {
             print_dir( fe->filename );
-            printf( "     <dir>  %02d-%02d-%04d %02d:%02d\n", month, day, year, hour, minute );
+            printf( "     <dir>  %02d-%02d-%04d %02d:%02d  %s\n", month, day, year, hour, minute, attrib );
         }
         else
-            printf( "  %-14s  %10ld  %02d-%02d-%04d %02d:%02d\n", fe->filename, fe->filesize, month, day, year, hour, minute );
+            printf( "  %-14s  %10ld  %02d-%02d-%04d %02d:%02d  %s\n", fe->filename, fe->filesize, month, day, year, hour, minute, attrib );
     }
 
     fflush( stdout ); /* this ancient C runtime requires this or output is batched */
@@ -163,7 +178,7 @@ unsigned long show_find_result( wide, shown ) int wide; int shown;
         return 0;
 
     return fe->filesize;
-} /*show_find_result*/
+} /*show_dir_result*/
 
 void invoke_find_next()
 {
@@ -214,7 +229,14 @@ void dir_command( argc, argv ) int argc; char * argv[];
                 }
             }
             else if ( 0 == g_acbuffer[ 0 ] )
+            {
                 strcpy( g_acbuffer, argv[ i ] );
+
+                if ( !strcmp( g_acbuffer, "\\" ) )
+                    strcat( g_acbuffer, "*.*" );
+                else if ( directory_exists( g_acbuffer ) )
+                    strcat( g_acbuffer, "\\*.*" );
+            }
             else
             {
                 printf( "invalid argument: '%s'\n", argv[i] );
@@ -231,7 +253,7 @@ void dir_command( argc, argv ) int argc; char * argv[];
     while ( 0 == g_regs_out.x.cflag )
     {
         assert( g_pbuf == g_acbuffer );
-        size += show_find_result( wide, shown );
+        size += show_dir_result( wide, shown );
         shown++;
 
         invoke_find_next();
@@ -344,9 +366,28 @@ void ren_command( argc, argv ) int argc; char * argv[];
 
 } /*ren_command*/
 
+char * strupr_env_name( envval ) char * envval;
+{
+    /* dos apps often expect that environment value names are in upper case (they fail to find values otherwise) */
+
+    char * p = envval;
+    char * equal = strchr( envval, '=' );
+    if ( equal )
+    {
+        while ( p < equal )
+        {
+            *p = toupper( *p );
+            p++;
+        }
+    }
+
+    return envval;
+} /*strupr_env_name*/
+
 void set_command( argc, argv ) int argc; char * argv[];
 {
     int i = 0;
+    int ret;
 
     if ( 1 == argc )
     {
@@ -356,6 +397,17 @@ void set_command( argc, argv ) int argc; char * argv[];
             printf( "%s\n", environ[ i ] );
             i++;
         }
+    }
+    else if ( 2 == argc ) /* set foo=bar */
+    {
+        if ( strchr( argv[ 1 ], '=' ) )
+        {
+            ret = putenv( strupr_env_name( strdup( argv[ 1 ] ) ) );
+            if ( 0 != ret )
+                perror( "unable to set an environment variable" );
+        }
+        else
+            printf( "no equal sign found in SET statement\n" );
     }
     else
         printf( "this form of SET is not implemented\n" );
@@ -532,17 +584,98 @@ int run_internal( cmd, argc, argv ) char * cmd; int argc; char * argv[];
     return INTERNAL_CMD_NOT_FOUND;
 } /*run_internal*/
 
-int file_exists( filename ) char * filename;
+int file_or_directory_exists( name, isfile ) char * name; int isfile;
 {
     g_regs_in.h.ah = 0x43; /* get/put file attributes */
     g_regs_in.h.al = 0; /* get */
-    g_regs_in.x.dx = FP_OFF( filename );
+    g_regs_in.x.dx = FP_OFF( name );
     segread( &g_segregs );
-    g_segregs.ds = FP_SEG( filename );
+    g_segregs.ds = FP_SEG( name );
     intdosx( &g_regs_in, &g_regs_out, &g_segregs );
 
-    return ( 0 == g_regs_out.x.cflag && ( 0 == ( 0x10 & g_regs_out.x.cx ) ) ); /* success and not a directory */
+    if ( 0 == g_regs_out.x.cflag )
+    {
+        if ( isfile )
+            return ( 0 == ( 0x10 & g_regs_out.x.cx ) );
+
+        return ( 0 != ( 0x10 & g_regs_out.x.cx ) );
+    }
+
+    return false;
+} /*file_or_directory_exists*/
+
+int file_exists( name ) char * name;
+{
+    file_or_directory_exists( name, true );
 } /*file_exists*/
+
+int directory_exists( name ) char * name;
+{
+    file_or_directory_exists( name, false );
+} /*directory_exists*/
+
+void ensure_ends_in_backslash( path ) char * path;
+{
+    int len = strlen( path );
+    if ( len > 0 && '\\' != path[ len - 1 ] )
+    {
+        path[ len ] = '\\';
+        path[ len + 1 ] = 0;
+    }
+} /*ensure_ends_in_backslash*/
+
+int file_exists_in_path( filename, fullpath ) char * filename; char * fullpath;
+{
+    char * path;
+    char * semi;
+    int len;
+
+    if ( file_exists( filename ) )
+    {
+        strcpy( fullpath, filename );
+        return true;
+    }
+
+    if ( strchr( filename, '\\' ) ) /* path already specified */
+        return false;
+
+    path = getenv( "PATH" );
+    if ( !path )                    /* path environment variable exists? */
+        return false;
+
+    /* path points to the value after the equals sign */
+
+    while ( *path )
+    {
+        semi = strchr( path, ';' );
+        if ( semi == path )
+        {
+            path++;
+            continue;
+        }
+
+        if ( semi )
+        {
+            len = ( semi - path );
+            memcpy( fullpath, path, len );
+            fullpath[ len ] = 0;
+            path = semi + 1;
+        }
+        else
+        {
+            strcpy( fullpath, path );
+            path += strlen( path );
+        }
+
+        ensure_ends_in_backslash( fullpath );
+        strcat( fullpath, filename );
+
+        if ( file_exists( fullpath ) )
+            return true;
+    }
+
+    return false;
+} /*file_exists_in_path*/
 
 char * stristr( str, search ) char * str; char * search;
 {
@@ -596,6 +729,24 @@ int starts_with( str, start ) char * str; char * start;
 
     return true;
 } /*starts_with*/
+
+void get_cursor_position( row, col ) unsigned char * row; unsigned char * col;
+{
+    g_regs_in.h.ah = 0x03; /* read cursor position */
+    g_regs_in.h.bh = 0; /* first video page */
+    int86( 0x10, &g_regs_in, &g_regs_out );
+    *row = g_regs_out.h.dh;
+    *col = g_regs_out.h.dl;
+} /*get_cursor_position*/
+
+void set_cursor_position( row, col ) unsigned char row; unsigned char col;
+{
+    g_regs_in.h.ah = 0x02; /* set cursor position */
+    g_regs_in.h.bh = 0; /* first video page */
+    g_regs_in.h.dh = row;
+    g_regs_in.h.dl = col;
+    int86( 0x10, &g_regs_in, &g_regs_out );
+} /*set_cursor_position*/
 
 int run_batch( cmd, argc, argv ) char * cmd; int argc; char * argv[];
 {
@@ -705,40 +856,46 @@ next_line:
 
 int run_external( cmd, argc, argv ) char * cmd; int argc; char * argv[];
 {
-    int ret = 0;
+    int ret = 0, spawn_errno;
+    unsigned char cursor_row, cursor_column;
+    char fullpath[ MAX_CMD_LEN ];
     strcpy( g_acbuffer, cmd );
 
     if ( ! ( ends_with( g_acbuffer, ".com" ) || ends_with( g_acbuffer, ".exe" ) || ends_with( g_acbuffer, ".bat" ) ) )
     {
         strcat( g_acbuffer, ".com" );
-        if ( !file_exists( g_acbuffer ) )
+        if ( !file_exists_in_path( g_acbuffer, fullpath ) )
         {
             strcpy( g_acbuffer, cmd );
             strcat( g_acbuffer, ".exe" );
-            if ( !file_exists( g_acbuffer ) )
+            if ( !file_exists_in_path( g_acbuffer, fullpath ) )
             {
                 strcpy( g_acbuffer, cmd );
                 strcat( g_acbuffer, ".bat" );
-                if ( !file_exists( g_acbuffer ) )
+                if ( !file_exists_in_path( g_acbuffer, fullpath ) )
                     return EXTERNAL_CMD_NOT_FOUND;
             }
         }
     }
     else
     {
-        if ( !file_exists( g_acbuffer ) )
+        if ( !file_exists_in_path( g_acbuffer, fullpath ) )
             return EXTERNAL_CMD_NOT_FOUND;
     }
 
-    if ( stristr( g_acbuffer, ".bat" ) )
-        ret = run_batch( g_acbuffer, argc, argv );
+    if ( stristr( fullpath, ".bat" ) )
+        ret = run_batch( fullpath, argc, argv );
     else
     {
         printf( "\n" );
         fflush( stdout ); /* this ancient C runtime requires this or output is batched */
-        ret = spawnv( P_WAIT, g_acbuffer, argv );
+
+        get_cursor_position( &cursor_row, &cursor_column );
+        ret = spawnv( P_WAIT, fullpath, argv );
+        spawn_errno = errno;
+        set_cursor_position( cursor_row, cursor_column );
         if ( -1 == ret )
-            printf( "failure to start or execute external program '%s', return code %d errno %d\n", g_acbuffer, ret, errno );
+            printf( "failure to start or execute external program '%s', return code %d errno %d\n", fullpath, ret, spawn_errno );
     }
     return ret;
 } /*run_external*/
