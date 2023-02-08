@@ -87,9 +87,7 @@ class ConsoleConfiguration
             // don't automatically have ^c terminate the app. ^break will still terminate the app
             SetConsoleCtrlHandler( handler, TRUE );
 
-            printf( "\x1b[2J" ); // clear the screen
-            printf( "\x1b[1G" ); // cursor to top line
-            printf( "\x1b[1d" ); // cursor to left side
+            SendClsSequence();
         } //EstablishConsole
         
         void RestoreConsole( bool clearScreen = true )
@@ -97,7 +95,7 @@ class ConsoleConfiguration
             if ( 0 != consoleOutputHandle )
             {
                 if ( clearScreen )
-                    printf( "\x1b[2J" ); // clear the screen
+                    SendClsSequence();
                 SetConsoleScreenBufferInfoEx( consoleOutputHandle, & oldScreenInfo );
                 SetWindowPlacement( GetConsoleWindow(), & oldWindowPlacement );
                 SetConsoleMode( consoleOutputHandle, oldConsoleMode );
@@ -105,5 +103,29 @@ class ConsoleConfiguration
                 consoleOutputHandle = 0;
             }
         } //RestoreConsole
+
+        void SendClsSequence()
+        {
+            printf( "\x1b[2J" ); // clear the screen
+            printf( "\x1b[1G" ); // cursor to top line
+            printf( "\x1b[1d" ); // cursor to left side
+        }
+
+        void ClearScreen()
+        {
+            if ( 0 != consoleOutputHandle )
+                SendClsSequence();
+            else
+            {
+                HANDLE hcon = GetStdHandle( STD_OUTPUT_HANDLE );
+                DWORD dwMode = 0;
+                GetConsoleMode( hcon, &dwMode );
+                DWORD oldMode = dwMode;
+                dwMode |= ( ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_WINDOW_INPUT );
+                SetConsoleMode( hcon, dwMode );
+                SendClsSequence();
+                SetConsoleMode( hcon, dwMode );
+            }
+        }
 }; //ConsoleConfiguration
 

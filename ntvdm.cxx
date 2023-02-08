@@ -1603,12 +1603,12 @@ void handle_int_10( uint8_t c )
             // dl: column number of lower right corner
             // lines are inserted at the bottom with all lines moving up.
 
+            int lines = (int) (uint8_t) cpu.al();
             if ( g_use80x25 )
             {
                 init_blankline( (uint8_t) cpu.bh() );
 
                 //printf( "%c[%dS", 27, cpu.al() );
-                int lines = (int) (uint8_t) cpu.al();
                 int rul = (int) (uint8_t) cpu.ch();
                 int cul = (int) (uint8_t) cpu.cl();
                 int rlr = (int) (uint8_t) cpu.dh();
@@ -1642,6 +1642,8 @@ void handle_int_10( uint8_t c )
 
                 UpdateDisplay();
             }
+            else if ( 0 == lines )
+                g_consoleConfig.ClearScreen(); // works even when not initialized
 
             return;
         }
@@ -1655,12 +1657,12 @@ void handle_int_10( uint8_t c )
             // dl: column number of lower right corner
             // lines are inserted at the top with all lines moving down.
 
+            int lines = (int) (uint8_t) cpu.al();
             if ( g_use80x25 )
             {
                 init_blankline( (uint8_t) cpu.bh() );
 
                 //printf( "%c[%dT", 27, cpu.al() );
-                int lines = (int) (uint8_t) cpu.al();
                 int rul = (int) (uint8_t) cpu.ch();
                 int cul = (int) (uint8_t) cpu.cl();
                 int rlr = (int) (uint8_t) cpu.dh();
@@ -1705,6 +1707,8 @@ void handle_int_10( uint8_t c )
 
                 UpdateDisplay();
             }
+            else if ( 0 == lines )
+                g_consoleConfig.ClearScreen(); // works even when not initialized
 
             return;
         }

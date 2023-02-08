@@ -394,7 +394,8 @@ void set_command( argc, argv ) int argc; char * argv[];
         printf( "\n" );
         while ( environ[ i ] )
         {
-            printf( "%s\n", environ[ i ] );
+            printf( "%s", environ[ i ] );
+            printf( "\n" );
             i++;
         }
     }
@@ -492,6 +493,42 @@ void ver_command( argc, argv ) int argc; char * argv[];
     fflush( stdout ); /* the c runtime batches output */
 } /*ver_command*/
 
+void get_cursor_position( row, col ) unsigned char * row; unsigned char * col;
+{
+    g_regs_in.h.ah = 0x03; /* read cursor position */
+    g_regs_in.h.bh = 0; /* first video page */
+    int86( 0x10, &g_regs_in, &g_regs_out );
+    *row = g_regs_out.h.dh;
+    *col = g_regs_out.h.dl;
+} /*get_cursor_position*/
+
+void set_cursor_position( row, col ) unsigned char row; unsigned char col;
+{
+    g_regs_in.h.ah = 0x02; /* set cursor position */
+    g_regs_in.h.bh = 0; /* first video page */
+    g_regs_in.h.dh = row;
+    g_regs_in.h.dl = col;
+    int86( 0x10, &g_regs_in, &g_regs_out );
+} /*set_cursor_position*/
+
+void clear_screen()
+{
+    g_regs_in.h.ah = 6; /* scroll up */
+    g_regs_in.h.al = 0;
+    g_regs_in.h.ch = 0;
+    g_regs_in.h.cl = 0;
+    g_regs_in.h.dh = 24;
+    g_regs_in.h.dl = 79;
+    g_regs_in.h.bh = 7; /* light grey text */
+    int86( 0x10, &g_regs_in, &g_regs_out );
+} /*clear_screen*/
+
+void cls_command( argc, argv ) int argc; char * argv[];
+{
+    clear_screen();
+    set_cursor_position( 0, 0 );
+} /*cls_command*/
+
 void help_command( argc, argv ) int argc; char * argv[];
 {
     printf( "ntvdm commands are a tiny subset of command.com\n" );
@@ -505,6 +542,11 @@ int run_internal( cmd, argc, argv ) char * cmd; int argc; char * argv[];
     if ( !stricmp( "cd", cmd ) || !stricmp( "chdir", cmd ) )
     {
         cd_command( argc, argv );
+        return 0;
+    }
+    else if ( !stricmp( "cls", cmd ) )
+    {
+        cls_command( argc, argv );
         return 0;
     }
     else if ( !stricmp( "copy", cmd ) )
@@ -729,24 +771,6 @@ int starts_with( str, start ) char * str; char * start;
 
     return true;
 } /*starts_with*/
-
-void get_cursor_position( row, col ) unsigned char * row; unsigned char * col;
-{
-    g_regs_in.h.ah = 0x03; /* read cursor position */
-    g_regs_in.h.bh = 0; /* first video page */
-    int86( 0x10, &g_regs_in, &g_regs_out );
-    *row = g_regs_out.h.dh;
-    *col = g_regs_out.h.dl;
-} /*get_cursor_position*/
-
-void set_cursor_position( row, col ) unsigned char row; unsigned char col;
-{
-    g_regs_in.h.ah = 0x02; /* set cursor position */
-    g_regs_in.h.bh = 0; /* first video page */
-    g_regs_in.h.dh = row;
-    g_regs_in.h.dl = col;
-    int86( 0x10, &g_regs_in, &g_regs_out );
-} /*set_cursor_position*/
 
 int run_batch( cmd, argc, argv ) char * cmd; int argc; char * argv[];
 {
