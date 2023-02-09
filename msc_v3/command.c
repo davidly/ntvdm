@@ -19,7 +19,7 @@
 #include <assert.h>
 
 #define MAX_CMD_LEN 128
-#define MAX_ARGUMENTS 30
+#define MAX_ARGUMENTS 32
 #define EXTERNAL_CMD_NOT_FOUND -1111
 #define INTERNAL_CMD_NOT_FOUND -1
 #define EXIT_CMD 1111
@@ -110,15 +110,14 @@ int stricmp( a, b ) char * a; char * b;
     return toupper( *a ) - toupper( *b );
 } /*stricmp*/
 
-void print_dir( name ) char far * name;
+void print_dir( name ) char * name;
 {
     int i;
     int len = strlen( name );
 
-    printf( "  [%s]  ", name );
-
+    printf( " [%s] ", name );
     for ( i = 0; i < 12-len; i++ )
-        printf( " " );
+        putchar( ' ' );
 } /*print_dir*/
 
 unsigned long show_dir_result( wide, shown ) int wide; int shown;
@@ -130,18 +129,18 @@ unsigned long show_dir_result( wide, shown ) int wide; int shown;
 
     if ( wide )
     {
-        if ( ! ( shown % 4 ) )
-            printf( "\n" );
+        if ( ! ( shown % 5 ) )
+            putchar( '\n' );
 
         if ( fe->attr & 0x10 )
             print_dir( fe->filename );
         else
-            printf( "  %-14s  ", fe->filename );
+            printf( " %-14s ", fe->filename );
     }
     else
     {
         if ( 0 == shown )
-            printf( "\n" );
+            putchar( '\n' );
 
         day = fe->filedate & 0x1f;
         month = ( fe->filedate >> 5 ) & 0xf;
@@ -169,7 +168,7 @@ unsigned long show_dir_result( wide, shown ) int wide; int shown;
             printf( "     <dir>  %02d-%02d-%04d %02d:%02d  %s\n", month, day, year, hour, minute, attrib );
         }
         else
-            printf( "  %-14s  %10ld  %02d-%02d-%04d %02d:%02d  %s\n", fe->filename, fe->filesize, month, day, year, hour, minute, attrib );
+            printf( " %-14s %10ld  %02d-%02d-%04d %02d:%02d  %s\n", fe->filename, fe->filesize, month, day, year, hour, minute, attrib );
     }
 
     fflush( stdout ); /* this ancient C runtime requires this or output is batched */
@@ -224,7 +223,7 @@ void dir_command( argc, argv ) int argc; char * argv[];
                     wide = 1;
                 else
                 {
-                    printf( "invalid flag\n" );
+                    puts( "invalid flag" );
                     return;
                 }
             }
@@ -270,7 +269,7 @@ void type_command( argc, argv ) int argc; char * argv[];
     if ( 0 != fp )
     {
         while ( !feof( fp ) )
-            printf( "%c", fgetc( fp ) );
+            putchar( fgetc( fp ) );
         fclose( fp );
     }
     else
@@ -295,7 +294,7 @@ void cd_command( argc, argv ) int argc; char * argv[];
     int ret;
     if ( 2 != argc )
     {
-        printf( "usage: cd <directory>\n" );
+        puts( "usage: cd <directory>" );
         return;
     }
 
@@ -309,7 +308,7 @@ void md_command( argc, argv ) int argc; char * argv[];
     int ret;
     if ( 2 != argc )
     {
-        printf( "usage: md <directory>\n" );
+        puts( "usage: md <directory>" );
         return;
     }
 
@@ -323,7 +322,7 @@ void rd_command( argc, argv ) int argc; char * argv[];
     int ret;
     if ( 2 != argc )
     {
-        printf( "usage: rd <directory>\n" );
+        puts( "usage: rd <directory>" );
         return;
     }
 
@@ -337,7 +336,7 @@ void ren_command( argc, argv ) int argc; char * argv[];
     int ret;
     if ( 3 != argc )
     {
-        printf( "usage: ren <old name> <new name>\n" );
+        puts( "usage: ren <old name> <new name>" );
         return;
     }
 
@@ -391,11 +390,11 @@ void set_command( argc, argv ) int argc; char * argv[];
 
     if ( 1 == argc )
     {
-        printf( "\n" );
+        putchar( '\n' );
         while ( environ[ i ] )
         {
             printf( "%s", environ[ i ] );
-            printf( "\n" );
+            putchar( '\n' );
             i++;
         }
     }
@@ -408,10 +407,10 @@ void set_command( argc, argv ) int argc; char * argv[];
                 perror( "unable to set an environment variable" );
         }
         else
-            printf( "no equal sign found in SET statement\n" );
+            puts( "no equal sign found in SET statement" );
     }
     else
-        printf( "this form of SET is not implemented\n" );
+        puts( "this form of SET is not implemented" );
 } /*set_command*/
 
 void del_command( argc, argv ) int argc; char * argv[];
@@ -425,7 +424,7 @@ void del_command( argc, argv ) int argc; char * argv[];
             perror( "unable to delete file" );
     }
     else
-        printf( "del expects 1 argument\n" );
+        puts( "del expects 1 argument" );
 } /*del_command*/
 
 void copy_command( argc, argv ) int argc; char * argv[];
@@ -436,19 +435,19 @@ void copy_command( argc, argv ) int argc; char * argv[];
     if ( 3 == argc )
     {
         if ( strchr( argv[1], '?' ) || strchr( argv[1], '*' ) || strchr( argv[2], '?' ) || strchr( argv[2], '*' ) )
-            printf( "wildcard copies are not implemented\n" );
+            puts( "wildcard copies are not implemented" );
         else
         {
             /* use open() and related functions instead of fopen() just to test a different codepath */
 
             inf = open( argv[1], O_BINARY );
             if ( -1 == inf )
-                printf( "unable to open source file\n" );
+                puts( "unable to open source file" );
             else
             {
                 outf = open( argv[2], O_BINARY | O_CREAT | O_RDWR, S_IREAD | S_IWRITE );
                 if ( -1 == outf )
-                    printf( "unable to open destination file\n" );
+                    puts( "unable to open destination file" );
                 else
                 {
                     while ( 0 == eof( inf ) )
@@ -468,7 +467,7 @@ void copy_command( argc, argv ) int argc; char * argv[];
             close( outf );
     }
     else
-        printf( "copy expects 2 arguments\n" );
+        puts( "copy expects 2 arguments" );
 } /*copy_command*/
 
 void time_command( argc, argv ) int argc; char * argv[];
@@ -514,7 +513,7 @@ void set_cursor_position( row, col ) unsigned char row; unsigned char col;
 void clear_screen()
 {
     g_regs_in.h.ah = 6; /* scroll up */
-    g_regs_in.h.al = 0;
+    g_regs_in.h.al = 0; /* 0 lines implies cls */
     g_regs_in.h.ch = 0;
     g_regs_in.h.cl = 0;
     g_regs_in.h.dh = 24;
@@ -531,10 +530,10 @@ void cls_command( argc, argv ) int argc; char * argv[];
 
 void help_command( argc, argv ) int argc; char * argv[];
 {
-    printf( "ntvdm commands are a tiny subset of command.com\n" );
-    printf( "    cd/chdir,    copy,    date,      del/erase,   dir\n" );
-    printf( "    exit,        help,    md/mkdir,  rd/rmdir,    rem\n" );
-    printf( "    ren/rename,  set,     time,      type,        mem\n" );
+    puts( "ntvdm commands are a tiny subset of command.com" );
+    puts( "    cd/chdir, cls,  copy,     date,     del/erase, dir" );
+    puts( "    exit,     help, md/mkdir, rd/rmdir, rem        ren/rename" );
+    puts( "    set,      time, type,     mem" );
 } /*help_command*/
 
 int run_internal( cmd, argc, argv ) char * cmd; int argc; char * argv[];
@@ -866,14 +865,14 @@ next_line:
             else
             {
                 fclose( fp );
-                printf( "out of memory processing batch file\n" );
+                puts( "out of memory processing batch file" );
             }
         }
         else
             printf( "can't open batch file '%s'\n", cmd );
     }
     else
-        printf( "batch file arguments not supported\n" );
+        puts( "batch file arguments not supported" );
 
     return 0;
 } /*run_batch*/
@@ -907,19 +906,25 @@ int run_external( cmd, argc, argv ) char * cmd; int argc; char * argv[];
             return EXTERNAL_CMD_NOT_FOUND;
     }
 
-    if ( stristr( fullpath, ".bat" ) )
+    if ( ends_with( fullpath, ".bat" ) )
         ret = run_batch( fullpath, argc, argv );
     else
     {
-        printf( "\n" );
+        putchar( '\n' );
         fflush( stdout ); /* this ancient C runtime requires this or output is batched */
 
-        get_cursor_position( &cursor_row, &cursor_column );
         ret = spawnv( P_WAIT, fullpath, argv );
         spawn_errno = errno;
+
+        /* the app may have used a different display page. The cursor position in the bios on exit is correct,
+           but the actual cursor may not be there -- so move it to where it should be. if the app used the
+           same display page, this will have no impact */
+
+        get_cursor_position( &cursor_row, &cursor_column );
         set_cursor_position( cursor_row, cursor_column );
-        if ( -1 == ret )
-            printf( "failure to start or execute external program '%s', return code %d errno %d\n", fullpath, ret, spawn_errno );
+
+        if ( 0 != ret )
+            printf( "return code from app: %d\n", ret );
     }
     return ret;
 } /*run_external*/
@@ -1000,7 +1005,7 @@ int main( argc, argv ) int argc; char * argv[];
 
             if ( argc < 3 )
             {
-                printf( "no command following /C\n" );
+                puts( "no command following /C" );
                 return -1;
             }
 
@@ -1027,7 +1032,7 @@ int main( argc, argv ) int argc; char * argv[];
         }
         else
         {
-            printf( "unrecognized command-line argument\n" );
+            puts( "unrecognized command-line argument" );
             return -1;
         }
     }
@@ -1042,10 +1047,10 @@ int main( argc, argv ) int argc; char * argv[];
         if ( EXIT_CMD == ret )
             break;
 
-        printf( "\n" );
+        putchar( '\n' );
     } while ( 1 );
 
-    printf( "\nexiting ntvdm command prompt\n" );
+    puts( "\nexiting ntvdm command prompt" );
     return 0;
 } /*main*/
 
