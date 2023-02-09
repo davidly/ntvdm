@@ -278,7 +278,7 @@ FILE * RemoveFileEntry( uint16_t handle )
         }
     }
 
-    tracer.Trace( "ERROR: could not remove file entry for handle %04x\n", handle );
+    tracer.Trace( "  ERROR: could not remove file entry for handle %04x\n", handle );
     return 0;
 } //RemoveFileEntry
 
@@ -293,7 +293,7 @@ FILE * FindFileEntry( uint16_t handle )
         }
     }
 
-    tracer.Trace( "ERROR: could not find file entry for handle %04x\n", handle );
+    tracer.Trace( "  ERROR: could not find file entry for handle %04x\n", handle );
     return 0;
 } //FindFileEntry
 
@@ -308,7 +308,7 @@ size_t FindFileEntryIndex( uint16_t handle )
         }
     }
 
-    tracer.Trace( "ERROR: could not find file entry for handle %04x\n", handle );
+    tracer.Trace( "  ERROR: could not find file entry for handle %04x\n", handle );
     return -1;
 } //FindFileEntryIndex
 
@@ -333,7 +333,7 @@ const char * FindFileEntryPath( uint16_t handle )
         }
     }
 
-    tracer.Trace( "ERROR: could not find file entry for handle %04x\n", handle );
+    tracer.Trace( "  ERROR: could not find file entry for handle %04x\n", handle );
     return 0;
 } //FindFileEntryPath
 
@@ -392,7 +392,7 @@ size_t FindAllocationEntry( uint16_t segment )
         }
     }
 
-    tracer.Trace( "ERROR: could not find alloc entry for segment %04x\n", segment );
+    tracer.Trace( "  ERROR: could not find alloc entry for segment %04x\n", segment );
     return -1;
 } //FindAllocationEntry
 
@@ -1415,7 +1415,7 @@ void FileTimeToDos( FILETIME & ftSystem, uint16_t & dos_time, uint16_t & dos_dat
 
 void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
 {
-    tracer.Trace( "actual found filename: '%s'\n", fd.cFileName );
+    tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
     if ( 0 != fd.cAlternateFileName[ 0 ] )
         strcpy( pff->file_name, fd.cAlternateFileName );
     else if ( strlen( fd.cFileName ) < _countof( pff->file_name ) )
@@ -1441,7 +1441,7 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
 
 void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
 {
-    tracer.Trace( "actual found filename: '%s'\n", fd.cFileName );
+    tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
     char acResult[ DOS_FILENAME_SIZE ];
     if ( 0 != fd.cAlternateFileName[ 0 ] )
         strcpy( acResult, fd.cAlternateFileName );
@@ -2200,10 +2200,10 @@ void handle_int_21( uint8_t c )
                     cpu.set_al( 0 );
                 }
                 else
-                    tracer.Trace( "ERROR: file open using FCB of %s failed, error %d = %s\n", filename, errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR: file open using FCB of %s failed, error %d = %s\n", filename, errno, strerror( errno ) );
             }
             else
-                tracer.Trace( "ERROR: couldn't parse filename in FCB\n" );
+                tracer.Trace( "  ERROR: couldn't parse filename in FCB\n" );
     
             return;
         }
@@ -2222,7 +2222,7 @@ void handle_int_21( uint8_t c )
                 pfcb->SetFP( 0 );
             }
             else
-                tracer.Trace( "ERROR: file close using FCB of a file that's not open\n" );
+                tracer.Trace( "  ERROR: file close using FCB of a file that's not open\n" );
     
             return;
         }
@@ -2256,13 +2256,13 @@ void handle_int_21( uint8_t c )
                 else
                 {
                     cpu.set_al( 0xff );
-                    tracer.Trace( "WARNING: search first using FCB failed, error %d\n", GetLastError() );
+                    tracer.Trace( "  WARNING: search first using FCB failed, error %d\n", GetLastError() );
                 }
             }
             else
             {
                 cpu.set_al( 0xff );
-                tracer.Trace( "ERROR: search first using FCB failed to parse the search string\n" );
+                tracer.Trace( "  ERROR: search first using FCB failed to parse the search string\n" );
             }
 
             return;
@@ -2288,7 +2288,7 @@ void handle_int_21( uint8_t c )
                 else
                 {
                     cpu.set_al( 0xff );
-                    tracer.Trace( "WARNING: search next using FCB found no more, error %d\n", GetLastError() );
+                    tracer.Trace( "  WARNING: search next using FCB found no more, error %d\n", GetLastError() );
                     FindClose( g_hFindFirst );
                     g_hFindFirst = INVALID_HANDLE_VALUE;
                 }
@@ -2317,10 +2317,10 @@ void handle_int_21( uint8_t c )
                     tracer.Trace( "delete successful\n" );
                 }
                 else
-                    tracer.Trace( "ERROR: delete file failed, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR: delete file failed, error %d = %s\n", errno, strerror( errno ) );
             }
             else
-                tracer.Trace( "ERROR: couldn't parse filename in FCB\n" );
+                tracer.Trace( "  ERROR: couldn't parse filename in FCB\n" );
     
             return;
         }
@@ -2354,10 +2354,10 @@ void handle_int_21( uint8_t c )
                     pfcb->Trace();
                 }
                 else
-                    tracer.Trace( "ERROR: file create using FCB of %s failed, error %d = %s\n", filename, errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR: file create using FCB of %s failed, error %d = %s\n", filename, errno, strerror( errno ) );
             }
             else
-                tracer.Trace( "ERROR: can't parse filename from FCB\n" );
+                tracer.Trace( "  ERROR: can't parse filename from FCB\n" );
     
             return;
         }
@@ -2385,13 +2385,13 @@ void handle_int_21( uint8_t c )
                         cpu.set_al( 0 );
                     }
                     else
-                        tracer.Trace( "ERROR: can't rename file, error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR: can't rename file, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "ERROR: can't parse new filename in FCB\n" );
+                    tracer.Trace( "  ERROR: can't parse new filename in FCB\n" );
             }
             else
-                tracer.Trace( "ERROR: can't parse old filename in FCB\n" );
+                tracer.Trace( "  ERROR: can't parse old filename in FCB\n" );
     
             return;
         }
@@ -2448,10 +2448,10 @@ void handle_int_21( uint8_t c )
                          tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "ERROR random block write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR random block write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
             }
             else
-                tracer.Trace( "ERROR random block write using FCBs doesn't have an open file\n" );
+                tracer.Trace( "  ERROR random block write using FCBs doesn't have an open file\n" );
     
             return;
         }
@@ -2484,12 +2484,12 @@ void handle_int_21( uint8_t c )
             ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
             if ( seekOffset > pfcb->fileSize )
             {
-                tracer.Trace( "ERROR: random read beyond end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
+                tracer.Trace( "  ERROR: random read beyond end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
                 cpu.set_al( 1 ); // eof
             }
             else if ( seekOffset == pfcb->fileSize )
             {
-                tracer.Trace( "WARNING: random read at end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
+                tracer.Trace( "  WARNING: random read at end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
                 cpu.set_al( 1 ); // eof
             }
             else
@@ -2519,13 +2519,13 @@ void handle_int_21( uint8_t c )
                             pfcb->recNumber += cRecords;
                         }
                         else
-                            tracer.Trace( "ERROR random block read using FCBs failed to read, error %d = %s\n", errno, strerror( errno ) );
+                            tracer.Trace( "  ERROR random block read using FCBs failed to read, error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                        tracer.Trace( "ERROR random block read using FCBs failed to seek, error %d= %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR random block read using FCBs failed to seek, error %d= %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "ERROR random block read using FCBs doesn't have an open file\n" );
+                    tracer.Trace( "  ERROR random block read using FCBs doesn't have an open file\n" );
             }
     
             return;
@@ -2562,10 +2562,10 @@ void handle_int_21( uint8_t c )
                          tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "ERROR random block write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR random block write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
             }
             else
-                tracer.Trace( "ERROR random block write using FCBs doesn't have an open file\n" );
+                tracer.Trace( "  ERROR random block write using FCBs doesn't have an open file\n" );
     
             return;
         }
@@ -2762,7 +2762,7 @@ void handle_int_21( uint8_t c )
             {
                 cpu.set_carry( true );
                 cpu.set_ax( 3 ); // path not found
-                tracer.Trace( "ERROR: create directory sz failed with error %d = %s\n", errno, strerror( errno ) );
+                tracer.Trace( "  ERROR: create directory sz failed with error %d = %s\n", errno, strerror( errno ) );
             }
 
             return;
@@ -2780,7 +2780,7 @@ void handle_int_21( uint8_t c )
             {
                 cpu.set_carry( true );
                 cpu.set_ax( 3 ); // path not found
-                tracer.Trace( "ERROR: remove directory sz failed with error %d = %s\n", errno, strerror( errno ) );
+                tracer.Trace( "  ERROR: remove directory sz failed with error %d = %s\n", errno, strerror( errno ) );
             }
 
             return;
@@ -2798,7 +2798,7 @@ void handle_int_21( uint8_t c )
             {
                 cpu.set_carry( true );
                 cpu.set_ax( 3 ); // path not found
-                tracer.Trace( "ERROR: change directory sz failed with error %d = %s\n", errno, strerror( errno ) );
+                tracer.Trace( "  ERROR: change directory sz failed with error %d = %s\n", errno, strerror( errno ) );
             }
 
             return;
@@ -2827,7 +2827,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "ERROR: create file sz failed with error %d = %s\n", errno, strerror( errno ) );
+                tracer.Trace( "  ERROR: create file sz failed with error %d = %s\n", errno, strerror( errno ) );
                 cpu.set_ax( 2 );
                 cpu.set_carry( true );
             }
@@ -2874,7 +2874,7 @@ void handle_int_21( uint8_t c )
                 }
                 else
                 {
-                    tracer.Trace( "ERROR: open file sz failed with error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR: open file sz failed with error %d = %s\n", errno, strerror( errno ) );
                     cpu.set_ax( 2 );
                     cpu.set_carry( true );
                 }
@@ -2903,7 +2903,7 @@ void handle_int_21( uint8_t c )
                 }
                 else
                 {
-                    tracer.Trace( "ERROR: close file handle couldn't find handle %04x\n", handle );
+                    tracer.Trace( "  ERROR: close file handle couldn't find handle %04x\n", handle );
                     cpu.set_ax( 6 );
                     cpu.set_carry( true );
                 }
@@ -3011,13 +3011,13 @@ void handle_int_21( uint8_t c )
                     }
                 }
                 else
-                    tracer.Trace( "ERROR: attempt to read beyond the end of file\n" );
+                    tracer.Trace( "  ERROR: attempt to read beyond the end of file\n" );
     
                 cpu.set_carry( false );
             }
             else
             {
-                tracer.Trace( "ERROR: read from file handle couldn't find handle %04x\n", cpu.get_bx() );
+                tracer.Trace( "  ERROR: read from file handle couldn't find handle %04x\n", cpu.get_bx() );
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
@@ -3088,14 +3088,16 @@ void handle_int_21( uint8_t c )
                     }
                     else
                     {
+                        tracer.Trace( "  writing text to display: '" );
                         for ( uint16_t x = 0; x < cpu.get_cx(); x++ )
                         {
                             if ( 0x0d != p[ x ] && 0x0b != p[ x ] )
                             {
                                 printf( "%c", p[ x ] );
-                                tracer.Trace( "  writing %02x '%c' to display\n", p[ x ], printable( p[x] ) );
+                                tracer.Trace( "%c", printable( p[x] ) );
                             }
                         }
+                        tracer.Trace( "'\n" );
                     }
                 }
                 return;
@@ -3118,13 +3120,13 @@ void handle_int_21( uint8_t c )
                     DumpBinaryData( p, len, 4 );
                 }
                 else
-                    tracer.Trace( "ERROR: attempt to write to file failed, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR: attempt to write to file failed, error %d = %s\n", errno, strerror( errno ) );
     
                 cpu.set_carry( false );
             }
             else
             {
-                tracer.Trace( "ERROR: write to file handle couldn't find handle %04x\n", cpu.get_bx() );
+                tracer.Trace( "  ERROR: write to file handle couldn't find handle %04x\n", cpu.get_bx() );
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
@@ -3158,7 +3160,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_carry( false );
             else
             {
-                tracer.Trace( "ERROR: can't delete file '%s' error %d = %s\n", pfile, errno, strerror( errno ) );
+                tracer.Trace( "  ERROR: can't delete file '%s' error %d = %s\n", pfile, errno, strerror( errno ) );
                 cpu.set_carry( true );
                 cpu.set_ax( 2 );
             }
@@ -3185,7 +3187,7 @@ void handle_int_21( uint8_t c )
                 uint8_t origin = cpu.al();
                 if ( origin > 2 )
                 {
-                    tracer.Trace( "ERROR: move file pointer file handle has invalid mode/origin %u\n", origin );
+                    tracer.Trace( "  ERROR: move file pointer file handle has invalid mode/origin %u\n", origin );
                     cpu.set_ax( 1 );
                     cpu.set_carry( true );
                     return;
@@ -3215,7 +3217,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "ERROR: move file pointer file handle couldn't find handle %04x\n", handle );
+                tracer.Trace( "  ERROR: move file pointer file handle couldn't find handle %04x\n", handle );
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
@@ -3365,13 +3367,13 @@ void handle_int_21( uint8_t c )
                 else
                 {
                     cpu.set_ax( 2 ); // file not found
-                    tracer.Trace( "ERROR: attempt to duplicate file handle failed opening file %s error %d: %s\n", entry.path, errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR: attempt to duplicate file handle failed opening file %s error %d: %s\n", entry.path, errno, strerror( errno ) );
                 }
             }
             else
             {
                 cpu.set_ax( 2 ); // file not found
-                tracer.Trace( "ERROR: attempt to duplicate non-existent handle %04x\n", existing_handle );
+                tracer.Trace( "  ERROR: attempt to duplicate non-existent handle %04x\n", existing_handle );
             }
 
             return;
@@ -3412,7 +3414,7 @@ void handle_int_21( uint8_t c )
                 }
             }
             else
-                tracer.Trace( "ERROR: unable to get the current working directory, error %d\n", GetLastError() );
+                tracer.Trace( "  ERROR: unable to get the current working directory, error %d\n", GetLastError() );
     
             return;
         }
@@ -3467,7 +3469,7 @@ void handle_int_21( uint8_t c )
             {
                 cpu.set_carry( true );
                 cpu.set_bx( 0 );
-                tracer.Trace( "ERROR: attempt to modify an allocation that doesn't exist\n" );
+                tracer.Trace( "  ERROR: attempt to modify an allocation that doesn't exist\n" );
                 return;
             }
 
@@ -3636,7 +3638,7 @@ void handle_int_21( uint8_t c )
             else
             {
                 cpu.set_ax( GetLastError() ); // interesting errors actually match
-                tracer.Trace( "WARNING: find first file failed, error %d\n", GetLastError() );
+                tracer.Trace( "  WARNING: find first file failed, error %d\n", GetLastError() );
             }
     
             return;
@@ -3647,7 +3649,7 @@ void handle_int_21( uint8_t c )
     
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
-            tracer.Trace( "Find Next Asciz\n" );
+            tracer.Trace( "  Find Next Asciz\n" );
     
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
@@ -3662,7 +3664,7 @@ void handle_int_21( uint8_t c )
                 {
                     memset( pff, 0, sizeof DosFindFile );
                     cpu.set_ax( 0x12 ); // no more files
-                    tracer.Trace( "WARNING: find next file found no more, error %d\n", GetLastError() );
+                    tracer.Trace( "  WARNING: find next file found no more, error %d\n", GetLastError() );
                     FindClose( g_hFindFirst );
                     g_hFindFirst = INVALID_HANDLE_VALUE;
                 }
@@ -3670,7 +3672,7 @@ void handle_int_21( uint8_t c )
             else
             {
                 cpu.set_ax( 0x12 ); // no more files
-                tracer.Trace( "ERROR: search for next without a prior successful search for first\n" );
+                tracer.Trace( "  ERROR: search for next without a prior successful search for first\n" );
             }
     
             return;
@@ -3689,7 +3691,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_carry( false );
             else
             {
-                tracer.Trace( "ERROR: can't rename file '%s' as '%s' error %d = %s\n", poldname, pnewname, errno, strerror( errno ) );
+                tracer.Trace( "  ERROR: can't rename file '%s' as '%s' error %d = %s\n", poldname, pnewname, errno, strerror( errno ) );
                 cpu.set_carry( true );
                 cpu.set_ax( 2 );
             }
@@ -3729,7 +3731,7 @@ void handle_int_21( uint8_t c )
                     }
                     else
                     {
-                        tracer.Trace( "ERROR: can't get/set file date and time; getfileattributesex failed %d\n", GetLastError() );
+                        tracer.Trace( "  ERROR: can't get/set file date and time; getfileattributesex failed %d\n", GetLastError() );
                         cpu.set_ax( 1 );
                     }
                 }
@@ -3740,13 +3742,13 @@ void handle_int_21( uint8_t c )
                 }
                 else
                 {
-                    tracer.Trace( "ERROR: can't get/set file date and time; command in al not valid: %d\n", cpu.al() );
+                    tracer.Trace( "  ERROR: can't get/set file date and time; command in al not valid: %d\n", cpu.al() );
                     cpu.set_ax( 1 );
                 }
             }
             else
             {
-                tracer.Trace( "ERROR: can't get/set file date and time; file handle %04x not valid\n", handle );
+                tracer.Trace( "  ERROR: can't get/set file date and time; file handle %04x not valid\n", handle );
                 cpu.set_ax( 6 );
             }
     
@@ -3957,7 +3959,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
     {
         // look for signature indicating it's actually a .exe file named .com. Later versions of DOS really do this.
 
-        tracer.Trace( "checking if '%s' is actually a .exe\n", acApp );
+        tracer.Trace( "  checking if '%s' is actually a .exe\n", acApp );
         FILE * fp = fopen( acApp, "rb" );
         if ( !fp )
             return 0;
@@ -4454,7 +4456,7 @@ int main( int argc, char ** argv )
 
         // if interrupt 0x1c (tick tock) is hooked by the app and 55 milliseconds has elapsed, invoke it
 
-        if ( ( InterruptRoutineSegment != ( (uint16_t *) memory )[ 4 * 0x1c + 2 ] ) && // optimization since the default handler is just an iret
+        if ( ( InterruptRoutineSegment != ( (uint16_t *) memory )[ 2 * 0x1c + 1 ] ) && // optimization since the default handler is just an iret
              ( duration.HasTimeElapsedMS( 55 ) ) )
         {
             // this won't be precise enough to provide a clock, but it's good for delay loops.
