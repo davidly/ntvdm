@@ -515,25 +515,38 @@ bool keyState( int vkey )
     return 0 != ( 0x1000 & s );
 } //keyState
 
-uint8_t * GetVideoMem()
+uint8_t GetActiveDisplayPage()
 {
     uint8_t activePage = * GetMem( 0x40, 0x62 );
     assert( activePage <= 3 );
-    return memory + ScreenBufferAddress + 0x1000 * activePage;
+    return activePage;
+} //GetActiveVideoPage
+
+void SetActiveDisplayPage( uint8_t page )
+{
+    assert( page <= 3 );
+    * GetMem( 0x40, 0x62 ) = page;
+} //SetActiveDisplayPage
+
+uint8_t * GetVideoMem()
+{
+    return memory + ScreenBufferAddress + 0x1000 * GetActiveDisplayPage();
 } //GetVideoMem
 
 void GetCursorPosition( uint8_t & row, uint8_t & col )
 {
-    uint8_t * pbiosdata = GetMem( 0x40, 0 );
-    col = * (uint8_t *) ( pbiosdata + 0x50 );
-    row = * (uint8_t *) ( pbiosdata + 0x51 );
+    uint8_t * cursordata = GetMem( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
+
+    col = cursordata[ 0 ];
+    row = cursordata[ 1 ];
 } //GetCursorPosition
 
 void SetCursorPosition( uint8_t row, uint8_t col )
 {
-    uint8_t * pbiosdata = GetMem( 0x40, 0 );
-    * (uint8_t *) ( pbiosdata + 0x50 ) = col;
-    * (uint8_t *) ( pbiosdata + 0x51 ) = row;
+    uint8_t * cursordata = GetMem( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
+
+    cursordata[ 0 ] = col;
+    cursordata[ 1 ] = row;
 } //SetCursorPosition
 
 char printable( uint8_t x )
@@ -1589,7 +1602,7 @@ void handle_int_10( uint8_t c )
 
             uint8_t page = cpu.al();
             if ( page <= 3 )
-                 * GetMem( 0x40, 0x62 ) = page;
+                SetActiveDisplayPage( page );
 
             return;
         }
@@ -1812,7 +1825,7 @@ void handle_int_10( uint8_t c )
 
             cpu.set_al( g_videoMode );
             cpu.set_ah( ScreenColumns ); // columns
-            cpu.set_bh( * GetMem( 0x40, 0x62 ) ); // active display page
+            cpu.set_bh( GetActiveDisplayPage() ); // active display page
 
             return;
         }
