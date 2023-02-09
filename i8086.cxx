@@ -8,7 +8,7 @@
 // Cycle counts are approximate -- within 25% of actual values. It doesn't account for misalignment,
 // ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
-// I tested cycle counts against a physical 80186 (which executes many opcodes in fewer cycles).
+// I tested cycle counts against physical 80186 and 8088 machines. It's somewhere in between.
 
 #include <stdio.h>
 #include <memory.h>
@@ -39,6 +39,7 @@ void i8086::external_interrupt( uint8_t interrupt_num )
 extern void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
 void i8086::trace_state()
 {
+//    DumpBinaryData( memory + flatten( 0x9f9, 0 ), 0x40, 0 );
 //    DumpBinaryData( memory + flatten( ds, 0x71b8 ), 2, 0 );
 //    DumpBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
 
@@ -1421,6 +1422,7 @@ _after_prefix:
                     }
                     else
                     {
+                        tracer.Trace( "divide by zero\n" );
                         op_interrupt( 0, _bc );
                         continue;
                     }
@@ -1442,6 +1444,7 @@ _after_prefix:
                     }
                     else
                     {
+                        tracer.Trace( "divide by zero\n" );
                         op_interrupt( 0, _bc );
                         continue;
                     }
@@ -1515,6 +1518,7 @@ _after_prefix:
                     }
                     else
                     {
+                        tracer.Trace( "divide by zero\n" );
                         op_interrupt( 0, _bc );
                         continue;
                     }
@@ -1536,6 +1540,7 @@ _after_prefix:
                     }
                     else
                     {
+                        tracer.Trace( "divide by zero\n" );
                         op_interrupt( 0, _bc );
                         continue;
                     }
