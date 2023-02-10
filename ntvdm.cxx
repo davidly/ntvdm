@@ -132,6 +132,7 @@ struct DosAllocation
     uint16_t seg_process; 
 };
 
+const uint8_t DefaultVideoAttribute = 7;                          // light grey text
 const uint32_t ScreenColumns = 80;                                // this is the only mode supported
 const uint32_t ScreenRows = 25;                                   // this is the only mode supported
 const uint32_t ScreenColumnsM1 = ScreenColumns - 1;               // columns minus 1
@@ -520,7 +521,7 @@ uint8_t GetActiveDisplayPage()
     uint8_t activePage = * GetMem( 0x40, 0x62 );
     assert( activePage <= 3 );
     return activePage;
-} //GetActiveVideoPage
+} //GetActiveDisplayPage
 
 void SetActiveDisplayPage( uint8_t page )
 {
@@ -770,6 +771,23 @@ struct DOSFCB
 };
 #pragma pack(pop)
 
+const char * GetCurrentAppPath()
+{
+    DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
+    uint16_t segEnv = psp->segEnvironment;
+    const char * penv = (char *) GetMem( segEnv, 0 );
+
+    size_t len = strlen( penv );
+    while ( 0 != len )
+    {
+        penv += ( 1 + len );
+        len = strlen( penv );
+    }
+
+    penv += 3; // get past final 0 and count of extra strings.
+    return penv;
+} //GetCurrentAppPath
+
 bool GetDOSFilename( DOSFCB &fcb, char * filename )
 {
     char * orig = filename;
@@ -844,11 +862,15 @@ bool UpdateDisplay()
                 {
                     uint32_t offset = yoffset + x * 2;
                     aChars[ x ] = pbuf[ offset ];
-                    aAttribs[ x ] = pbuf[ 1 + offset ];
+                    aAttribs[ x ] = pbuf[ 1 + offset ]; 
                 }
     
                 #if false
-                    tracer.Trace( "    row %02u: '%.80s'\n", y, aChars );
+                    //tracer.Trace( "    row %02u: '%.80s'\n", y, aChars );
+                    tracer.Trace( "    row %02u: '", y );
+                    for ( uint32_t c = 0; c < 80; c++ )
+                        tracer.Trace( "%c", printable( aChars[ c ] ) );
+                    tracer.Trace( "'\n" );
                 #endif
     
                 COORD pos = { 0, (SHORT) y };
@@ -894,6 +916,8 @@ void ClearDisplay()
 
 BOOL WINAPI ControlHandler( DWORD fdwCtrlType )
 {
+    // this happens in a third thread implicitly created
+
     if ( CTRL_C_EVENT == fdwCtrlType )
     {
         // for 80x25 apps, ^c is often a valid character for page down, etc.
@@ -1321,6 +1345,7 @@ void consume_keyboard()
         g_injectControlC = false;
         uint8_t asciiChar = 0x03;
         uint8_t scancode = 0x2e;
+
         // if the buffer is full, stop consuming new characters
         if ( ! ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ) )
         {
@@ -1602,7 +1627,10 @@ void handle_int_10( uint8_t c )
 
             uint8_t page = cpu.al();
             if ( page <= 3 )
+            {
+                tracer.Trace( "  set video page to %d\n", page );
                 SetActiveDisplayPage( page );
+            }
 
             return;
         }
@@ -1821,11 +1849,13 @@ void handle_int_10( uint8_t c )
         {
             // get video mode
 
-            PerhapsFlipTo80x25();
+            //PerhapsFlipTo80x25();
 
             cpu.set_al( g_videoMode );
             cpu.set_ah( ScreenColumns ); // columns
             cpu.set_bh( GetActiveDisplayPage() ); // active display page
+
+            tracer.Trace( "  returning video mode %u, columns %u, display page %u\n", cpu.al(), cpu.ah(), cpu.bh() );
 
             return;
         }
@@ -1967,6 +1997,8 @@ void handle_int_16( uint8_t c )
 
 void HandleAppExit()
 {
+    tracer.Trace( "  HandleAppExit for app '%s'\n", GetCurrentAppPath() );
+
     // flush and close any files opened by this process
 
     fflush( 0 ); // the app may have written to files and not flushed or closed them
@@ -3058,7 +3090,7 @@ void handle_int_21( uint8_t c )
                     {
                         uint8_t * pbuf = GetVideoMem();
                         GetCursorPosition( row, col );
-                        tracer.Trace( "  starting to write pbuf %p, %u chars at row %u col %u\n", pbuf, cpu.get_cx(), row, col );
+                        tracer.Trace( "  starting to write pbuf %p, %u chars at row %u col %u, page %d\n", pbuf, cpu.get_cx(), row, col, GetActiveDisplayPage() );
         
                         for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                         {
@@ -3088,8 +3120,15 @@ void handle_int_21( uint8_t c )
                             {
                                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
                                 pbuf[ offset ] = printable( ch );
-                                tracer.Trace( "  writing %02x '%c' to display offset %u at row %u col %u\n",
-                                              ch, printable( ch ), offset, row, col );
+                                tracer.Trace( "  writing %02x '%c' to display offset %u at row %u col %u, existing attr %02x\n",
+                                              ch, printable( ch ), offset, row, col, pbuf[ offset + 1 ] );
+
+                                // apps like qbx set the attributes to 0 when running an app to clear the display, then
+                                // set it back afterwards. 0 makes text invisible.
+
+                                if ( 0 == pbuf[ offset + 1 ] )
+                                    pbuf[ offset + 1 ] = DefaultVideoAttribute;
+
                                 col++;
                                 if ( col > ScreenColumns )
                                     col = 1;
@@ -3896,12 +3935,20 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         handle_int_21( c );
         return;
     }
-    else if ( 0x22 == interrupt_num )
+    else if ( 0x22 == interrupt_num ) // terminate address
     {
         HandleAppExit();
         return;
     }
-    else if ( 0x24 == interrupt_num )
+    else if ( 0x23 == interrupt_num ) // control "C" exit address
+    {
+        DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
+        if ( psp && ( firstAppTerminateAddress != psp->int22TerminateAddress ) )
+            HandleAppExit();
+
+        return;
+    }
+    else if ( 0x24 == interrupt_num ) // fatal error handler
     {
         printf( "Abort, Retry, Ignore?\n" );
         exit( 1 );
@@ -4247,6 +4294,12 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     return segEnvironment;
 } //AllocateEnvironment
 
+bool InterruptHookedByApp( uint8_t i )
+{
+    uint16_t seg = ( (uint16_t *) memory )[ 2 * i + 1 ];
+    return ( InterruptRoutineSegment != seg );
+} //InterruptHookedByApp
+
 int main( int argc, char ** argv )
 {
     // put the app name without a path or .exe into g_thisApp
@@ -4264,7 +4317,7 @@ int main( int argc, char ** argv )
 
     g_hConsole = GetStdHandle( STD_OUTPUT_HANDLE );
 
-    init_blankline( 0x7 ); // light grey text
+    init_blankline( DefaultVideoAttribute );
 
     char * pcAPP = 0;
     bool trace = FALSE;
@@ -4469,8 +4522,7 @@ int main( int argc, char ** argv )
 
         // if interrupt 0x1c (tick tock) is hooked by the app and 55 milliseconds has elapsed, invoke it
 
-        if ( ( InterruptRoutineSegment != ( (uint16_t *) memory )[ 2 * 0x1c + 1 ] ) && // optimization since the default handler is just an iret
-             ( duration.HasTimeElapsedMS( 55 ) ) )
+        if ( InterruptHookedByApp( 0x1c ) && duration.HasTimeElapsedMS( 55 ) )
         {
             // this won't be precise enough to provide a clock, but it's good for delay loops.
             // on my machine, this is invoked about every 72 million total_cycles.

@@ -42,6 +42,8 @@ union REGS g_regs_in;
 union REGS g_regs_out;
 struct SREGS g_segregs;
 
+unsigned char g_active_display_page = 0;
+
 /* shared global buffer for various commands to use */
 
 char g_acbuffer[ MAX_CMD_LEN ];
@@ -64,6 +66,20 @@ void update_disk_transfer_buffer()
     adr |= g_regs_out.x.bx;
     g_transfer = (char far *) adr;
 } /*update_disk_transfer_buffer*/
+
+void restore_active_display_page()
+{
+    g_regs_in.h.ah = 0x05; /* set active display page */
+    g_regs_in.h.al = g_active_display_page; 
+    int86( 0x10, &g_regs_in, &g_regs_out );
+} /*restore_active_display_page*/
+
+void remember_active_display_page()
+{
+    g_regs_in.h.ah = 0x0f; /* get video mode */
+    int86( 0x10, &g_regs_in, &g_regs_out );
+    g_active_display_page = g_regs_in.h.bh;
+} /*remember_active_display_page*/
 
 void show_prompt()
 {
@@ -920,6 +936,7 @@ int run_external( cmd, argc, argv ) char * cmd; int argc; char * argv[];
            but the actual cursor may not be there -- so move it to where it should be. if the app used the
            same display page, this will have no impact */
 
+        restore_active_display_page();
         get_cursor_position( &cursor_row, &cursor_column );
         set_cursor_position( cursor_row, cursor_column );
 
@@ -993,6 +1010,8 @@ int main( argc, argv ) int argc; char * argv[];
     static char * sub_argv[ MAX_ARGUMENTS ];
     int  sub_argc = 0;
     int j, ret;
+
+    remember_active_display_page();
 
     if ( argc > 1 )
     {
