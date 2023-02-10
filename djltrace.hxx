@@ -9,7 +9,10 @@
 //    tracer.Trace( "what to log with an integer argument %d and a wide string %ws\n", 10, pwcHello );
 //
 
+#ifndef UNICODE
 #define UNICODE
+#endif
+
 #include <windows.h>
 #include <stdio.h>
 #include <mutex>

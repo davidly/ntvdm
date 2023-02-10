@@ -73,7 +73,12 @@ struct i8086
     void trace_state( void );                           // trace the registers
     void end_emulation( void );                         // make the emulator return at the start of the next instruction
 
-    i8086()
+    i8086() : ax( 0 ), bx( 0 ), cx( 0 ), dx(0 ), si( 0 ), di( 0 ), bp( 0 ), sp( 0 ), ip( 0 ),
+              es( 0 ), cs( 0 ), ss( 0 ), ds( 0 ), flags( 0 ),
+              prefix_segment_override( 0xff ), prefix_repeat_opcode( 0xff ),
+              _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _b12( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ), _isword( false ),
+              fCarry( false ), fParityEven( false ), fAuxCarry( false ), fZero( false ), fSign( false ),
+              fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false )
     {
         reg_pointers[ 0 ] = & ax;  // al
         reg_pointers[ 1 ] = & cx;  // cl

@@ -36,7 +36,9 @@
 //     0xf0000 -- 0xfbfff   system monitor (0 for now)
 //     0xfc000 -- 0xfffff   bios code and hard-coded bios data (mostly 0 for now)
 
+#ifndef UNICODE
 #define UNICODE
+#endif
 
 #include <time.h>
 #include <sys/timeb.h>
@@ -351,7 +353,7 @@ size_t FindFileEntryFromPath( const char * pfile )
 {
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
     {
-        if ( !stricmp( pfile, g_fileEntries[ i ].path ) )
+        if ( !_stricmp( pfile, g_fileEntries[ i ].path ) )
         {
             tracer.Trace( "  found file entry '%s': %z\n", g_fileEntries[ i ].path, i );
             return i;
@@ -425,7 +427,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     // sometimes allocate an extra spaceBetween paragraphs between blocks for overly optimistic resize requests.
     // I'm looking at you link.exe v5.10 from 1990. Also QBX, which runs link.exe as a child process
 
-    const uint16_t spaceBetween = ( !stricmp( g_acApp, "LINK.EXE" ) || stristr( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
+    const uint16_t spaceBetween = ( !_stricmp( g_acApp, "LINK.EXE" ) || stristr( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
 
     if ( 0 == cEntries )
     {
@@ -604,7 +606,7 @@ void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent )
         for ( uint32_t i = 0; i < indent; i++ )
             *pline++ = ' ';
 
-        pline = append_hex_word( pline, offset );
+        pline = append_hex_word( pline, (uint16_t) offset );
         *pline++ = ' ';
         *pline++ = ' ';
 
@@ -619,9 +621,9 @@ void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent )
             *pline++ = ' ';
         }
 
-        uint32_t spaceNeeded = ( bytesPerRow - ( cap - offset ) ) * 3;
+        uint64_t spaceNeeded = ( bytesPerRow - ( cap - offset ) ) * 3;
 
-        for ( ULONG sp = 0; sp < ( 1 + spaceNeeded ); sp++ )
+        for ( uint64_t sp = 0; sp < ( 1 + spaceNeeded ); sp++ )
             *pline++ = ' ';
 
         for ( __int64 o = offset; o < cap; o++ )
@@ -1095,7 +1097,7 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
         return false;
 
     asciiChar = rec.Event.KeyEvent.uChar.AsciiChar;
-    scancode = rec.Event.KeyEvent.wVirtualScanCode;
+    scancode = (uint8_t) rec.Event.KeyEvent.wVirtualScanCode;
     const uint8_t asc = asciiChar; // non-writable shorthand
     const uint8_t sc = scancode;
 
@@ -1945,7 +1947,7 @@ void handle_int_16( uint8_t c )
             if ( *phead >= 0x3e )
                 *phead = 0x1e;
 
-            tracer.Trace( "  returning character %#x '%c'\n", cpu.get_ax(), printable( cpu.get_ax() ) );
+            tracer.Trace( "  returning character %04x '%c'\n", cpu.get_ax(), printable( cpu.al() ) );
             tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
         }
@@ -2160,7 +2162,7 @@ void handle_int_21( uint8_t c )
     
             char * result = gets_s( (char *) p + 2, maxLen );
             if ( result )
-                p[1] = strlen( result );
+                p[1] = (uint8_t) strlen( result );
             else
                 p[1] = 0;
 
@@ -2477,7 +2479,7 @@ void handle_int_21( uint8_t c )
             {
                 ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
-                int ok = !fseek( fp, seekOffset, SEEK_SET );
+                bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
                 {
                     size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
@@ -2543,7 +2545,7 @@ void handle_int_21( uint8_t c )
                 if ( fp )
                 {
                     tracer.Trace( "  seek offset: %u\n", seekOffset );
-                    int ok = !fseek( fp, seekOffset, SEEK_SET );
+                    bool ok = !fseek( fp, seekOffset, SEEK_SET );
                     if ( ok )
                     {
                         ULONG askedBytes = pfcb->recSize * cRecords;
@@ -2557,11 +2559,11 @@ void handle_int_21( uint8_t c )
                             else
                                 cpu.set_al( 3 ); // eof encountered, last record is partial
     
-                            cpu.set_cx( toRead / pfcb->recSize );
+                            cpu.set_cx( (uint16_t) ( toRead / pfcb->recSize ) );
                             tracer.Trace( "  successfully read %u bytes, CX set to %u:\n", toRead, cpu.get_cx() );
                             DumpBinaryData( GetDiskTransferAddress(), toRead, 4 );
-                            pfcb->curRecord += cRecords;
-                            pfcb->recNumber += cRecords;
+                            pfcb->curRecord += (uint8_t) cRecords;
+                            pfcb->recNumber += (uint32_t) cRecords;
                         }
                         else
                             tracer.Trace( "  ERROR random block read using FCBs failed to read, error %d = %s\n", errno, strerror( errno ) );
@@ -2591,7 +2593,7 @@ void handle_int_21( uint8_t c )
             {
                 ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
-                int ok = !fseek( fp, seekOffset, SEEK_SET );
+                bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
                 {
                     size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
@@ -2800,7 +2802,7 @@ void handle_int_21( uint8_t c )
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "create directory '%s'\n", path );
 
-            int ret = mkdir( path );
+            int ret = _mkdir( path );
             if ( 0 == ret )
                 cpu.set_carry( false );
             else
@@ -2818,7 +2820,7 @@ void handle_int_21( uint8_t c )
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "remove directory '%s'\n", path );
 
-            int ret = rmdir( path );
+            int ret = _rmdir( path );
             if ( 0 == ret )
                 cpu.set_carry( false );
             else
@@ -2836,7 +2838,7 @@ void handle_int_21( uint8_t c )
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "change directory to '%s'\n", path );
 
-            int ret = chdir( path );
+            int ret = _chdir( path );
             if ( 0 == ret )
                 cpu.set_carry( false );
             else
@@ -2991,7 +2993,7 @@ void handle_int_21( uint8_t c )
                         }
                     }
 
-                    uint16_t string_len = strlen( acBuffer );
+                    uint16_t string_len = (uint16_t) strlen( acBuffer );
                     uint16_t min_len = __min( string_len, request_len );
                     cpu.set_ax( min_len );
                     uint8_t * pvideo = GetVideoMem();
@@ -3689,7 +3691,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                cpu.set_ax( GetLastError() ); // interesting errors actually match
+                cpu.set_ax( (uint16_t) GetLastError() ); // interesting errors actually match
                 tracer.Trace( "  WARNING: find first file failed, error %d\n", GetLastError() );
             }
     
@@ -4001,7 +4003,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     psp->topOfMemory = SegmentHardware - 1;   // top of memorysegment in paragraph form
     psp->comAvailable = 0xffff;               // .com programs bytes available in segment
     psp->int22TerminateAddress = firstAppTerminateAddress;
-    uint8_t len = strlen( acAppArgs );
+    uint8_t len = (uint8_t) strlen( acAppArgs );
     psp->countCommandTail = len;
     strcpy( (char *) psp->commandTail, acAppArgs );
     psp->commandTail[ len + 1 ] = 0x0d;
@@ -4013,7 +4015,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
 uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment )
 {
     uint16_t psp = 0;
-    bool isCOM = !stricmp( acApp + strlen( acApp ) - 4, ".COM" );
+    bool isCOM = !_stricmp( acApp + strlen( acApp ) - 4, ".COM" );
 
     if ( isCOM )
     {
@@ -4025,7 +4027,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             return 0;
 
         char ac[2];
-        int ok = fread( ac, _countof( ac ), 1, fp );
+        bool ok = ( 0 != fread( ac, _countof( ac ), 1, fp ) );
         fclose( fp );
 
         if ( !ok )
@@ -4038,7 +4040,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
     {
         // allocate 64k for the .COM file
 
-        uint16_t paragraphs_remaining, paragraphs_free = 0;
+        uint16_t paragraphs_free = 0;
         uint16_t ComSegment = AllocateMemory( 0x1000, paragraphs_free );
         psp = ComSegment;
         InitializePSP( ComSegment, acAppArgs, segEnvironment );
@@ -4059,7 +4061,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         fseek( fp, 0, SEEK_END );
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
-        int ok = fread( memory + ComSegmentOffset + 0x100, file_size, 1, fp ) == 1;
+        bool ok = fread( memory + ComSegmentOffset + 0x100, file_size, 1, fp ) == 1;
         if ( !ok )
             return 0;
 
@@ -4109,7 +4111,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
         vector<uint8_t> theexe( file_size );
-        int ok = fread( theexe.data(), file_size, 1, fp ) == 1;
+        bool ok = fread( theexe.data(), file_size, 1, fp ) == 1;
         fclose( fp );
         if ( !ok )
         {
@@ -4230,7 +4232,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 
     const char * pComSpec = "COMSPEC=COMMAND.COM";
     const char * pBriefFlags = "BFLAGS=-kzr -mDJL";
-    uint16_t bytesNeeded = strlen( fullPath );
+    uint16_t bytesNeeded = (uint16_t) strlen( fullPath );
     uint16_t startLen = 0;
     char * pEnvStart = (char *) GetMem( segStartingEnv, 0 );
 
@@ -4239,8 +4241,8 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
         char * pe = pEnvStart;
         do
         {
-            int l = 1 + strlen( pe );
-            startLen += l;
+            size_t l = 1 + strlen( pe );
+            startLen += (uint16_t) l;
             pe += l;
         } while ( 0 != *pe );
     
@@ -4248,7 +4250,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     }
     else
     {
-        bytesNeeded += ( strlen( pComSpec ) + strlen( pBriefFlags ) );
+        bytesNeeded += (uint16_t) ( strlen( pComSpec ) + strlen( pBriefFlags ) );
     }
 
     // apps assume there is space at the end to write to. It should be at least 160 bytes in size
@@ -4382,6 +4384,7 @@ int main( int argc, char ** argv )
     if ( 0 == pcAPP )
         usage( "no command specified" );
 
+    _assume( 0 != pcAPP ); // the compiler warns because it doesn't know usage() always exits.
     strcpy( g_acApp, pcAPP );
     _strupr( g_acApp );
     DWORD attr = GetFileAttributesA( g_acApp );
@@ -4405,6 +4408,7 @@ int main( int argc, char ** argv )
     }
 
     // global bios memory
+
     uint8_t * pbiosdata = GetMem( 0x40, 0 );
     * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
     * (uint16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
@@ -4470,7 +4474,7 @@ int main( int argc, char ** argv )
         exit( 1 );
     }
 
-    if ( !stricmp( g_acApp, "gwbasic.exe" ) || !stricmp( g_acApp, "mips.com" ) )
+    if ( !_stricmp( g_acApp, "gwbasic.exe" ) || !_stricmp( g_acApp, "mips.com" ) )
     {
         // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
 
@@ -4559,12 +4563,12 @@ int main( int argc, char ** argv )
                 printf( "      %16s\n", "unbounded" );
                 uint64_t total_ms = total_cycles / 4770;
                 printf( "approx ms at 4.77Mhz: %12ws  == ", perfApp.RenderLL( total_ms ) );
-                uint16_t days = total_ms / 1000 / 60 / 60 / 24;
-                uint16_t hours = ( total_ms % ( 1000 * 60 * 60 * 24 ) ) / 1000 / 60 / 60;
-                uint16_t minutes = ( total_ms % ( 1000 * 60 * 60 ) ) / 1000 / 60;
-                uint16_t seconds = ( total_ms % ( 1000 * 60 ) ) / 1000;
-                uint16_t milliseconds = ( total_ms % 1000 );
-                printf( "%u days, %u hours, %u minutes, %u seconds, %u milliseconds\n", days, hours, minutes, seconds, milliseconds );
+                uint16_t days = (uint16_t) ( total_ms / 1000 / 60 / 60 / 24 );
+                uint16_t hours = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 * 24 ) ) / 1000 / 60 / 60 );
+                uint16_t minutes = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 ) ) / 1000 / 60 );
+                uint16_t seconds = (uint16_t) ( ( total_ms % ( 1000 * 60 ) ) / 1000 );
+                uint64_t milliseconds = ( ( total_ms % 1000 ) );
+                printf( "%u days, %u hours, %u minutes, %u seconds, %llu milliseconds\n", days, hours, minutes, seconds, milliseconds );
             }
             else
                 printf( "      %16ws Hz\n", perfApp.RenderLL( (LONGLONG ) clockrate ) );

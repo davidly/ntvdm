@@ -209,7 +209,8 @@ class CDisassemble8086
         } //DecodeInstruction
         
     public:
-        CDisassemble8086() : _bc( 0 )
+        CDisassemble8086() : _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _b2( 0 ), _b3( 0 ), _b4( 0 ),
+                             _b12( 0 ), _b23( 0 ), _b34( 0 ), _reg( 0 ), _rm( 0 ), _mod( 0 ), _isword( false ), _toreg( false )
         {
             // older versions of C++ don't allow class static initializers in their declarations.
 

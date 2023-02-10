@@ -801,7 +801,7 @@ _after_prefix:
                 AddMemCycles( cycles, 8 );
                 uint16_t src;
                 uint8_t * pleft = (uint8_t *) get_op_args( toreg(), src, cycles );
-                op_and8( *pleft, src & 0xff );
+                op_and8( *pleft, (uint8_t) src );
                 break;
             }
             case 0x85: // test reg16/mem16, reg16
@@ -841,7 +841,7 @@ _after_prefix:
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
                 uint16_t src;
                 void * pdst = get_op_args( toreg(), src, cycles );
-                * (uint8_t *) pdst = src & 0xff;
+                * (uint8_t *) pdst = (uint8_t) src;
                 break;
             }
             case 0x89: // mov reg16/mem16, reg16
@@ -1742,7 +1742,7 @@ _after_prefix:
                     if ( _isword )
                         do_math16( bits5to3, (uint16_t *) pdst, src );
                     else
-                        do_math8( bits5to3, (uint8_t *) pdst, src & 0xff );
+                        do_math8( bits5to3, (uint8_t *) pdst, (uint8_t) src );
                     break;
                 }
                 case 0x80: // math

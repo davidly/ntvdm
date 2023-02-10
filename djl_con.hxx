@@ -13,9 +13,10 @@ class ConsoleConfiguration
     public:
         ConsoleConfiguration()
         {
+            consoleOutputHandle = 0;
+            consoleInputHandle = 0;
             oldWindowPlacement = {0};
             oldScreenInfo = {0};
-            consoleOutputHandle = 0;
             oldConsoleMode = 0;
             oldCursorInfo = {0};
         } //ConsoleConfiguration
