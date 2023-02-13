@@ -218,29 +218,16 @@ static void usage( char const * perr )
     exit( 1 );
 } //usage
 
-const char * stristr( const char * str, const char * search )
+int ends_with( const char * str, const char * end )
 {
-    const char * p = str;
+    int len = strlen( str );
+    int lenend = strlen( end );
 
-    while ( *p )
-    {
-        const char * s = search;
-        const char * location = p;
+    if ( len < lenend )
+        return false;
 
-        while ( *p && ( toupper( *s ) == toupper( *p ) ) )
-        {
-            p++;
-            s++;
-        }
-
-        if ( 0 == *s )
-            return location;
-
-        p = location + 1;
-    }
-
-    return 0;
-} /*stristr*/
+    return !stricmp( str + len - lenend, end );
+} //ends_with
 
 bool isFilenameChar( char c )
 {
@@ -360,7 +347,7 @@ size_t FindFileEntryFromPath( const char * pfile )
         }
     }
 
-    tracer.Trace( "NOTICE: could not find file entry for path %s\n", pfile );
+    tracer.Trace( "  NOTICE: could not find file entry for path %s\n", pfile );
     return -1;
 } //FindFileEntryFromPath
 
@@ -413,7 +400,11 @@ size_t FindAllocationEntryByProcess( uint16_t segment )
 uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 {
     size_t cEntries = g_allocEntries.size();
-    assert( 0 != request_paragraphs ); // not legal to allocate 0 bytes
+
+    // DOS V2 sort.exe asks for 0 paragraphs
+
+    if ( 0 == request_paragraphs )
+        request_paragraphs = 1;
 
     tracer.Trace( "  request to allocate %04x paragraphs\n", request_paragraphs );
 
@@ -427,7 +418,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     // sometimes allocate an extra spaceBetween paragraphs between blocks for overly optimistic resize requests.
     // I'm looking at you link.exe v5.10 from 1990. Also QBX, which runs link.exe as a child process
 
-    const uint16_t spaceBetween = ( !_stricmp( g_acApp, "LINK.EXE" ) || stristr( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
+    const uint16_t spaceBetween = ( ends_with( g_acApp, "LINK.EXE" ) || ends_with( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
 
     if ( 0 == cEntries )
     {
@@ -2046,7 +2037,7 @@ void HandleAppExit()
         if ( -1 == index )
             break;
 
-        tracer.Trace( "  freeing RAM an app leaked, segment %04x length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
+        tracer.Trace( "  freeing RAM an app leaked, segment %04x paral length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
         FreeMemory( g_allocEntries[ index ].segment );
     } while( true );
 } //HandleAppExit
@@ -2800,7 +2791,7 @@ void handle_int_21( uint8_t c )
         {
             // create directory ds:dx asciz directory name. cf set on error with code in ax
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "create directory '%s'\n", path );
+            tracer.Trace( "  create directory '%s'\n", path );
 
             int ret = _mkdir( path );
             if ( 0 == ret )
@@ -2818,7 +2809,7 @@ void handle_int_21( uint8_t c )
         {
             // remove directory ds:dx asciz directory name. cf set on error with code in ax
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "remove directory '%s'\n", path );
+            tracer.Trace( "  remove directory '%s'\n", path );
 
             int ret = _rmdir( path );
             if ( 0 == ret )
@@ -2836,7 +2827,7 @@ void handle_int_21( uint8_t c )
         {
             // change directory ds:dx asciz directory name. cf set on error with code in ax
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "change directory to '%s'\n", path );
+            tracer.Trace( "  change directory to '%s'\n", path );
 
             int ret = _chdir( path );
             if ( 0 == ret )
@@ -2887,7 +2878,7 @@ void handle_int_21( uint8_t c )
     
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             DumpBinaryData( (uint8_t *) path, 0x100, 2 );
-            tracer.Trace( "open file '%s'\n", path );
+            tracer.Trace( "  open file '%s'\n", path );
             uint8_t openmode = cpu.al();
             cpu.set_ax( 2 );
 
@@ -3287,7 +3278,7 @@ void handle_int_21( uint8_t c )
             // returns: ax = error code if CF set. CX = file attributes on get.
     
             char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "get/put file attributes on file '%s'\n", pfile );
+            tracer.Trace( "  get/put file attributes on file '%s'\n", pfile );
             cpu.set_carry( true );
     
             if ( 0 == cpu.al() ) // get
@@ -3595,30 +3586,41 @@ void handle_int_21( uint8_t c )
             uint16_t save_cs = pstack[ 1 ];
 
             const char * pathToExecute = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            tracer.Trace( "  path to execute: '%s'\n", pathToExecute );
+
+            char acCommandPath[ MAX_PATH ];
+            strcpy( acCommandPath, pathToExecute );
+            if ( '@' == acCommandPath[ 0 ] )
+            {
+                // DOS v2 command.com uses an '@' in this case. Not sure why.
+
+                GetCurrentDirectoryA( sizeof cwd, cwd );
+                acCommandPath[ 0 ] = cwd[ 0 ];
+            }
+
             AppExecute * pae = (AppExecute *) GetMem( cpu.get_es(), cpu.get_bx() );
             pae->Trace();
             const char * commandTail = (const char *) GetMem( pae->segCommandTail, pae->offsetCommandTail );
             DOSFCB * pfirstFCB = (DOSFCB *) GetMem( pae->segFirstFCB, pae->offsetFirstFCB );
             DOSFCB * psecondFCB = (DOSFCB *) GetMem( pae->segSecondFCB, pae->offsetSecondFCB );
 
-            tracer.Trace( "  path to execute: '%s'\n", pathToExecute );
             tracer.Trace( "  command tail: len %u, '%.*s'\n", *commandTail, *commandTail, commandTail + 1 );
             tracer.Trace( "  first and second fcbs: \n" );
             pfirstFCB->TraceFirst16();
             psecondFCB->TraceFirst16();
 
-            tracer.Trace( "  list of open files\n" );
+            tracer.Trace( "  list of open files:\n" );
             TraceOpenFiles();
             char acTail[ 128 ] = {0};
             memcpy( acTail, commandTail + 1, *commandTail );
 
-            uint16_t segChildEnv = AllocateEnvironment( pae->segEnvironment, pathToExecute );
+            uint16_t segChildEnv = AllocateEnvironment( pae->segEnvironment, acCommandPath );
             if ( 0 != segChildEnv )
             {
-                uint16_t seg_psp = LoadBinary( pathToExecute, acTail, segChildEnv );
+                uint16_t seg_psp = LoadBinary( acCommandPath, acTail, segChildEnv );
                 if ( 0 != seg_psp )
                 {
-                    strcpy( g_lastLoadedApp, pathToExecute );
+                    strcpy( g_lastLoadedApp, acCommandPath );
                     DOSPSP * psp = (DOSPSP *) GetMem( seg_psp, 0 );
                     psp->segParent = g_currentPSP;
                     g_currentPSP = seg_psp;
@@ -3674,7 +3676,7 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             char * psearch_string = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "Find First Asciz for pattern '%s'\n", psearch_string );
+            tracer.Trace( "  Find First Asciz for pattern '%s'\n", psearch_string );
 
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
@@ -4015,7 +4017,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
 uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment )
 {
     uint16_t psp = 0;
-    bool isCOM = !_stricmp( acApp + strlen( acApp ) - 4, ".COM" );
+    bool isCOM = ends_with( acApp, ".com" );
 
     if ( isCOM )
     {
@@ -4279,7 +4281,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
         penv += startLen;
     }
 
-    if ( stristr( fullPath, "B.EXE" ) )
+    if ( ends_with( fullPath, "B.EXE" ) )
     {
         strcpy( penv, pBriefFlags ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
         penv += 1 + strlen( penv );
@@ -4589,6 +4591,6 @@ int main( int argc, char ** argv )
 
     tracer.Shutdown();
 
-    return g_appTerminationReturnCode;
+    return g_appTerminationReturnCode; // return what the main app returned
 } //main
 
