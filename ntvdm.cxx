@@ -154,7 +154,8 @@ static uint16_t blankLine[ScreenColumns] = {0};    // an optimization for fillin
 static std::mutex g_mtxEverything;                 // one mutex for all shared state
 static ConsoleConfiguration g_consoleConfig;       // to get into and out of 80x25 mode
 static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE; // used for find first / find next
-static HANDLE g_hConsole = 0;                      // the Windows console handle
+static HANDLE g_hConsoleOutput = 0;                // the Windows console output handle
+static HANDLE g_hConsoleInput = 0;                 // the Windows console input handle
 static bool g_haltExecution = false;               // true when the app is shutting down
 static uint16_t g_diskTransferSegment = 0;         // segment of current disk transfer area
 static uint16_t g_diskTransferOffset = 0;          // offset of current disk transfer area
@@ -415,8 +416,8 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     uint16_t allocatedSeg = 0;
     size_t insertLocation = 0;
 
-    // sometimes allocate an extra spaceBetween paragraphs between blocks for overly optimistic resize requests.
-    // I'm looking at you link.exe v5.10 from 1990. Also QBX, which runs link.exe as a child process
+    // sometimes allocate an extra spaceBetween paragraphs between blocks for overly-optimistic resize requests.
+    // I'm looking at you link.exe v5.10 from 1990. QBX and cl.exe, run link.exe as a child process, so look for that too.
 
     const uint16_t spaceBetween = ( ends_with( g_acApp, "LINK.EXE" ) || ends_with( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
 
@@ -814,7 +815,7 @@ void UpdateWindowsCursorPosition()
     uint8_t row, col;
     GetCursorPosition( row, col );
     COORD pos = { col, row };
-    SetConsoleCursorPosition( g_hConsole, pos );
+    SetConsoleCursorPosition( g_hConsoleOutput, pos );
 } //UpdateWindowsCursorPosition
 
 static uint8_t bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
@@ -835,7 +836,7 @@ bool UpdateDisplay()
         #if false
             CONSOLE_SCREEN_BUFFER_INFOEX csbi = { 0 };
             csbi.cbSize = sizeof csbi;
-            GetConsoleScreenBufferInfoEx( g_hConsole, &csbi );
+            GetConsoleScreenBufferInfoEx( g_hConsoleOutput, &csbi );
 
             tracer.Trace( "  UpdateDisplay: pbuf %p, csbi size %d %d, window %d %d %d %d\n",
                           pbuf, csbi.dwSize.X, csbi.dwSize.Y,
@@ -867,14 +868,14 @@ bool UpdateDisplay()
                 #endif
     
                 COORD pos = { 0, (SHORT) y };
-                SetConsoleCursorPosition( g_hConsole, pos );
+                SetConsoleCursorPosition( g_hConsoleOutput, pos );
     
-                BOOL ok = WriteConsoleA( g_hConsole, aChars, ScreenColumns, 0, 0 );
+                BOOL ok = WriteConsoleA( g_hConsoleOutput, aChars, ScreenColumns, 0, 0 );
                 if ( !ok )
                     tracer.Trace( "writeconsolea failed with error %d\n", GetLastError() );
     
                 DWORD dwWritten;
-                ok = WriteConsoleOutputAttribute( g_hConsole, aAttribs, ScreenColumns, pos, &dwWritten );
+                ok = WriteConsoleOutputAttribute( g_hConsoleOutput, aAttribs, ScreenColumns, pos, &dwWritten );
                 if ( !ok )
                     tracer.Trace( "writeconsoleoutputattribute failed with error %d\n", GetLastError() );
             }
@@ -909,7 +910,7 @@ void ClearDisplay()
 
 BOOL WINAPI ControlHandler( DWORD fdwCtrlType )
 {
-    // this happens in a third thread implicitly created
+    // this happens in a third thread, which is implicitly created
 
     if ( CTRL_C_EVENT == fdwCtrlType )
     {
@@ -1181,11 +1182,6 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
         else if ( fctrl ) scancode += 0x23;
         else if ( fshift ) scancode += 0x19;
     }
-    else if ( 0x42 == sc ) // keypad -
-    {
-        if ( falt ) { scancode = 0x4a; asciiChar = 0; }
-        else if ( fctrl ) { scancode = 0x8e; asciiChar = 0; }
-    }
     else if ( 0x47 == sc ) // Home
     {
         if ( falt ) { scancode = 0x97; asciiChar = 0; }
@@ -1203,6 +1199,11 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
         if ( falt ) { scancode = 0x99; asciiChar = 0; }
         else if ( fctrl ) { scancode = 0x84; asciiChar = 0; }
         else if ( fshift ) { asciiChar = 0x39; }
+    }
+    else if ( 0x4a == sc ) // keypad -
+    {
+        if ( falt ) { scancode = 0x4a; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x8e; asciiChar = 0; }
     }
     else if ( 0x4b == sc ) // left arrow
     {
@@ -1280,7 +1281,7 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
 
     INPUT_RECORD records[ 10 ];
     DWORD numRead = 0;
-    BOOL ok = PeekConsoleInput( g_consoleConfig.GetInputHandle(), records, _countof( records ), &numRead );
+    BOOL ok = PeekConsoleInput( g_hConsoleInput, records, _countof( records ), &numRead );
     //tracer.Trace( "  PeekConsole returned %d, %d events\n", ok, numRead );
     if ( ok )
     {
@@ -1297,7 +1298,7 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
     // if none of the records were useful, clear them out
 
     if ( 0 != numRead )
-        ReadConsoleInput( g_consoleConfig.GetInputHandle(), records, numRead, &numRead );
+        ReadConsoleInput( g_hConsoleInput, records, numRead, &numRead );
 
     return false;
 } //peek_keyboard
@@ -1353,7 +1354,7 @@ void consume_keyboard()
 
     INPUT_RECORD records[ 10 ];
     DWORD numRead = 0;
-    BOOL ok = ReadConsoleInput( g_consoleConfig.GetInputHandle(), records, _countof( records ), &numRead );
+    BOOL ok = ReadConsoleInput( g_hConsoleInput, records, _countof( records ), &numRead );
     tracer.Trace( "    consume_keyboard ReadConsole returned %d, %d events\n", ok, numRead );
     if ( ok )
     {
@@ -4319,7 +4320,8 @@ int main( int argc, char ** argv )
 
     memset( memory, 0, sizeof memory );
 
-    g_hConsole = GetStdHandle( STD_OUTPUT_HANDLE );
+    g_hConsoleOutput = GetStdHandle( STD_OUTPUT_HANDLE );
+    g_hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
 
     init_blankline( DefaultVideoAttribute );
 
