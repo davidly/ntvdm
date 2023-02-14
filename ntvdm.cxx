@@ -140,10 +140,10 @@ const uint32_t ScreenRows = 25;                                   // this is the
 const uint32_t ScreenColumnsM1 = ScreenColumns - 1;               // columns minus 1
 const uint32_t ScreenRowsM1 = ScreenRows - 1;                     // rows minus 1
 const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
-const uint32_t ScreenBufferAddress = 0xb8000;                     // location in i8086 physical RAM of CGA display. 16k, 4k per page.
+const uint32_t ScreenBufferSegment = 0xb800;                      // location in i8086 physical RAM of CGA display. 16k, 4k per page.
+const uint16_t SegmentHardware = ScreenBufferSegment;             // where hardware starts (unlike real machines, which start at 0xa000)
 const uint32_t AppSegmentOffset = 0x1000;                         // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
 const uint16_t AppSegment = AppSegmentOffset / 16;                // 
-const uint16_t SegmentHardware = 0xb800;                          // where hardware starts (unlike real machines, which start at 0xa000)
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
 const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
@@ -525,7 +525,7 @@ void SetActiveDisplayPage( uint8_t page )
 
 uint8_t * GetVideoMem()
 {
-    return memory + ScreenBufferAddress + 0x1000 * GetActiveDisplayPage();
+    return GetMem( ScreenBufferSegment, 0x1000 * GetActiveDisplayPage() );
 } //GetVideoMem
 
 void GetCursorPosition( uint8_t & row, uint8_t & col )
@@ -4047,7 +4047,6 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         uint16_t ComSegment = AllocateMemory( 0x1000, paragraphs_free );
         psp = ComSegment;
         InitializePSP( ComSegment, acAppArgs, segEnvironment );
-        uint32_t ComSegmentOffset = ComSegment * 16;
 
         tracer.Trace( "  loading com, ComSegment is %04x\n", ComSegment );
 
@@ -4059,16 +4058,24 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
 
         FILE * fp = fopen( acApp, "rb" );
         if ( 0 == fp )
+        {
+            tracer.Trace( "open .com file, error %d\n", errno );
+            FreeMemory( ComSegment );
             return 0;
+        }
     
         fseek( fp, 0, SEEK_END );
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
-        bool ok = fread( memory + ComSegmentOffset + 0x100, file_size, 1, fp ) == 1;
-        if ( !ok )
-            return 0;
-
+        int blocks_read = fread( GetMem( ComSegment, 0x100 ), file_size, 1, fp );
         fclose( fp );
+
+        if ( 1 != blocks_read )
+        {
+            tracer.Trace( "can't read .com file into RAM, error %d\n", errno );
+            FreeMemory( ComSegment );
+            return 0;
+        }
     
         // prepare to execute the COM file
       
@@ -4089,8 +4096,6 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         uint16_t DataSegment = AllocateMemory( 0xffff, paragraphs_free );
         assert( 0 == DataSegment );
         DataSegment = AllocateMemory( paragraphs_free, paragraphs_remaining );
-        const uint32_t DataSegmentOffset = DataSegment * 16;
-
         tracer.Trace( "  loading exe, DataSegment is %04x\n", DataSegment );
 
         if ( 0 == DataSegment )
@@ -4105,7 +4110,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         FILE * fp = fopen( acApp, "rb" );
         if ( 0 == fp )
         {
-            tracer.Trace( "  can't open input executable '%s'\n", acApp );
+            tracer.Trace( "  can't open input executable '%s', error %d\n", acApp, errno );
             FreeMemory( DataSegment );
             return 0;
         }
@@ -4114,11 +4119,11 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
         vector<uint8_t> theexe( file_size );
-        bool ok = fread( theexe.data(), file_size, 1, fp ) == 1;
+        int blocks_read = fread( theexe.data(), file_size, 1, fp );
         fclose( fp );
-        if ( !ok )
+        if ( 1 != blocks_read )
         {
-            tracer.Trace( "  can't read input exe file" );
+            tracer.Trace( "  can't read input exe file, error %d", errno );
             FreeMemory( DataSegment );
             return 0;
         }
@@ -4162,9 +4167,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             return 0;
         }
 
-        const uint32_t CodeSegmentOffset = DataSegmentOffset + 0x100;   //  data segment + 256 bytes for the psp
-        const uint16_t CodeSegment = CodeSegmentOffset / 16;    
-
+        const uint16_t CodeSegment = DataSegment + 16; //  data segment + 256 bytes (16 paragraphs) for the psp
         uint8_t * pcode = GetMem( CodeSegment, 0 );
         memcpy( pcode, theexe.data() + codeStart, cbUsed );
         tracer.Trace( "  start of the code:\n" );
@@ -4301,7 +4304,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 
 bool InterruptHookedByApp( uint8_t i )
 {
-    uint16_t seg = ( (uint16_t *) memory )[ 2 * i + 1 ];
+    uint16_t seg = ( (uint16_t *) GetMem( 0, 0 ) )[ 2 * i + 1 ]; // lower uint_16 has offset, upper has segment
     return ( InterruptRoutineSegment != seg );
 } //InterruptHookedByApp
 
@@ -4433,11 +4436,12 @@ int main( int argc, char ** argv )
     * (uint8_t *) ( GetMem( 0xffff, 0xe ) ) = 0x69;       // machine ID. nice.
 
     // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
-    // routines starting at 0xc00. The routines are almost all the same -- fake opcode, interrupt #, then a
-    // far ret 2 (not iret) so as to not trash the flags used as return codes.
-    // The exception is tick tock interrupt 0x1c, which just does an iret for performance.
-    // The functions are mostly all 5 bytes long.
-    // interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
+    // routines starting at InterruptRoutineSegment. The routines are almost all the same -- fake opcode, interrupt #, retf 2
+    // One exception is tick tock interrupt 0x1c, which just does an iret for performance.
+    // Another is keyboard interrupt 9.
+    // Interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
+    // Other interrupts use far ret 2 (not iret) so as to not trash the flags used as return codes.
+    // Functions are all allocated 5 bytes each.
 
     uint32_t * pVectors = (uint32_t *) GetMem( 0, 0 );
     uint8_t * pRoutines = (uint8_t *) GetMem( InterruptRoutineSegment, 0 );
@@ -4478,7 +4482,7 @@ int main( int argc, char ** argv )
         exit( 1 );
     }
 
-    if ( !_stricmp( g_acApp, "gwbasic.exe" ) || !_stricmp( g_acApp, "mips.com" ) )
+    if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) )
     {
         // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
 
