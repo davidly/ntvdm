@@ -1203,7 +1203,7 @@ _after_prefix:
             }
             case 0xca: { ip = pop(); cs = pop(); sp += _b12; continue; } // retf immed16
             case 0xcb: { ip = pop(); cs = pop(); continue; } // retf
-            case 0xcc: { DebugBreak(); break; } // int 3
+            case 0xcc: { __debugbreak(); break; } // int 3
             case 0xcd: // int
             {
                 op_interrupt( _b1, 2 );
@@ -1686,7 +1686,7 @@ _after_prefix:
 
                 if ( takejmp )
                 {
-                    ip += ( 2 + (int) (char) _b1 );
+                    ip += ( 2 + (int) (int8_t) _b1 );
                     AddCycles( cycles, 12 );
                     continue;
                 }

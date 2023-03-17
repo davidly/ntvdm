@@ -37,19 +37,19 @@
 class CDisassemble8086
 {
     private:
-        byte * _pcode;    // pointer to stream of bytes to disassemble
-        byte _bc;         // # of bytes consumed by most recent instruction disassembeled
-        byte _b0;         // pcode[ 0 ]
-        byte _b1;         // pcode[ 1 ]
-        byte _b2;         // pcode[ 2 ];
-        byte _b3;         // pcode[ 3 ];
-        byte _b4;         // pcode[ 4 ];
-        WORD _b12;        // b1 and b2 as a little-endian word
-        WORD _b23;        // b2 and b3 as a little-endian word
-        WORD _b34;        // b3 and b4 as a little-endian word
-        WORD _reg;        // bits 5:3 of _b1
-        byte _rm;         // bits 2:0 of _b1
-        byte _mod;        // bits 7:6 of _b1
+        uint8_t * _pcode;    // pointer to stream of bytes to disassemble
+        uint8_t _bc;         // # of bytes consumed by most recent instruction disassembeled
+        uint8_t _b0;         // pcode[ 0 ]
+        uint8_t _b1;         // pcode[ 1 ]
+        uint8_t _b2;         // pcode[ 2 ];
+        uint8_t _b3;         // pcode[ 3 ];
+        uint8_t _b4;         // pcode[ 4 ];
+        uint16_t _b12;        // b1 and b2 as a little-endian word
+        uint16_t _b23;        // b2 and b3 as a little-endian word
+        uint16_t _b34;        // b3 and b4 as a little-endian word
+        uint16_t _reg;        // bits 5:3 of _b1
+        uint8_t _rm;         // bits 2:0 of _b1
+        uint8_t _mod;        // bits 7:6 of _b1
         bool _isword;     // true if bit 0 of _b0 is 1
         bool _toreg;      // true if bit 1 of _b0 is 1
 
@@ -64,7 +64,7 @@ class CDisassemble8086
         const char * i_opMath[8];  // test/not/neg/mul/div
         const char * i_opMix[8];  // inc/dec/call/jmp
         
-        const char * getrm( byte rm_to_use, int immediateOffset = 0 )
+        const char * getrm( uint8_t rm_to_use, int immediateOffset = 0 )
         {
             static char acOut[80];
 
@@ -81,7 +81,7 @@ class CDisassemble8086
             {
                 if ( 0x6 == rm_to_use )
                 {
-                    _daa( "[%04xh]", (DWORD) _pcode[ 2 + immediateOffset ] + ( (DWORD) _pcode[ 3 + immediateOffset ] << 8 ) );
+                    _daa( "[%04xh]", (uint32_t) _pcode[ 2 + immediateOffset ] + ( (uint32_t) _pcode[ 3 + immediateOffset ] << 8 ) );
                     _bc += 2;
                 }
                 else
@@ -95,7 +95,7 @@ class CDisassemble8086
             }
             else if ( 2 == _mod )
             {
-                _daa( "[%s+%04xh]", rm_strings[ rm_to_use ], _pcode[2] + ( (DWORD) _pcode[3] << 8 ) );
+                _daa( "[%s+%04xh]", rm_strings[ rm_to_use ], _pcode[2] + ( (uint32_t) _pcode[3] << 8 ) );
                 _bc += 2;
             }
         
@@ -159,7 +159,7 @@ class CDisassemble8086
                         char acI[ 10 ]; // immediate
                         if ( _isword )
                         {
-                            sprintf( acI, "%04xh", _pcode[ immoffset ] | ( (WORD) _pcode[ 1 + immoffset ] << 8 )  );
+                            sprintf( acI, "%04xh", _pcode[ immoffset ] | ( (uint16_t) _pcode[ 1 + immoffset ] << 8 )  );
                             _bc += 2;
                         }
                         else
@@ -185,11 +185,11 @@ class CDisassemble8086
         
         const char * opBits()
         {
-            byte register_val = ( _b1 >> 3 ) & 0x7;
+            uint8_t register_val = ( _b1 >> 3 ) & 0x7;
             return i_opBits[ register_val | ( _isword ? 8 : 0 ) ];
         } //opBits
 
-        void DecodeInstruction( byte * pcode )
+        void DecodeInstruction( uint8_t * pcode )
         {
             _bc = 1;
             _pcode = pcode;
@@ -198,9 +198,9 @@ class CDisassemble8086
             _b2 = pcode[2];
             _b3 = pcode[3];
             _b4 = pcode[4];
-            _b12 = _b1 | ( (WORD) _b2 << 8 );
-            _b23 = _b2 | ( (WORD) _b3 << 8 );
-            _b34 = _b3 | ( (WORD) _b4 << 8 );
+            _b12 = _b1 | ( (uint16_t) _b2 << 8 );
+            _b23 = _b2 | ( (uint16_t) _b3 << 8 );
+            _b34 = _b3 | ( (uint16_t) _b4 << 8 );
             _reg = ( _b1 >> 3 ) & 0x7;
             _rm = _b1 & 0x7;
             _isword = ( 1 == ( _b0 & 0x1 ) );
@@ -245,11 +245,11 @@ class CDisassemble8086
         }
 
          ~CDisassemble8086() {}
-        byte BytesConsumed() { return _bc; } // can be called after Disassemble
+        uint8_t BytesConsumed() { return _bc; } // can be called after Disassemble
 
-        const char * Disassemble( byte * pcode )
+        const char * Disassemble( uint8_t * pcode )
         {
-            if ( 0 != _pcode && ( _abs64( (ULONGLONG) pcode - (ULONGLONG) _pcode ) < 8 ) )
+            if ( 0 != _pcode && ( _abs64( (uint64_t) pcode - (uint64_t) _pcode ) < 8 ) )
             {
                 if ( pcode != ( _pcode + _bc ) )
                     tracer.Trace( "pcode %p, _pcode %p, _bc %02x\n", pcode, _pcode, _bc );
@@ -308,7 +308,7 @@ class CDisassemble8086
                 case 0x90: _da( "nop" ); break;
                 case 0x98: _da( "cbw" ); break;
                 case 0x99: _da( "cwd" ); break;
-                case 0x9a: _da( "call   far ptr  %04xh:%04xh", pcode[3] | ( (WORD) pcode[4] << 8 ), _b12 ); _bc += 4; _pcode = 0; break;
+                case 0x9a: _da( "call   far ptr  %04xh:%04xh", pcode[3] | ( (uint16_t) pcode[4] << 8 ), _b12 ); _bc += 4; _pcode = 0; break;
                 case 0x9b: _da( "wait" ); break;
                 case 0x9c: _da( "pushf" ); break;
                 case 0x9d: _da( "popf" ); break;
@@ -424,7 +424,7 @@ class CDisassemble8086
                 return acOut;
             }
         
-            byte top6 = _b0 & 0xfc;
+            uint8_t top6 = _b0 & 0xfc;
             _bc = 2;
         
             switch( top6 )
@@ -456,7 +456,7 @@ class CDisassemble8086
                             _daa( "%02xh", pcode[ immoffset ] );
                         else
                         {
-                            _daa( "%04xh", ( (DWORD) pcode[ immoffset ] + ( pcode[ 1 + immoffset ] << 8 ) ) );
+                            _daa( "%04xh", ( (uint32_t) pcode[ immoffset ] + ( pcode[ 1 + immoffset ] << 8 ) ) );
                             _bc ++;
                         }
                     }
@@ -489,8 +489,8 @@ class CDisassemble8086
                          _da( "%s   %s, ", i_opMath[ _reg ], getrm( _rm ) );
                          if ( _isword )
                          {
-                             WORD rhs = pcode[ _bc++ ];
-                             rhs |= ( (WORD) ( pcode[ _bc++ ] ) << 8 );
+                             uint16_t rhs = pcode[ _bc++ ];
+                             rhs |= ( (uint16_t) ( pcode[ _bc++ ] ) << 8 );
                              _daa( "%04xh", rhs );
                          }
                          else

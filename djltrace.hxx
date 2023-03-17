@@ -9,15 +9,32 @@
 //    tracer.Trace( "what to log with an integer argument %d and a wide string %ws\n", 10, pwcHello );
 //
 
-#ifndef UNICODE
-#define UNICODE
-#endif
-
-#include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <stdarg.h>
+#include <sys/types.h>
 #include <mutex>
+#include <memory>
+#include <vector>
 
 using namespace std;
+
+#ifdef _MSC_VER
+
+#ifndef _WINDOWS_
+extern "C" uint32_t GetCurrentThreadId(void);
+#endif
+
+#define do_gettid() GetCurrentThreadId()
+
+#else
+
+#include <sys/unistd.h>
+
+#define do_gettid() 0
+
+#endif
 
 class CDJLTrace
 {
@@ -30,32 +47,49 @@ class CDJLTrace
     public:
         CDJLTrace() : fp( NULL ), quiet( false ), flush( true ) {}
 
-        bool Enable( bool enable, const WCHAR * pwcLogFile = NULL, bool destroyContents = false )
+        bool Enable( bool enable, const wchar_t * pcLogFile = NULL, bool destroyContents = false )
+        {
+            if ( 0 != pcLogFile )
+            {
+                size_t len = wcslen( pcLogFile );
+                vector<char> narrow( 1 + len );
+                wcstombs( narrow.data(), pcLogFile, 1 + len );
+                return Enable( enable, narrow.data(), destroyContents );
+            }
+
+            return Enable( enable, (const char *) 0, destroyContents );
+        } // Enable
+
+        bool Enable( bool enable, const char * pcLogFile = NULL, bool destroyContents = false )
         {
             Shutdown();
 
             if ( enable )
             {
-                const WCHAR * mode = destroyContents ? L"w+t" : L"a+t";
+                const char * mode = destroyContents ? "w+t" : "a+t";
 
-                if ( NULL == pwcLogFile )
+                if ( NULL == pcLogFile )
                 {
-                    const WCHAR * pwcFile = L"tracer.txt";
-                    size_t len = wcslen( pwcFile );
+                    const char * tracefile = "tracer.txt";
+                    size_t len = strlen( tracefile );
+                    vector<char> tempPath( 1 + len );
+                    tempPath[0] = 0;
+                   
+                    const char * ptmp = getenv( "TEMP" );
+                    if ( ptmp )
+                    {
+                        tempPath.resize( 1 + len + strlen( ptmp ) );
+                        strcpy( tempPath.data(), ptmp );
+                        strcat( tempPath.data(), "/" );
+                    }
 
-                    unique_ptr<WCHAR> tempPath( new WCHAR[ MAX_PATH + 1 ] );
-                    size_t available = MAX_PATH - len;
+                    strcat( tempPath.data(), "tracer.txt" );
 
-                    size_t result = GetTempPath( (DWORD) available , tempPath.get() );
-                    if ( result > available || 0 == result )
-                        return false;
-
-                    wcscat_s( tempPath.get(), MAX_PATH - result, pwcFile );
-                    fp = _wfsopen( tempPath.get(), mode, _SH_DENYWR );
+                    fp = fopen( tempPath.data(), mode );
                 }
                 else
                 {
-                    fp = _wfsopen( pwcLogFile, mode, _SH_DENYWR );
+                    fp = fopen( pcLogFile, mode );
                 }
             }
 
@@ -92,7 +126,7 @@ class CDJLTrace
                 va_list args;
                 va_start( args, format );
                 if ( !quiet )
-                    fprintf( fp, "PID %6d TID %6d -- ", GetCurrentProcessId(), GetCurrentThreadId() );
+                    fprintf( fp, "PID %6u TID %6u -- ", getpid(), do_gettid() );
                 vfprintf( fp, format, args );
                 va_end( args );
                 if ( flush )
@@ -127,7 +161,7 @@ class CDJLTrace
                 va_list args;
                 va_start( args, format );
                 if ( !quiet )
-                    fprintf( fp, "PID %6d TID %6d -- ", GetCurrentProcessId(), GetCurrentThreadId() );
+                    fprintf( fp, "PID %6u TID %6u -- ", getpid(), do_gettid() );
                 vfprintf( fp, format, args );
                 va_end( args );
                 if ( flush )
