@@ -1,52 +1,51 @@
 #pragma once
 
+#include <time.h>
+using namespace std;
+using namespace std::chrono;
+
 class CPUCycleDelay
 {
     private:
-        LARGE_INTEGER liFreq;
-        ULONGLONG clockRate;
-        LARGE_INTEGER liStartExecution;
+        high_resolution_clock::time_point start_execution;
+        uint64_t clock_rate;
 
     public:
-        CPUCycleDelay( ULONGLONG clock_rate ) : clockRate( clock_rate )
+        CPUCycleDelay( uint64_t clockRate ) : clock_rate( clockRate )
         {
-            liStartExecution.QuadPart = 0;
-            liFreq.QuadPart = 0;
-
-            if ( 0 != clockRate )
-            {
-                QueryPerformanceFrequency( & liFreq );
-                QueryPerformanceCounter( & liStartExecution );
-            }
+            Reset();
         } //CPUCycleDelay
 
         void Reset()
         {
-            if ( 0 != clockRate )
-                QueryPerformanceCounter( & liStartExecution );
+            if ( 0 != clock_rate )
+                start_execution = high_resolution_clock::now();
         } //Reset
 
-        void Delay( ULONGLONG cyclesTotal )
+        void Delay( uint64_t cycles_total )
         {
-            if ( 0 != clockRate )
+            if ( 0 != clock_rate )
             {
-                ULONGLONG targetMicroseconds = ( 1000000 * cyclesTotal ) / clockRate;
+                uint64_t targetMicroseconds = ( 1000000 * cycles_total ) / clock_rate;
 
                 do
                 {
-                    LARGE_INTEGER li;
-                    QueryPerformanceCounter( & li );
-                    ULONGLONG diff = li.QuadPart - liStartExecution.QuadPart;
-                    ULONGLONG sofar = ( 1000000 * diff ) / liFreq.QuadPart;
-
+                    high_resolution_clock::time_point right_now = high_resolution_clock::now();
+                    uint64_t sofar = duration_cast<std::chrono::microseconds>( right_now - start_execution ).count();
+             
                     if ( sofar >= targetMicroseconds )
                         break;
 
                     // sleep in a slightly less than busy loop.
                     // this is slightly slower than running in a busy loop, but it's pretty close
 
-                    SleepEx( 1, FALSE );
-                } while (TRUE);
+                    #ifdef _MSC_VER
+                        SleepEx( 1, FALSE );
+                    #else
+                        struct timespec ts = { 0, 1000000 };
+                        nanosleep( &ts, 0 );
+                    #endif
+                } while ( true );
             }
         } //Delay
 }; //CPUCycleDelay
