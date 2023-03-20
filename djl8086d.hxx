@@ -5,7 +5,7 @@
 // it has been tested for a handful of apps, so most instructions have been validated.
 // usage:
 //    CDisassemble8086 dis;
-//    const char * p = dis.Disassemble( byte * pcode );
+//    const char * p = dis.Disassemble( uint8_t * pcode );
 //    printf( "next instruction: %s\n", p );
 //    printf( "  it was %d bytes long\n", dis.BytesConsumed() );
 //
