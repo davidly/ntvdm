@@ -54,7 +54,6 @@
 
 #include <djltrace.hxx>
 #include <djl_con.hxx>
-#include <djl_perf.hxx>
 #include <djl_cycle.hxx>
 #include <djl_durat.hxx>
 #include <djl_thrd.hxx>
@@ -4308,6 +4307,33 @@ bool InterruptHookedByApp( uint8_t i )
     return ( InterruptRoutineSegment != seg );
 } //InterruptHookedByApp
 
+static void RenderNumber( long long n, char * ac )
+{
+    if ( n < 0 )
+    {
+        strcat( ac, "-" );
+        RenderNumber( -n, ac );
+        return;
+    }
+   
+    if ( n < 1000 )
+    {
+        sprintf( ac + strlen( ac ), "%lld", n );
+        return;
+    }
+
+    RenderNumber( n / 1000, ac );
+    sprintf( ac + strlen( ac ), ",%03lld", n % 1000 );
+    return;
+} //RenderNumber
+
+static char * RenderNumberWithCommas( long long n, char * ac )
+{
+    ac[ 0 ] = 0;
+    RenderNumber( n, ac );
+    return ac;
+} //RenderNumberWithCommas
+
 int main( int argc, char ** argv )
 {
     // put the app name without a path or .exe into g_thisApp
@@ -4505,7 +4531,7 @@ int main( int argc, char ** argv )
     uint64_t total_cycles = 0; // this will be inacurate if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
     CDuration duration;
-    CPerfTime perfApp;
+    high_resolution_clock::time_point tStart = high_resolution_clock::now();
 
     do
     {
@@ -4549,13 +4575,7 @@ int main( int argc, char ** argv )
     if ( g_use80x25 )  // get any last-second screen updates displayed
         UpdateDisplay();
 
-    LONGLONG elapsed = 0;
-    FILETIME creationFT, exitFT, kernelFT, userFT;
-    if ( showPerformance )
-    {
-        perfApp.CumulateSince( elapsed );
-        GetProcessTimes( GetCurrentProcess(), &creationFT, &exitFT, &kernelFT, &userFT );
-    }
+    high_resolution_clock::time_point tDone = high_resolution_clock::now();
 
     peekKbdThread.EndThread();
 
@@ -4563,14 +4583,19 @@ int main( int argc, char ** argv )
 
     if ( showPerformance )
     {
+        char ac[ 100 ];
+        long long totalTime = duration_cast<std::chrono::milliseconds>( tDone - tStart ).count();
+        printf( "\n" );
+        printf( "elapsed milliseconds: %16s\n", RenderNumberWithCommas( totalTime, ac ) );
+
         #ifdef I8086_TRACK_CYCLES
-            printf( "8086 cycles:      %16ws\n", perfApp.RenderLL( (LONGLONG) total_cycles ) );
+            printf( "8086 cycles:      %20s\n", RenderNumberWithCommas( total_cycles, ac ) );
             printf( "clock rate: " );
             if ( 0 == clockrate )
             {
-                printf( "      %16s\n", "unbounded" );
+                printf( "      %20s\n", "unbounded" );
                 uint64_t total_ms = total_cycles / 4770;
-                printf( "approx ms at 4.77Mhz: %12ws  == ", perfApp.RenderLL( total_ms ) );
+                printf( "approx ms at 4.77Mhz: %16s  == ", RenderNumberWithCommas( total_ms, ac ) );
                 uint16_t days = (uint16_t) ( total_ms / 1000 / 60 / 60 / 24 );
                 uint16_t hours = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 * 24 ) ) / 1000 / 60 / 60 );
                 uint16_t minutes = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 ) ) / 1000 / 60 );
@@ -4579,20 +4604,8 @@ int main( int argc, char ** argv )
                 printf( "%u days, %u hours, %u minutes, %u seconds, %llu milliseconds\n", days, hours, minutes, seconds, milliseconds );
             }
             else
-                printf( "      %16ws Hz\n", perfApp.RenderLL( (LONGLONG ) clockrate ) );
+                printf( "      %20s Hz\n", RenderNumberWithCommas( clockrate, ac ) );
         #endif
-
-        ULARGE_INTEGER ullK, ullU;
-        ullK.HighPart = kernelFT.dwHighDateTime;
-        ullK.LowPart = kernelFT.dwLowDateTime;
-    
-        ullU.HighPart = userFT.dwHighDateTime;
-        ullU.LowPart = userFT.dwLowDateTime;
-    
-        printf( "kernel CPU ms:    %16ws\n", perfApp.RenderDurationInMS( ullK.QuadPart ) );
-        printf( "user CPU ms:      %16ws\n", perfApp.RenderDurationInMS( ullU.QuadPart ) );
-        printf( "total CPU ms:     %16ws\n", perfApp.RenderDurationInMS( ullU.QuadPart + ullK.QuadPart ) );
-        printf( "elapsed ms:       %16ws\n", perfApp.RenderDurationInMS( elapsed ) );
     }
 
     tracer.Shutdown();
