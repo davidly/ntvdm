@@ -9,8 +9,8 @@ class CSimpleThread
     public:
         CSimpleThread( LPTHREAD_START_ROUTINE func ) : heventStop( INVALID_HANDLE_VALUE ), hthread( INVALID_HANDLE_VALUE )
         {
-            HANDLE heventStop = CreateEvent( 0, FALSE, FALSE, 0 );
-            HANDLE hthread = CreateThread( 0, 0, func, heventStop, 0, 0 );
+            heventStop = CreateEvent( 0, FALSE, FALSE, 0 );
+            hthread = CreateThread( 0, 0, func, heventStop, 0, 0 );
         }
 
         ~CSimpleThread() { EndThread(); }
