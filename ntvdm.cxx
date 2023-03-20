@@ -60,7 +60,6 @@
 #include <djl8086d.hxx>
 #include "i8086.hxx"
 
-void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment );
 
@@ -561,79 +560,6 @@ void init_blankline( uint8_t attribute )
     }
 } //init_blankline
 
-char * append_hex_nibble( char * p, uint8_t val )
-{
-    assert( val <= 15 );
-    *p++ = ( val <= 9 ) ? val + '0' : val - 10 + 'a';
-    return p;
-} //append_hex_nibble
-
-char * append_hex_byte( char * p, uint8_t val )
-{
-    p = append_hex_nibble( p, ( val >> 4 ) & 0xf );
-    p = append_hex_nibble( p, val & 0xf );
-    return p;
-} //append_hex_byte
-
-char * append_hex_word( char * p, uint16_t val )
-{
-    p = append_hex_byte( p, ( val >> 8 ) & 0xff );
-    p = append_hex_byte( p, val & 0xff );
-    return p;
-} //append_hex_word
-
-void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent )
-{
-    __int64 offset = 0;
-    __int64 beyond = length;
-    const __int64 bytesPerRow = 32;
-    uint8_t buf[ bytesPerRow ];
-    char acLine[ 200 ];
-
-    while ( offset < beyond )
-    {
-        char * pline = acLine;
-
-        for ( uint32_t i = 0; i < indent; i++ )
-            *pline++ = ' ';
-
-        pline = append_hex_word( pline, (uint16_t) offset );
-        *pline++ = ' ';
-        *pline++ = ' ';
-
-        __int64 cap = __min( offset + bytesPerRow, beyond );
-        __int64 toread = ( ( offset + bytesPerRow ) > beyond ) ? ( length % bytesPerRow ) : bytesPerRow;
-
-        memcpy( buf, pData + offset, toread );
-
-        for ( __int64 o = offset; o < cap; o++ )
-        {
-            pline = append_hex_byte( pline, buf[ o - offset ] );
-            *pline++ = ' ';
-        }
-
-        uint64_t spaceNeeded = ( bytesPerRow - ( cap - offset ) ) * 3;
-
-        for ( uint64_t sp = 0; sp < ( 1 + spaceNeeded ); sp++ )
-            *pline++ = ' ';
-
-        for ( __int64 o = offset; o < cap; o++ )
-        {
-            char ch = buf[ o - offset ];
-
-            if ( ch < ' ' || 127 == ch )
-                ch = '.';
-
-            *pline++ = ch;
-        }
-
-        offset += bytesPerRow;
-        *pline = 0;
-
-        tracer.TraceQuiet( "%s\n", acLine );
-    }
-} //DumpBinaryData
-
 uint8_t get_keyboard_flags_depressed()
 {
     uint8_t val = 0;
@@ -685,7 +611,7 @@ struct DOSPSP
         assert( 0x80 == offsetof( DOSPSP, countCommandTail ) );
 
         tracer.Trace( "  PSP:\n" );
-        DumpBinaryData( (uint8_t *) this, sizeof DOSPSP, 4 );
+        tracer.TraceBinaryData( (uint8_t *) this, sizeof DOSPSP, 4 );
         tracer.Trace( "  topOfMemory: %04x\n", topOfMemory );
         tracer.Trace( "  segParent: %04x\n", segParent );
         tracer.Trace( "  return address: %04x\n", int22TerminateAddress );
@@ -2138,7 +2064,7 @@ void handle_int_21( uint8_t c )
             // print string. prints chars up to a dollar sign $
     
             char * p = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            DumpBinaryData( (uint8_t *) p, 0x40, 2 );
+            tracer.TraceBinaryData( (uint8_t *) p, 0x40, 2 );
             while ( *p && '$' != *p )
                 printf( "%c", *p++ );
     
@@ -2212,7 +2138,7 @@ void handle_int_21( uint8_t c )
             tracer.Trace( "open using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
-            DumpBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
+            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
     
             cpu.set_al( 0xff );
             char filename[ DOS_FILENAME_SIZE ];
@@ -2340,7 +2266,7 @@ void handle_int_21( uint8_t c )
     
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
-            DumpBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
+            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
     
             cpu.set_al( 0xff );
             char filename[ DOS_FILENAME_SIZE ];
@@ -2369,7 +2295,7 @@ void handle_int_21( uint8_t c )
             tracer.Trace( "create using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
-            DumpBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
+            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
             cpu.set_al( 0xff );
     
             char filename[ DOS_FILENAME_SIZE ];
@@ -2406,7 +2332,7 @@ void handle_int_21( uint8_t c )
             cpu.set_al( 0xff );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
-            DumpBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
+            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
             DOSFCB * pfcbNew = (DOSFCB * ) ( 0x10 + (uint8_t *) pfcb );
     
             char oldFilename[ DOS_FILENAME_SIZE ] = {0};
@@ -2552,7 +2478,7 @@ void handle_int_21( uint8_t c )
     
                             cpu.set_cx( (uint16_t) ( toRead / pfcb->recSize ) );
                             tracer.Trace( "  successfully read %u bytes, CX set to %u:\n", toRead, cpu.get_cx() );
-                            DumpBinaryData( GetDiskTransferAddress(), toRead, 4 );
+                            tracer.TraceBinaryData( GetDiskTransferAddress(), toRead, 4 );
                             pfcb->curRecord += (uint8_t) cRecords;
                             pfcb->recNumber += (uint32_t) cRecords;
                         }
@@ -2629,7 +2555,7 @@ void handle_int_21( uint8_t c )
             char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_si() );
             char * pfile_original = pfile;
             tracer.Trace( "  parse filename '%s'\n", pfile );
-            DumpBinaryData( (uint8_t *) pfile, 64, 4 );
+            tracer.TraceBinaryData( (uint8_t *) pfile, 64, 4 );
     
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_es(), cpu.get_di() );
             uint8_t input_al = cpu.al();
@@ -2877,7 +2803,7 @@ void handle_int_21( uint8_t c )
             // open file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            DumpBinaryData( (uint8_t *) path, 0x100, 2 );
+            tracer.TraceBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "  open file '%s'\n", path );
             uint8_t openmode = cpu.al();
             cpu.set_ax( 2 );
@@ -3045,7 +2971,7 @@ void handle_int_21( uint8_t c )
                     {
                         cpu.set_ax( toRead );
                         tracer.Trace( "  successfully read %u bytes\n", toRead );
-                        DumpBinaryData( p, toRead, 4 );
+                        tracer.TraceBinaryData( p, toRead, 4 );
                     }
                 }
                 else
@@ -3162,7 +3088,7 @@ void handle_int_21( uint8_t c )
                 {
                     cpu.set_ax( len );
                     tracer.Trace( "  successfully wrote %u bytes\n", len );
-                    DumpBinaryData( p, len, 4 );
+                    tracer.TraceBinaryData( p, len, 4 );
                 }
                 else
                     tracer.Trace( "  ERROR: attempt to write to file failed, error %d = %s\n", errno, strerror( errno ) );
@@ -4170,7 +4096,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         uint8_t * pcode = GetMem( CodeSegment, 0 );
         memcpy( pcode, theexe.data() + codeStart, cbUsed );
         tracer.Trace( "  start of the code:\n" );
-        DumpBinaryData( pcode, 0x200, 4 );
+        tracer.TraceBinaryData( pcode, 0x200, 4 );
 
         // apply relocation entries
 
@@ -4296,7 +4222,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 
     strcpy( penv, fullPath );
     tracer.Trace( "  wrote full path to the environment: '%s'\n", penv );
-    DumpBinaryData( (uint8_t *) penvdata, bytesNeeded, 4 );
+    tracer.TraceBinaryData( (uint8_t *) penvdata, bytesNeeded, 4 );
 
     return segEnvironment;
 } //AllocateEnvironment

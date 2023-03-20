@@ -36,12 +36,11 @@ void i8086::external_interrupt( uint8_t interrupt_num )
     op_interrupt( interrupt_num, 0 ); // 0 since it's not in the instruction stream
 } //external_interrupt
 
-extern void DumpBinaryData( uint8_t * pData, uint32_t length, uint32_t indent );
 void i8086::trace_state()
 {
-//    DumpBinaryData( memory + flatten( 0x9f9, 0 ), 0x40, 0 );
-//    DumpBinaryData( memory + flatten( ds, 0x71b8 ), 2, 0 );
-//    DumpBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
+//    tracer.TraceBinaryData( memory + flatten( 0x9f9, 0 ), 0x40, 0 );
+//    tracer.TraceBinaryData( memory + flatten( ds, 0x71b8 ), 2, 0 );
+//    tracer.TraceBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
 
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );

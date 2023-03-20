@@ -44,14 +44,14 @@ class CDisassemble8086
         uint8_t _b2;         // pcode[ 2 ];
         uint8_t _b3;         // pcode[ 3 ];
         uint8_t _b4;         // pcode[ 4 ];
-        uint16_t _b12;        // b1 and b2 as a little-endian word
-        uint16_t _b23;        // b2 and b3 as a little-endian word
-        uint16_t _b34;        // b3 and b4 as a little-endian word
-        uint16_t _reg;        // bits 5:3 of _b1
+        uint16_t _b12;       // b1 and b2 as a little-endian word
+        uint16_t _b23;       // b2 and b3 as a little-endian word
+        uint16_t _b34;       // b3 and b4 as a little-endian word
+        uint16_t _reg;       // bits 5:3 of _b1
         uint8_t _rm;         // bits 2:0 of _b1
         uint8_t _mod;        // bits 7:6 of _b1
-        bool _isword;     // true if bit 0 of _b0 is 1
-        bool _toreg;      // true if bit 1 of _b0 is 1
+        bool _isword;        // true if bit 0 of _b0 is 1
+        bool _toreg;         // true if bit 1 of _b0 is 1
 
         // wish I could make these static without requiring an initialization elsewhere
         
@@ -60,9 +60,9 @@ class CDisassemble8086
         const char * sr_strings[4];
         const char * jmp_strings[16];
         const char * i_opBits[16]; // bitwise/add/sub
-        const char * i_opRot[8];  // rotates/shifts
+        const char * i_opRot[8];   // rotates/shifts
         const char * i_opMath[8];  // test/not/neg/mul/div
-        const char * i_opMix[8];  // inc/dec/call/jmp
+        const char * i_opMix[8];   // inc/dec/call/jmp
         
         const char * getrm( uint8_t rm_to_use, int immediateOffset = 0 )
         {

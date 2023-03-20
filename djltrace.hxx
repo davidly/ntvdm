@@ -44,6 +44,26 @@ class CDJLTrace
         bool quiet; // no pid and tid
         bool flush; // flush after each write
 
+        static char * appendHexNibble( char * p, uint8_t val )
+        {
+            *p++ = ( val <= 9 ) ? val + '0' : val - 10 + 'a';
+            return p;
+        } //appendHexNibble
+        
+        static char * appendHexByte( char * p, uint8_t val )
+        {
+            p = appendHexNibble( p, ( val >> 4 ) & 0xf );
+            p = appendHexNibble( p, val & 0xf );
+            return p;
+        } //appendBexByte
+        
+        static char * appendHexWord( char * p, uint16_t val )
+        {
+            p = appendHexByte( p, ( val >> 8 ) & 0xff );
+            p = appendHexByte( p, val & 0xff );
+            return p;
+        } //appendHexWord
+        
     public:
         CDJLTrace() : fp( NULL ), quiet( false ), flush( true ) {}
 
@@ -83,7 +103,7 @@ class CDJLTrace
                         strcat( tempPath.data(), "/" );
                     }
 
-                    strcat( tempPath.data(), "tracer.txt" );
+                    strcat( tempPath.data(), tracefile );
 
                     fp = fopen( tempPath.data(), mode );
                 }
@@ -169,6 +189,59 @@ class CDJLTrace
             }
             #endif
         } //TraceDebug
+
+        void TraceBinaryData( uint8_t * pData, uint32_t length, uint32_t indent )
+        {
+            int64_t offset = 0;
+            int64_t beyond = length;
+            const int64_t bytesPerRow = 32;
+            uint8_t buf[ bytesPerRow ];
+            char acLine[ 200 ];
+        
+            while ( offset < beyond )
+            {
+                char * pline = acLine;
+        
+                for ( uint32_t i = 0; i < indent; i++ )
+                    *pline++ = ' ';
+        
+                pline = appendHexWord( pline, (uint16_t) offset );
+                *pline++ = ' ';
+                *pline++ = ' ';
+
+                int64_t end_of_row = offset + bytesPerRow;
+                int64_t cap = ( end_of_row > beyond ) ? beyond : end_of_row;
+                int64_t toread = ( ( offset + bytesPerRow ) > beyond ) ? ( length % bytesPerRow ) : bytesPerRow;
+        
+                memcpy( buf, pData + offset, toread );
+        
+                for ( int64_t o = offset; o < cap; o++ )
+                {
+                    pline = appendHexByte( pline, buf[ o - offset ] );
+                    *pline++ = ' ';
+                }
+        
+                uint64_t spaceNeeded = ( bytesPerRow - ( cap - offset ) ) * 3;
+        
+                for ( uint64_t sp = 0; sp < ( 1 + spaceNeeded ); sp++ )
+                    *pline++ = ' ';
+        
+                for ( int64_t o = offset; o < cap; o++ )
+                {
+                    char ch = buf[ o - offset ];
+        
+                    if ( ch < ' ' || 127 == ch )
+                        ch = '.';
+        
+                    *pline++ = ch;
+                }
+        
+                offset += bytesPerRow;
+                *pline = 0;
+        
+                TraceQuiet( "%s\n", acLine );
+            }
+        } //TraceBinaryData
 }; //CDJLTrace
 
 extern CDJLTrace tracer;
