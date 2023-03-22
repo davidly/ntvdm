@@ -234,7 +234,13 @@ static int compare_alloc_entries( const void * a, const void * b )
     DosAllocation const * pa = (DosAllocation const *) a;
     DosAllocation const * pb = (DosAllocation const *) b;
 
-    return pa->segment - pb->segment;
+    if ( pa->segment > pb->segment )
+        return 1;
+
+    if ( pa->segment == pb->segment )
+        return 0;
+
+    return -1;
 } //compare_alloc_entries
 
 static int compare_file_entries( const void * a, const void * b )
@@ -244,7 +250,13 @@ static int compare_file_entries( const void * a, const void * b )
     FileEntry const * pa = (FileEntry const *) a;
     FileEntry const * pb = (FileEntry const *) b;
 
-    return pa->handle - pb->handle;
+    if ( pa->handle > pb->handle )
+        return 1;
+
+    if ( pa->handle == pb->handle )
+        return 0;
+
+    return -1;
 } //compare_file_entries
 
 FILE * RemoveFileEntry( uint16_t handle )
