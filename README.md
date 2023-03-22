@@ -35,6 +35,9 @@ with many apps and compared instruction + register traces with other emulators.
 djl8086d.hxx is an 8086 disassembler that's used when tracing instructions. It's useful when debugging why
 apps don't work properly.
 
+Build with m.bat or mr.bat for debug and release on Windows. Or use g++ instead using mg.bat or mgr.bat.
+G++ versions are 20% faster than Microsoft C++ versions.
+
 Cycle counts are conditionally computed based on a #define in i8086.hxx. Using this, the emulator can
 simulate running at a given clock rate. Cycle counts vary widely between various spec docs I found online,
 and the code doesn't check for misaligned memory access, get details of mult/div correct, or otherwise
