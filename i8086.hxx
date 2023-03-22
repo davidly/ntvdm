@@ -1,7 +1,5 @@
 #pragma once
 
-#include <intrin.h>
-
 // when this (undefined) opcode is executed, i8086_invoke_interrupt will be called
 const uint8_t i8086_opcode_interrupt = 0x69;
 

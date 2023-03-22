@@ -36,18 +36,11 @@
 //     0xf0000 -- 0xfbfff   system monitor (0 for now)
 //     0xfc000 -- 0xfffff   bios code and hard-coded bios data (mostly 0 for now)
 
-#ifndef UNICODE
-#define UNICODE
-#endif
-
-#include <time.h>
+#include <djl_os.hxx>
 #include <sys/timeb.h>
 #include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <windows.h>
-#include <conio.h>
-#include <direct.h>
 #include <io.h>
 #include <assert.h>
 #include <vector>
@@ -356,7 +349,7 @@ uint16_t FindFirstFreeFileHandle()
     // is closed and a new file is opened the lowest possible free handle value is used for the
     // newly opened file. It's a bug in the app, but it's not getting fixed.
 
-    qsort( g_fileEntries.data(), g_fileEntries.size(), sizeof FileEntry, compare_file_entries );
+    qsort( g_fileEntries.data(), g_fileEntries.size(), sizeof( FileEntry ), compare_file_entries );
     uint16_t freehandle = 5; // DOS uses this, since 0-4 are for built-in handles
 
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
@@ -611,7 +604,7 @@ struct DOSPSP
         assert( 0x80 == offsetof( DOSPSP, countCommandTail ) );
 
         tracer.Trace( "  PSP:\n" );
-        tracer.TraceBinaryData( (uint8_t *) this, sizeof DOSPSP, 4 );
+        tracer.TraceBinaryData( (uint8_t *) this, sizeof( DOSPSP ), 4 );
         tracer.Trace( "  topOfMemory: %04x\n", topOfMemory );
         tracer.Trace( "  segParent: %04x\n", segParent );
         tracer.Trace( "  return address: %04x\n", int22TerminateAddress );
@@ -747,7 +740,7 @@ static uint8_t bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for 
 
 void ClearLastUpdateBuffer()
 {
-    memset( bufferLastUpdate, 0, sizeof bufferLastUpdate );
+    memset( bufferLastUpdate, 0, sizeof( bufferLastUpdate ) );
 } //ClearLastUpdateBuffer
 
 bool UpdateDisplay()
@@ -760,7 +753,7 @@ bool UpdateDisplay()
         //tracer.Trace( "UpdateDisplay with changes\n" );
         #if false
             CONSOLE_SCREEN_BUFFER_INFOEX csbi = { 0 };
-            csbi.cbSize = sizeof csbi;
+            csbi.cbSize = sizeof( csbi );
             GetConsoleScreenBufferInfoEx( g_hConsoleOutput, &csbi );
 
             tracer.Trace( "  UpdateDisplay: pbuf %p, csbi size %d %d, window %d %d %d %d\n",
@@ -1443,7 +1436,7 @@ void PerhapsFlipTo80x25()
         if ( !g_forceConsole )
         {
             g_use80x25 = true;
-            g_consoleConfig.EstablishConsole( ScreenColumns, ScreenRows, ControlHandler  );
+            g_consoleConfig.EstablishConsole( ScreenColumns, ScreenRows, (void *) ControlHandler  );
             ClearDisplay();
         }
     }
@@ -2077,7 +2070,7 @@ void handle_int_21( uint8_t c )
             uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
             uint8_t maxLen = p[0];
     
-            char * result = gets_s( (char *) p + 2, maxLen );
+            char * result = ConsoleConfiguration::portable_gets_s( (char *) p + 2, maxLen );
             if ( result )
                 p[1] = (uint8_t) strlen( result );
             else
@@ -2138,7 +2131,7 @@ void handle_int_21( uint8_t c )
             tracer.Trace( "open using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
-            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
+            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
     
             cpu.set_al( 0xff );
             char filename[ DOS_FILENAME_SIZE ];
@@ -2266,7 +2259,7 @@ void handle_int_21( uint8_t c )
     
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
-            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
+            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
     
             cpu.set_al( 0xff );
             char filename[ DOS_FILENAME_SIZE ];
@@ -2295,7 +2288,7 @@ void handle_int_21( uint8_t c )
             tracer.Trace( "create using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
-            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
+            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
             cpu.set_al( 0xff );
     
             char filename[ DOS_FILENAME_SIZE ];
@@ -2332,7 +2325,7 @@ void handle_int_21( uint8_t c )
             cpu.set_al( 0xff );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
-            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof DOSFCB, 2 );
+            tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
             DOSFCB * pfcbNew = (DOSFCB * ) ( 0x10 + (uint8_t *) pfcb );
     
             char oldFilename[ DOS_FILENAME_SIZE ] = {0};
@@ -2363,7 +2356,7 @@ void handle_int_21( uint8_t c )
         {
             // get default drive. 0 == a:, 1 == b:, etc. returned in AL
     
-            GetCurrentDirectoryA( sizeof cwd, cwd );
+            GetCurrentDirectoryA( sizeof( cwd ), cwd );
             _strupr( cwd );
             cpu.set_al( cwd[0] - 'A' );
             tracer.Trace( "  returning default drive as '%c'\n", (char) cwd[0] );
@@ -2902,7 +2895,7 @@ void handle_int_21( uint8_t c )
                     while ( 0 == acBuffer[ 0 ] )
                     {
                         size_t len = _countof( acBuffer );
-                        char * result = gets_s( acBuffer, _countof( acBuffer ) );
+                        char * result = ConsoleConfiguration::portable_gets_s( acBuffer, _countof( acBuffer ) );
                         if ( result )
                         {
                             strcat( acBuffer, "\r\n" );
@@ -3375,7 +3368,7 @@ void handle_int_21( uint8_t c )
             // CF set on error. AX=15 for invalid drive
     
             cpu.set_carry( true );
-            if ( GetCurrentDirectoryA( sizeof cwd, cwd ) )
+            if ( GetCurrentDirectoryA( sizeof( cwd ), cwd ) )
             {
                 char * paststart = cwd + 3;
                 if ( strlen( paststart ) <= 63 )
@@ -3520,7 +3513,7 @@ void handle_int_21( uint8_t c )
             {
                 // DOS v2 command.com uses an '@' in this case. Not sure why.
 
-                GetCurrentDirectoryA( sizeof cwd, cwd );
+                GetCurrentDirectoryA( sizeof( cwd ), cwd );
                 acCommandPath[ 0 ] = cwd[ 0 ];
             }
 
@@ -3644,7 +3637,7 @@ void handle_int_21( uint8_t c )
                 }
                 else
                 {
-                    memset( pff, 0, sizeof DosFindFile );
+                    memset( pff, 0, sizeof( DosFindFile ) );
                     cpu.set_ax( 0x12 ); // no more files
                     tracer.Trace( "  WARNING: find next file found no more, error %d\n", GetLastError() );
                     FindClose( g_hFindFirst );
@@ -3925,7 +3918,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnvironment )
 {
     DOSPSP *psp = (DOSPSP *) GetMem( segment, 0 );
-    memset( psp, 0, sizeof DOSPSP );
+    memset( psp, 0, sizeof( DOSPSP ) );
 
     psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
     psp->topOfMemory = SegmentHardware - 1;   // top of memorysegment in paragraph form
@@ -4273,7 +4266,7 @@ int main( int argc, char ** argv )
     if ( pdot )
         *pdot = 0;
 
-    memset( memory, 0, sizeof memory );
+    memset( memory, 0, sizeof( memory ) );
 
     g_hConsoleOutput = GetStdHandle( STD_OUTPUT_HANDLE );
     g_hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
@@ -4343,7 +4336,7 @@ int main( int argc, char ** argv )
     if ( 0 == pcAPP )
         usage( "no command specified" );
 
-    _assume( 0 != pcAPP ); // the compiler warns because it doesn't know usage() always exits.
+    //_assume( 0 != pcAPP ); // the compiler warns because it doesn't know usage() always exits.
     strcpy( g_acApp, pcAPP );
     _strupr( g_acApp );
     DWORD attr = GetFileAttributesA( g_acApp );

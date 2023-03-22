@@ -17,31 +17,16 @@
 #include <mutex>
 #include <memory>
 #include <vector>
+#include <cstring>
 
 using namespace std;
-
-#ifdef _MSC_VER
-
-#ifndef _WINDOWS_
-extern "C" uint32_t GetCurrentThreadId(void);
-#endif
-
-#define do_gettid() GetCurrentThreadId()
-
-#else
-
-#include <sys/unistd.h>
-
-#define do_gettid() 0
-
-#endif
 
 class CDJLTrace
 {
     private:
         FILE * fp;
         std::mutex mtx;
-        bool quiet; // no pid and tid
+        bool quiet; // no pid
         bool flush; // flush after each write
 
         static char * appendHexNibble( char * p, uint8_t val )
@@ -146,7 +131,7 @@ class CDJLTrace
                 va_list args;
                 va_start( args, format );
                 if ( !quiet )
-                    fprintf( fp, "PID %6u TID %6u -- ", getpid(), do_gettid() );
+                    fprintf( fp, "PID %6u -- ", getpid() );
                 vfprintf( fp, format, args );
                 va_end( args );
                 if ( flush )
@@ -154,7 +139,7 @@ class CDJLTrace
             }
         } //Trace
 
-        // Don't prepend the PID and TID to the trace
+        // Don't prepend the PID to the trace
 
         void TraceQuiet( const char * format, ... )
         {
@@ -181,7 +166,7 @@ class CDJLTrace
                 va_list args;
                 va_start( args, format );
                 if ( !quiet )
-                    fprintf( fp, "PID %6u TID %6u -- ", getpid(), do_gettid() );
+                    fprintf( fp, "PID %6u -- ", getpid() );
                 vfprintf( fp, format, args );
                 va_end( args );
                 if ( flush )

@@ -10,6 +10,8 @@
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
 // I tested cycle counts against physical 80186 and 8088 machines. It's somewhere in between.
 
+#include <djl_os.hxx>
+
 #include <stdio.h>
 #include <memory.h>
 #include <assert.h>
