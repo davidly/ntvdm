@@ -1968,7 +1968,7 @@ void HandleAppExit()
         if ( -1 == index )
             break;
 
-        tracer.Trace( "  freeing RAM an app leaked, segment %04x paral length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
+        tracer.Trace( "  freeing RAM an app leaked, segment %04x para length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
         FreeMemory( g_allocEntries[ index ].segment );
     } while( true );
 } //HandleAppExit
