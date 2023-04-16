@@ -20,7 +20,10 @@
 #include <cstring>
 
 #ifndef _MSC_VER
-#include <sys/unistd.h>
+    #include <sys/unistd.h>
+    #ifdef __APPLE__
+        #include <unistd.h>
+    #endif
 #endif
 
 using namespace std;

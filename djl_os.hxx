@@ -26,7 +26,10 @@
 
 #else // Linux, MacOS, etc.
 
-    #include <termios.h>
+    #ifndef OLDGCC
+        #include <termios.h>
+    #endif
+
     #include <ctype.h>
 
     template < typename T, size_t N > size_t _countof( T ( & arr )[ N ] ) { return std::extent< T[ N ] >::value; }    
@@ -53,7 +56,10 @@
         long ns = (long) ( total_ns % 1000000000 );
         long sec = (long) ( total_ns / 1000000000 );
         struct timespec ts = { sec, ns };
-        nanosleep( &ts, 0 );
+
+        #ifndef OLDGCC
+            nanosleep( &ts, 0 );
+        #endif
     } //sleep_ms
 
     inline bool file_exists( char const * pfile )

@@ -205,6 +205,11 @@ class ConsoleConfiguration
 
         static bool throttled_kbhit()
         {
+            
+            // _kbhit() does device I/O in Windows, which sleeps for a tiny amount waiting for a reply, so 
+            // compute-bound mbasic.com apps run 10x slower than they should because mbasic polls for keyboard input.
+            // Workaround: only call _kbhit() if 50 milliseconds has gone by since the last call.
+
             static high_resolution_clock::time_point last_call = high_resolution_clock::now();
             high_resolution_clock::time_point tNow = high_resolution_clock::now();
             long long difference = duration_cast<std::chrono::milliseconds>( tNow - last_call ).count();                
@@ -227,7 +232,7 @@ class ConsoleConfiguration
                 if ( '\n' == ch || '\r' == ch )
                 {
                     printf( "\n" );
-                    fflush( stdout );
+                    fflush( stdout ); // fflush is required on linux or it'll be buffered not seen until the app ends.
                     break;
                 }
     
