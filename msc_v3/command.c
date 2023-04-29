@@ -2,6 +2,19 @@
    simplistic command.com replacement for ntvdm.
    written for apps running in ntvdm that shell to command.com, like wordstar and quick basic.
    the actual command.com assumes too much about DOS internals to emulate without a lot of work.
+   the syntax is very old-school C.
+
+   Build using Microsoft C Version 3 like this:
+
+       ntvdm -t cl /Os /Fa /Fm /Ze /AL -I inc -I inc\sys command.c /link lib\
+
+   Rename the .exe as .com -- DOS and ntvdm are OK with .com files actually being .exe
+
+       ren command.exe command.com
+
+   Run it like this:
+
+       ntvdm command
 */
 
 #define LINT_ARGS
@@ -37,6 +50,8 @@ struct FINDENTRY
 };
 
 int parse_and_run( char * );
+
+/* use these registers for DOS interrupts */
 
 union REGS g_regs_in;
 union REGS g_regs_out;
