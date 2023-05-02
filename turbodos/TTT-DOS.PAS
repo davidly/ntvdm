@@ -1,6 +1,7 @@
 { App to prove you can't win at Tic-Tac-Toe }
 
 program ttt;
+{$I timeutil.pas}
 
 const
   scoreWin = 6;
@@ -13,7 +14,7 @@ const
   pieceX = 1;
   pieceO = 2;
 
-  iterations = 10;
+  iterations = 100;
 
 type
   boardType = array[ 0..8 ] of integer;
@@ -21,6 +22,7 @@ type
 var
   evaluated: integer;
   board: boardType;
+  timeStart, timeEnd: timetype;
 
 procedure dumpBoard;
 var
@@ -166,6 +168,8 @@ begin
   for i := 0 to 8 do
     board[i] := pieceBlank;
 
+  get_time( timeStart );
+
   for i := 1 to Iterations do
   begin
     evaluated := 0;  { once per loop to prevent overflow }
@@ -173,6 +177,9 @@ begin
     runit( 1 );
     runit( 4 );
   end;
+
+  get_time( timeEnd );
+  print_elapsed_time( timeStart, timeEnd );
 
   Write( 'moves evaluated: ' ); Write( evaluated ); WriteLn;
   Write( 'iterations: ' ); Write( iterations ); WriteLn;

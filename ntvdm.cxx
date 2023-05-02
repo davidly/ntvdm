@@ -1,5 +1,5 @@
 // NT Virtual DOS Machine. Not the real one, but one that works on 64-bit Windows.
-// Written by David Lee
+// Written by David Lee in late 2022
 // This only simulates a small subset of DOS and BIOS behavior.
 // I only implemented BIOS/DOS calls used by tested apps, so there are some big gaps.
 // Only CGA text modes 2 and 3 (80x25 greyscale and color) are supported.
@@ -185,13 +185,13 @@ static void usage( char const * perr )
     if ( perr )
         printf( "error: %s\n", perr );
 
-    printf( "NT Virtual DOS Machine: emulates an MS-DOS 3.00 runtime environment enough to run some COM/EXE files on Win64\n" );
+    printf( "NT Virtual DOS Machine: emulates an 8086 MS-DOS 3.00 runtime environment enough to run COM/EXE apps\n" );
     printf( "usage: %s [arguments] <DOS executable> [arg1] [arg2]\n", g_thisApp );
     printf( "  notes:\n" );
     printf( "            -c     don't auto-detect apps that want 80x25 then set window to that size;\n" );
-    printf( "                   stay in teletype mode.\n" );
+    printf( "                   stay in teletype/console mode.\n" );
     printf( "            -C     always set window to 80x25; don't use teletype mode.\n" );
-    printf( "            -d     don't clear the display when in 80x25 mode on app exit\n" );
+    printf( "            -d     don't clear the display on app exit when in 80x25 mode\n" );
     printf( "            -i     trace instructions as they are executed to %s.log (this is verbose!)\n", g_thisApp );
     printf( "            -p     show performance information\n" ); 
 #ifdef I8086_TRACK_CYCLES

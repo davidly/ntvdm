@@ -1,5 +1,5 @@
 // 8086 emulator
-// Written by David Lee
+// Written by David Lee in late 2022.
 // Useful: http://bitsavers.org/components/intel/8086/9800722-03_The_8086_Family_Users_Manual_Oct79.pdf
 //         https://www.eeeguide.com/8086-instruction-format/
 //         https://www.felixcloutier.com/x86

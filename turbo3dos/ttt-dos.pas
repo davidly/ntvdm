@@ -1,6 +1,7 @@
 { App to prove you can't win at Tic-Tac-Toe }
 
 program ttt;
+{$I timeutil.pas}
 
 const
   scoreWin = 6;
@@ -13,18 +14,19 @@ const
   pieceX = 1;
   pieceO = 2;
 
-  iterations = 10;
+  iterations = 100;
 
 type
-  boardType = array[ 0..8 ] of Integer;
+  boardType = array[ 0..8 ] of integer;
 
 var
-  evaluated: Integer;
+  evaluated: integer;
   board: boardType;
+  timeStart, timeEnd: timetype;
 
 procedure dumpBoard;
 var
-  i : Integer;
+  i : integer;
 begin
   Write( '{' );
   for i := 0 to 8 do
@@ -32,9 +34,9 @@ begin
   Write( '}' );
 end;
 
-function lookForWinner : Integer;
+function lookForWinner : integer;
 var
-  t, p : Integer;
+  t, p : integer;
 begin
   {  dumpBoard; }
   p := pieceBlank;
@@ -85,9 +87,9 @@ begin
   lookForWinner := p;
 end;
 
-function minmax( alpha: Integer; beta: Integer; depth: Integer ): Integer;
+function minmax( alpha: integer; beta: integer; depth: integer ): integer;
 var
-  p, value, pieceMove, score : Integer;
+  p, value, pieceMove, score : integer;
   done: boolean;
 begin
   evaluated := evaluated + 1;
@@ -151,9 +153,9 @@ begin
   minmax := value;
 end;
 
-procedure runit( move : Integer );
+procedure runit( move : integer );
 var
-  score: Integer;
+  score: integer;
 begin
   board[move] := pieceX;
   score := minmax( scoreMin, scoreMax, 0 );
@@ -161,10 +163,12 @@ begin
 end;
 
 var
-  i: Integer;
+  i: integer;
 begin
   for i := 0 to 8 do
     board[i] := pieceBlank;
+
+  get_time( timeStart );
 
   for i := 1 to Iterations do
   begin
@@ -174,6 +178,10 @@ begin
     runit( 4 );
   end;
 
+  get_time( timeEnd );
+  print_elapsed_time( timeStart, timeEnd );
+
   Write( 'moves evaluated: ' ); Write( evaluated ); WriteLn;
   Write( 'iterations: ' ); Write( iterations ); WriteLn;
-end.
+end.
+
