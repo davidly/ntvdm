@@ -1,9 +1,5 @@
 type
-timetype = record h, m, s, l : integer; end;
-
-regpack = record
-          ax,bx,cx,dx,bp,si,di,ds,es,flags: integer;
-          end;
+  timetype = record h, m, s, l : integer; end;
 
 procedure time_difference( var tStart, tEnd, tDiff : timetype );
 var
@@ -40,38 +36,22 @@ begin { time_difference }
     tDiff.h := tDiff.h + 12;
 end;
 
-procedure get_time( var tt : timetype );
-var
-  recpack:        regpack;
-  ah,al,ch,cl,dh: byte;
-
+procedure print_time_part( num : integer );
 begin
-  ah := $2c;
-  with recpack do
-  begin
-    ax := ah shl 8 + al;
-  end;
-  intr( $21, recpack );
-  with recpack do
-  begin
-    tt.h := cx shr 8;
-    tt.m := cx mod 256;
-    tt.s := dx shr 8;
-    tt.l := dx mod 256;
-  end;
+  if ( num < 10 ) then write( '0' );
+  write( num );
 end;
 
 procedure print_time( var t: timetype );
 
 begin
-    if ( t.h < 10 ) then write( '0' );
-    write( t.h, ':' );
-    if ( t.m < 10 ) then write( '0' );
-    write( t.m, ':' );
-    if ( t.s < 10 ) then write( '0' );
-    write( t.s, '.' );
-    if ( t.l < 10 ) then write( '0' );
-    write( t.l );
+  print_time_part( t.h );
+  write( ':' );
+  print_time_part( t.m );
+  write( ':' );
+  print_time_part( t.s );
+  write( '.' );
+  print_time_part( t.l );
 end;
 
 procedure print_elapsed_time( var timeStart, timeEnd: timetype );
@@ -83,4 +63,4 @@ begin
   print_time( timeDiff );
   writeln;
 end;
-
+

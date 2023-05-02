@@ -2,6 +2,7 @@
 
 program ttt;
 {$I timeutil.pas}
+{$I dos_gt.pas}
 
 const
   scoreWin = 6;
@@ -99,10 +100,10 @@ begin
     p := lookForWinner;
     if p <> pieceBlank then
     begin
-        if p = pieceX then
-          value := scoreWin
-        else
-          value := scoreLose
+      if p = pieceX then
+        value := scoreWin
+      else
+        value := scoreLose
     end
     else if depth = 8 then
       value := scoreTie;
@@ -112,13 +113,13 @@ begin
   begin
     if ( 0 <> ( depth AND 1 ) ) then
     begin
-        value := scoreMin;
-        pieceMove := pieceX;
+      value := scoreMin;
+      pieceMove := pieceX;
     end
     else
     begin
-        value := scoreMax;
-        pieceMove := pieceO;
+      value := scoreMax;
+      pieceMove := pieceO;
     end;
 
     done := false;
