@@ -17,6 +17,7 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10 
     Mips.com Version 1.20 from Chips and Technologies.
     Microsoft 8086 Object Linker Version 3.01 (C) Copyright Microsoft Corp 1983, 1984, 1985
+    Microsoft C Compiler V1.04 & Microsoft Object Linker V1.10 (C) Copyright 1981 by Microsoft Inc.
     Microsoft C Compiler  Version 3.00 (C) Copyright Microsoft Corp 1984 1985  
     
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
