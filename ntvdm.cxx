@@ -2451,6 +2451,16 @@ void handle_int_21( uint8_t c )
             tracer.Trace( "random block read using FCBs\n" );
             pfcb->Trace();
             ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
+
+            FILE * fp = pfcb->GetFP();
+
+            if ( fp )
+            {
+                fseek( fp, 0, SEEK_END );
+                pfcb->fileSize = ftell( fp );
+                fseek( fp, 0, SEEK_SET );
+            }
+
             if ( seekOffset > pfcb->fileSize )
             {
                 tracer.Trace( "  ERROR: random read beyond end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
@@ -2463,7 +2473,6 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                FILE * fp = pfcb->GetFP();
                 if ( fp )
                 {
                     tracer.Trace( "  seek offset: %u\n", seekOffset );
