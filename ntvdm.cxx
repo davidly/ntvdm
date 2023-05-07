@@ -3871,6 +3871,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     }
     else if ( 0x20 == interrupt_num ) // compatibility with CP/M apps for COM executables that jump to address 0 in its data segment
     {
+        cpu.set_al( 0 ); // this cp/m exit mode had not return code and the default is 0
         HandleAppExit();
         return;
     }
@@ -4546,7 +4547,11 @@ int main( int argc, char ** argv )
             else
                 printf( "      %20s Hz\n", RenderNumberWithCommas( clockrate, ac ) );
         #endif
+
+        printf( "app exit code:    %20d\n", g_appTerminationReturnCode );
     }
+
+    tracer.Trace( "exit code of ntvdm: %d\n", g_appTerminationReturnCode );
 
     tracer.Shutdown();
 
