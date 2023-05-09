@@ -14,32 +14,38 @@ class ConsoleConfiguration
             CONSOLE_SCREEN_BUFFER_INFOEX oldScreenInfo;
             DWORD oldConsoleMode;
             CONSOLE_CURSOR_INFO oldCursorInfo;
+            int16_t setWidth;
         #else
             bool initialized;
             bool established;
+#ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
             struct termios orig_termios;
+#endif
         #endif
 
     public:
         #ifdef _MSC_VER
-            ConsoleConfiguration() : consoleOutputHandle( 0 ), consoleInputHandle( 0 ), oldConsoleMode( 0 )
+            ConsoleConfiguration() : consoleOutputHandle( 0 ), consoleInputHandle( 0 ), oldConsoleMode( 0 ), setWidth( 0 )
             {
-                    oldWindowPlacement = {0};
-                    oldScreenInfo = {0};
-                    oldCursorInfo = {0};
+                oldWindowPlacement = {0};
+                oldScreenInfo = {0};
+                oldCursorInfo = {0};
             } //ConsoleConfiguration
         #else
             ConsoleConfiguration() : initialized( false ), established( false )
             {
+#ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
                 tcgetattr( 0, &orig_termios );
-                struct termios new_termios;
-                memcpy( &new_termios, &orig_termios, sizeof( new_termios ) );
 
                 // make input raw so it's possible to peek to see if a keystroke is available
+
+                struct termios new_termios;
+                memcpy( &new_termios, &orig_termios, sizeof( new_termios ) );
 
                 cfmakeraw( &new_termios );
                 new_termios.c_oflag = orig_termios.c_oflag;
                 tcsetattr( 0, TCSANOW, &new_termios );
+#endif
 
                 initialized = true;
             } //ConsoleConfiguration
@@ -86,30 +92,32 @@ class ConsoleConfiguration
                 if ( 0 != consoleOutputHandle )
                     return;
     
-                PHANDLER_ROUTINE handler = (PHANDLER_ROUTINE) proutine;
-            
-                oldWindowPlacement.length = sizeof oldWindowPlacement;
-                GetWindowPlacement( GetConsoleWindow(), &oldWindowPlacement );
-            
                 consoleOutputHandle = GetStdHandle( STD_OUTPUT_HANDLE );
                 consoleInputHandle = GetStdHandle( STD_INPUT_HANDLE );
-    
                 GetConsoleCursorInfo( consoleOutputHandle, &oldCursorInfo );
-            
-                oldScreenInfo.cbSize = sizeof oldScreenInfo;
-                GetConsoleScreenBufferInfoEx( consoleOutputHandle, &oldScreenInfo );
-            
-                CONSOLE_SCREEN_BUFFER_INFOEX newInfo;
-                memcpy( &newInfo, &oldScreenInfo, sizeof newInfo );
-            
-                newInfo.dwSize.X = width;
-                newInfo.dwSize.Y = height;
-                newInfo.dwMaximumWindowSize.X = width;
-                newInfo.dwMaximumWindowSize.Y = height;
-                SetConsoleScreenBufferInfoEx( consoleOutputHandle, &newInfo );
-            
-                COORD newSize = { width, height };
-                SetConsoleScreenBufferSize( consoleOutputHandle, newSize );
+        
+                if ( 0 != width )
+                {
+                    oldWindowPlacement.length = sizeof oldWindowPlacement;
+                    GetWindowPlacement( GetConsoleWindow(), &oldWindowPlacement );
+                
+                
+                    oldScreenInfo.cbSize = sizeof oldScreenInfo;
+                    GetConsoleScreenBufferInfoEx( consoleOutputHandle, &oldScreenInfo );
+                
+                    CONSOLE_SCREEN_BUFFER_INFOEX newInfo;
+                    memcpy( &newInfo, &oldScreenInfo, sizeof newInfo );
+
+                    setWidth = width;
+                    newInfo.dwSize.X = width;
+                    newInfo.dwSize.Y = height;
+                    newInfo.dwMaximumWindowSize.X = width;
+                    newInfo.dwMaximumWindowSize.Y = height;
+                    SetConsoleScreenBufferInfoEx( consoleOutputHandle, &newInfo );
+    
+                    COORD newSize = { width, height };
+                    SetConsoleScreenBufferSize( consoleOutputHandle, newSize );
+                }
             
                 DWORD dwMode = 0;
                 GetConsoleMode( consoleOutputHandle, &dwMode );
@@ -119,9 +127,12 @@ class ConsoleConfiguration
                 SetConsoleMode( consoleOutputHandle, dwMode );
                                                        
                 // don't automatically have ^c terminate the app. ^break will still terminate the app
+
+                PHANDLER_ROUTINE handler = (PHANDLER_ROUTINE) proutine;
                 SetConsoleCtrlHandler( handler, TRUE );
     
-                SendClsSequence();
+                if ( 0 != width )
+                    SendClsSequence();
             #endif
         } //EstablishConsole
         
@@ -132,16 +143,24 @@ class ConsoleConfiguration
                 {
                     if ( clearScreen )
                         SendClsSequence();
-                    SetConsoleScreenBufferInfoEx( consoleOutputHandle, & oldScreenInfo );
-                    SetWindowPlacement( GetConsoleWindow(), & oldWindowPlacement );
-                    SetConsoleMode( consoleOutputHandle, oldConsoleMode );
+
                     SetConsoleCursorInfo( consoleOutputHandle, & oldCursorInfo );
+
+                    if ( 0 != setWidth )
+                    {
+                        SetConsoleScreenBufferInfoEx( consoleOutputHandle, & oldScreenInfo );
+                        SetWindowPlacement( GetConsoleWindow(), & oldWindowPlacement );
+                    }
+
+                    SetConsoleMode( consoleOutputHandle, oldConsoleMode );
                     consoleOutputHandle = 0;
                 }
             #else
                 if ( initialized )
                 {
+#ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
                     tcsetattr( 0, TCSANOW, &orig_termios );
+#endif
                     initialized = false;
                 }
             #endif
@@ -205,14 +224,13 @@ class ConsoleConfiguration
 
         static bool throttled_kbhit()
         {
-            
             // _kbhit() does device I/O in Windows, which sleeps for a tiny amount waiting for a reply, so 
             // compute-bound mbasic.com apps run 10x slower than they should because mbasic polls for keyboard input.
             // Workaround: only call _kbhit() if 50 milliseconds has gone by since the last call.
 
             static high_resolution_clock::time_point last_call = high_resolution_clock::now();
             high_resolution_clock::time_point tNow = high_resolution_clock::now();
-            long long difference = duration_cast<std::chrono::milliseconds>( tNow - last_call ).count();                
+            long long difference = duration_cast<std::chrono::milliseconds>( tNow - last_call ).count();
 
             if ( difference > 50 )
             {

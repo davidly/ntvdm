@@ -129,6 +129,8 @@ class CDJLTrace
 
         void SetFlushEachTrace( bool f ) { flush = f; }
 
+        void Flush() { if ( 0 != fp ) fflush( fp ); }
+
         void Trace( const char * format, ... )
         {
             if ( NULL != fp )
