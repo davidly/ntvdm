@@ -1312,6 +1312,16 @@ void consume_keyboard()
     }
 } //consume_keyboard
 
+void i8086_hard_exit( const char * pcerror, uint8_t arg )
+{
+    g_consoleConfig.RestoreConsole( false );
+
+    tracer.Trace( pcerror, arg );
+    printf( pcerror, arg );
+
+    exit( 1 );
+} //i8086_hard_exit
+
 uint8_t i8086_invoke_in_al( uint16_t port )
 {
     if ( 0x3da == port )
@@ -3896,7 +3906,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     else if ( 0x24 == interrupt_num ) // fatal error handler
     {
         printf( "Abort, Retry, Ignore?\n" );
-        exit( 1 );
+        i8086_hard_exit( "Abort, Retry, Ignore?\n", 0 );
     }
     else if ( 0x28 == interrupt_num )
     {
@@ -4039,10 +4049,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         tracer.Trace( "  loading exe, DataSegment is %04x\n", DataSegment );
 
         if ( 0 == DataSegment )
-        {
-            tracer.Trace( "  0 ram available RAM to load .exe\n" );
-            exit( 1 );
-        }
+            i8086_hard_exit( "  0 ram available RAM to load .exe\n", 0 );
 
         psp = DataSegment;
         InitializePSP( DataSegment, acAppArgs, segEnvironment );
@@ -4437,17 +4444,11 @@ int main( int argc, char ** argv )
 
     uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp );
     if ( 0 == segEnvironment )
-    {
-        printf( "unable to create environment for the app\n" );
-        exit( 1 );
-    }
+        i8086_hard_exit( "unable to create environment for the app\n", 0 );
 
     g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment );
     if ( 0 == g_currentPSP )
-    {
-        printf( "unable to load executable\n" );
-        exit( 1 );
-    }
+        i8086_hard_exit( "unable to load executable\n", 0 );
 
     if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) )
     {

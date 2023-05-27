@@ -1781,11 +1781,7 @@ _after_prefix:
                     break;
                 }
                 default:
-                {
-                    tracer.Trace( "unhandled instruction %02x\n", _b0 );
-                    printf( "unhandled instruction %02x\n", _b0 );
-                    exit( 1 );
-                }
+                    i8086_hard_exit( "unhandled instruction %02x\n", _b0 );
             }
         }
 

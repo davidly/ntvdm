@@ -4,7 +4,7 @@ ntvdm mc1 %1
 
 ntvdm mc2 %1
 
-ntvdm link %1 + c,, nul.map, mc
+ntvdm link %1 + c,, %1.map, mc
 
 :skip
 

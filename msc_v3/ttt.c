@@ -33,6 +33,12 @@
 #define PieceO 2
 #define PieceBlank 0
 
+#ifdef CPMTIME
+typedef char ttype;  /* 8-bit cpus are about 8% faster with an 8-bit ttype */
+#else
+typedef int ttype;   /* 16-bit cpus are faster with a 16-bit type */
+#endif
+
 int g_Iterations = DefaultIterations;
 
 char g_board[ 9 ];
@@ -197,11 +203,10 @@ char LookForWinner()
 
 long g_Moves = 0;
 
-int MinMax( alpha, beta, depth, move ) int alpha; int beta; int depth; int move;
+int MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; ttype move;
 {
-    int value;
+    ttype value, p, score;
     char pieceMove;
-    int p, score;
 #if WinFunPointers
     pfunc_t * pf;
 #endif
@@ -210,9 +215,7 @@ int MinMax( alpha, beta, depth, move ) int alpha; int beta; int depth; int move;
 
     if ( depth >= 4 )
     {
-#if WinFunPointers
-        /* function pointers are faster on all platforms by 10-20% */
-
+#if WinFunPointers /* function pointers are faster on all platforms by 10-20% */
         pf = winner_functions[ move ];
         p = (*pf)();
 #else
@@ -252,7 +255,7 @@ int MinMax( alpha, beta, depth, move ) int alpha; int beta; int depth; int move;
 
             if ( depth & 1 ) 
             {
-#if WinLosePrune   /* #if statements must be in column 0 for MS C 1.0 */
+#if WinLosePrune   /* #if statements must be in first column for MS C 1.0 */
                 if ( ScoreWin == score )
                     return ScoreWin;
 #endif
@@ -292,9 +295,9 @@ int MinMax( alpha, beta, depth, move ) int alpha; int beta; int depth; int move;
     return value;
 }  /*MinMax*/
 
-int FindSolution( position ) int position;
+int FindSolution( position ) ttype position;
 {
-    int i;
+    ttype i;
 
     for ( i = 0; i < 9; i++ )
         g_board[ i ] = PieceBlank;
@@ -316,10 +319,10 @@ struct CPMTimeValue
 
 void print_time_now()
 {
+    /* This CP/M BDOS call of 105 is only implemented in NTVCM -- it's not a standard CP/M 2.2 call */
+
     struct CPMTimeValue t;
     t.h = t.m = t.s = t.l = 0;
-
-    /* This CP/M BDOS call of 105 is only implemented in NTVCM -- it's not a standard CP/M 2.2 call */
 
     bdos( 105, &t );
     printf( "current time: %02d:%02d:%02d.%02d\n", t.h, t.m, t.s, t.l );
@@ -334,6 +337,7 @@ void print_time_now()
     /* Make a DOS interrupt call to get the time */
 
     union REGS wrIn, wrOut;
+
     wrIn.h.ah = 0x2c;
     intdos( &wrIn, &wrOut );
     printf( "current time: %02d:%02d:%02d.%02d\n", wrOut.h.ch, wrOut.h.cl, wrOut.h.dh, wrOut.h.dl );

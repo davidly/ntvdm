@@ -6,7 +6,7 @@ ntvdm mc1 %1
 
 ntvdm mc2 %1
 
-ntvdm link %1 + cs,, nul.map, mcs
+ntvdm link %1 + cs,, %1.map, mcs
 
 ntvdm -p %1.exe
 
