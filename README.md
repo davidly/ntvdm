@@ -8,7 +8,8 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Turbo Pascal 3.02A and apps it creates
     Masm V1.10
     Link V2.00 and apps it creates
-    QuickBasic 7.1 and apps it creates
+    QuickBasic (qbx.exe) 7.1 and apps the compiler creates
+    QBasic (qbasic.exe) 7.1
     WordStar Professional Release 4 for DOS
     GWBasic in both command-line and full-screen text mode
     Brief 3.1. -k must be passed on the Brief command line to enable "compatible" keyboard handling
