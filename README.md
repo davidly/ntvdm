@@ -8,8 +8,8 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Turbo Pascal 3.02A and apps it creates
     Masm V1.10
     Link V2.00 and apps it creates
-    QuickBasic (qbx.exe) 7.1 and apps the compiler creates
-    QBasic (qbasic.exe) 7.1
+    QuickBasic (qbx.exe) 7.1 interpreter and apps the compiler creates
+    QBasic (qbasic.exe) 1.1 interpreter
     WordStar Professional Release 4 for DOS
     GWBasic in both command-line and full-screen text mode
     Brief 3.1. -k must be passed on the Brief command line to enable "compatible" keyboard handling
@@ -21,6 +21,7 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Microsoft C Compiler V1.04 & Microsoft Object Linker V1.10 (C) Copyright 1981 by Microsoft Inc.
     Microsoft C Compiler V2.03 & Microsoft 8086 Object Linker Version 2.40  (C) Copyright Microsoft Corp 1983
     Microsoft C Compiler Version 3.00 (C) Copyright Microsoft Corp 1984 1985  
+    Aztec (CG65 v3.2c 10-2-89) cross-compiler for 6502. cg65 compiler, as65 assembler, lb65 librarian, ln65 linker 
     
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
 
