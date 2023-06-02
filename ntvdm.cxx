@@ -4093,9 +4093,9 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         tracer.Trace( "  relocation table offset %u, overlay number %u\n",
                       head.reloc_table_offset, head.overlay_number );
 
-        if ( head.reloc_table_offset > 64 )
+        if ( head.reloc_table_offset > 100 )
         {
-            tracer.Trace( "  probably not a 16-bit exe" );
+            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %d", head.reloc_table_offset );
             FreeMemory( DataSegment );
             return 0;
         }
