@@ -5,6 +5,7 @@
 //         https://www.felixcloutier.com/x86
 //         https://onlinedisassembler.com/odaweb/
 //         https://www2.math.uni-wuppertal.de/~fpf/Uebungen/GdR-SS02/opcode_i.html
+//         https://www.pcjs.org/documents/manuals/intel/8086/
 // Cycle counts are approximate -- within 25% of actual values. It doesn't account for misalignment,
 // ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
@@ -42,7 +43,7 @@ void i8086::trace_state()
 {
 //    tracer.TraceBinaryData( memory + flatten( 0x9f9, 0 ), 0x40, 0 );
 //    tracer.TraceBinaryData( memory + flatten( ds, 0x71b8 ), 2, 0 );
-//    tracer.TraceBinaryData( memory + flatten( ss, 0xffa0 ), 3 * 32, 0 );
+//    tracer.TraceBinaryData( memory + flatten( 0x229a, 0x08b0 ), 4, 0 );
 
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
@@ -690,6 +691,7 @@ _after_prefix:
                 trace_state();
         }
 
+        assert( 0 != cs || 0 != ip );                      // almost certainly an app bug.
         decode_instruction( memptr( flat_ip() ) );         // 26.6 % of runtime
 
         #ifdef I8086_TRACK_CYCLES
@@ -1409,7 +1411,7 @@ _after_prefix:
                 else if ( 6 == _reg ) // div m, r8 / src. al = result, ah = remainder
                 {
                     AddCycles( cycles, 90 ); // assume worst-case
-                    uint8_t rhs = * get_preg8( _rm );
+                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     if ( 0 != rhs )
                     {
                         uint16_t lhs = ax;
@@ -1423,7 +1425,7 @@ _after_prefix:
                     }
                     else
                     {
-                        tracer.Trace( "divide by zero\n" );
+                        tracer.Trace( "divide by zero in div m, r8\n" );
                         op_interrupt( 0, _bc );
                         continue;
                     }
@@ -1445,7 +1447,7 @@ _after_prefix:
                     }
                     else
                     {
-                        tracer.Trace( "divide by zero\n" );
+                        tracer.Trace( "divide by zero in idiv r/m8\n" );
                         op_interrupt( 0, _bc );
                         continue;
                     }
@@ -1519,7 +1521,7 @@ _after_prefix:
                     }
                     else
                     {
-                        tracer.Trace( "divide by zero\n" );
+                        tracer.Trace( "divide by zero in div dx:ax / src\n" );
                         op_interrupt( 0, _bc );
                         continue;
                     }
@@ -1541,7 +1543,7 @@ _after_prefix:
                     }
                     else
                     {
-                        tracer.Trace( "divide by zero\n" );
+                        tracer.Trace( "divide by zero in idiv dx:ax / src\n" );
                         op_interrupt( 0, _bc );
                         continue;
                     }
@@ -1651,7 +1653,7 @@ _after_prefix:
                 uint16_t *pval = get_preg16( _b0 - 0x40 );
                 *pval = op_dec16( *pval );
             }
-            else if ( _b0 >= 0x50 && _b0 <= 0x5f )  // push / pop
+            else if ( _b0 >= 0x50 && _b0 <= 0x5f ) // push / pop
             {
                 uint16_t * preg = get_preg16( _b0 & 7 );
                 if ( _b0 <= 0x57 )
@@ -1659,7 +1661,7 @@ _after_prefix:
                 else 
                     *preg = pop();
             }
-            else if ( _b0 >= 0x70 && _b0 <= 0x7f )  // jcc
+            else if ( _b0 >= 0x70 && _b0 <= 0x7f ) // jcc
             {
                 _bc = 2;
                 uint8_t jmp = _b0 & 0xf;

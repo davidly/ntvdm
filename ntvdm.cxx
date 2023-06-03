@@ -54,7 +54,8 @@
 #include "i8086.hxx"
 
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute );
-uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment );
+uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
+                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip );
 
 uint8_t * GetMem( uint16_t seg, uint16_t offset )
 {
@@ -84,6 +85,10 @@ struct AppExecute
     uint16_t segFirstFCB;
     uint16_t offsetSecondFCB;
     uint16_t segSecondFCB;
+    uint16_t func1SP; // these 4 are return values if al = 1
+    uint16_t func1SS;
+    uint16_t func1IP;
+    uint16_t func1CS;
 
     void Trace()
     {
@@ -621,6 +626,12 @@ struct DOSPSP
         tracer.Trace( "  segParent: %04x\n", segParent );
         tracer.Trace( "  return address: %04x\n", int22TerminateAddress );
         tracer.Trace( "  command tail: len %u, '%.*s'\n", countCommandTail, countCommandTail, commandTail );
+
+        if ( 0 != segEnvironment )
+        {
+            const char * penv = (char *) GetMem( segEnvironment, 0 );
+            tracer.TraceBinaryData( (uint8_t *) penv, 0x60, 2 );
+        }
     }
 };
 #pragma pack(pop)
@@ -990,6 +1001,8 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x4d, "get exit code of subprogram" },
     { 0x21, 0x4e, "find first asciz" },
     { 0x21, 0x4f, "find next asciz" },
+    { 0x21, 0x50, "set current process id (psp)" },
+    { 0x21, 0x51, "get current process id (psp)" },
     { 0x21, 0x56, "rename file" },
     { 0x21, 0x57, "get/set file date and time using handle" },
     { 0x21, 0x58, "get/set memory allocation strategy" },
@@ -1324,6 +1337,8 @@ void i8086_hard_exit( const char * pcerror, uint8_t arg )
 
 uint8_t i8086_invoke_in_al( uint16_t port )
 {
+    static uint8_t port40 = 0;
+
     if ( 0x3da == port )
     {
         // toggle this or apps will spin waiting for the I/O port to work.
@@ -1333,6 +1348,19 @@ uint8_t i8086_invoke_in_al( uint16_t port )
         return cga_status;
     }
     else if ( 0x20 == port ) // pic1 int request register
+    {
+    }
+    else if ( 0x40 == port ) // Programmable Interrupt Timer counter 0. connected to PIC chip.
+    {
+        return port40--;
+    }
+    else if ( 0x41 == port ) // Programmable Interrupt Timer counter 1. used for RAM refresh
+    {
+    }
+    else if ( 0x42 == port ) // Programmable Interrupt Timer counter 2. connected to the speaker
+    {
+    }
+    else if ( 0x43 == port ) // Programmable Interrupt Timer mode. write-only, can't be read
     {
     }
     else if ( 0x60 ==  port ) // keyboard data
@@ -1525,7 +1553,7 @@ void handle_int_10( uint8_t c )
         }
         case 2:
         {
-            tracer.Trace( "  set cursor position to %d %d\n", cpu.dh(), cpu.dl() );
+            tracer.Trace( "  set cursor position to row %d col %d\n", cpu.dh(), cpu.dl() );
 
             GetCursorPosition( row, col );
             uint16_t lastRow = row;
@@ -1551,7 +1579,7 @@ void handle_int_10( uint8_t c )
             cpu.set_dl( col );
             cpu.set_ch( 0 );
             cpu.set_cl( 0 );
-            tracer.Trace( "  get cursor position %d %d\n", cpu.dh(), cpu.dl() );
+            tracer.Trace( "  get cursor position row %d col %d\n", cpu.dh(), cpu.dl() );
 
             return;
         }
@@ -1931,7 +1959,9 @@ void handle_int_16( uint8_t c )
 
 void HandleAppExit()
 {
-    tracer.Trace( "  HandleAppExit for app '%s'\n", GetCurrentAppPath() );
+    tracer.Trace( "  HandleAppExit for app psp %#x, '%s'\n", g_currentPSP, GetCurrentAppPath() );
+    DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
+    psp->Trace();
 
     // flush and close any files opened by this process
 
@@ -1949,7 +1979,6 @@ void HandleAppExit()
     } while ( true );
 
     g_appTerminationReturnCode = cpu.al();
-    DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
     uint16_t pspToDelete = g_currentPSP;
     tracer.Trace( "  app exiting, segment %04x, psp: %p, environment segment %04x\n", g_currentPSP, psp, psp->segEnvironment );
     FreeMemory( psp->segEnvironment );
@@ -3503,7 +3532,7 @@ void handle_int_21( uint8_t c )
         case 0x4b:
         {
             // load or execute program
-            // input: al: 0 = program, 3 = overlay
+            // input: al: 0 = program, 1 = (undocumented) load and set cs:ip + ss:sp, 3 = overlay/load, 4 = msc spawn p_nowait
             //        ds:dx: ascii pathname
             //        es:bx: parameter block
             //            0-1: segment to environment block
@@ -3524,11 +3553,14 @@ void handle_int_21( uint8_t c )
             // notes:     all handles, devices, and i/o redirection are inherited
             // crawl up the stack to the get cs:ip one frame above. that's where we'll return once the child process is complete.
 
-            if ( 0 != cpu.al() ) // only load an execute currently implemented
+            uint8_t mode = cpu.al();
+
+            if ( 0 != mode && 1 != mode ) // only load an execute currently implemented
             {
-                tracer.Trace( "  load or execute with al %02x is unimplemented\n", cpu.al() );
+                tracer.Trace( "  load or execute with al %02x is unimplemented\n", mode );
                 cpu.set_carry( true );
                 cpu.set_ax( 1 );
+                return;
             }
 
             uint16_t * pstack = (uint16_t *) GetMem( cpu.get_ss(), cpu.get_sp() );
@@ -3567,7 +3599,8 @@ void handle_int_21( uint8_t c )
             uint16_t segChildEnv = AllocateEnvironment( pae->segEnvironment, acCommandPath );
             if ( 0 != segChildEnv )
             {
-                uint16_t seg_psp = LoadBinary( acCommandPath, acTail, segChildEnv );
+                uint16_t seg_psp = LoadBinary( acCommandPath, acTail, segChildEnv, ( 0 == mode ),
+                                               & pae->func1SS, & pae->func1SP, & pae->func1CS, & pae->func1IP );
                 if ( 0 != seg_psp )
                 {
                     strcpy( g_lastLoadedApp, acCommandPath );
@@ -3681,6 +3714,31 @@ void handle_int_21( uint8_t c )
                 tracer.Trace( "  ERROR: search for next without a prior successful search for first\n" );
             }
     
+            return;
+        }
+        case 0x50:
+        {
+            // set current process id PSP. set the psp to BX
+
+            tracer.Trace( "  old psp %#x, new psp %#x\n", g_currentPSP, cpu.get_bx() );
+
+            // check if it looks valid before setting...
+
+            DOSPSP * psp = (DOSPSP *) GetMem( cpu.get_bx(), 0 );
+            if ( 0x20cd == psp->int20Code )
+                g_currentPSP = cpu.get_bx();
+            else
+                tracer.Trace( "  error: psp looked invalid; not setting\n" );
+
+            return;
+        }
+        case 0x51:
+        {
+            // get current process id PSP. set BX to the psp
+
+            tracer.Trace( "  current psp %#x\n", g_currentPSP );
+            cpu.set_bx( g_currentPSP );
+
             return;
         }
         case 0x56:
@@ -3965,7 +4023,8 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     psp->Trace();
 } //InitializePSP
 
-uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment )
+uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment, bool setupRegs,
+                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip )
 {
     uint16_t psp = 0;
     bool isCOM = ends_with( acApp, ".com" );
@@ -4028,15 +4087,25 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         }
     
         // prepare to execute the COM file
-      
-        cpu.set_cs( ComSegment );
-        cpu.set_ss( ComSegment );
-        cpu.set_ds( ComSegment );
-        cpu.set_es( ComSegment );
-        cpu.set_sp( 0xffff );
-        cpu.set_ip( 0x100 );
 
-        tracer.Trace( "  loaded %s, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
+        if ( setupRegs )
+        {
+            cpu.set_cs( ComSegment );
+            cpu.set_ss( ComSegment );
+            cpu.set_sp( 0xffff );
+            cpu.set_ip( 0x100 );
+            cpu.set_ds( ComSegment );
+            cpu.set_es( ComSegment );
+            tracer.Trace( "  loaded %s, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
+        }
+        else
+        {
+            *reg_ss = ComSegment;
+            *reg_sp = 0xffff;
+            *reg_cs = ComSegment;
+            *reg_ip = 0x100;
+            tracer.Trace( "  loaded %s but didn't initialize registers, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
+        }
     }
     else // EXE
     {
@@ -4131,16 +4200,27 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             *target += CodeSegment;
         }
 
-        cpu.set_cs( CodeSegment + head.cs );
-        cpu.set_ss( CodeSegment + head.ss );
-        cpu.set_ds( DataSegment );
-        cpu.set_es( cpu.get_ds() );
-        cpu.set_sp( head.sp );
-        cpu.set_ip( head.ip );
-        cpu.set_ax( 0xffff ); // no drives in use
-
-        tracer.Trace( "  loaded %s CS: %04x, SS: %04x, DS: %04x, SP: %04x, IP: %04x\n", acApp,
-                      cpu.get_cs(), cpu.get_ss(), cpu.get_ds(), cpu.get_sp(), cpu.get_ip() );
+        if ( setupRegs )
+        {
+            cpu.set_cs( CodeSegment + head.cs );
+            cpu.set_ss( CodeSegment + head.ss );
+            cpu.set_ds( DataSegment );
+            cpu.set_es( cpu.get_ds() );
+            cpu.set_sp( head.sp );
+            cpu.set_ip( head.ip );
+            cpu.set_ax( 0xffff ); // no drives in use
+    
+            tracer.Trace( "  loaded %s CS: %04x, SS: %04x, DS: %04x, SP: %04x, IP: %04x\n", acApp,
+                          cpu.get_cs(), cpu.get_ss(), cpu.get_ds(), cpu.get_sp(), cpu.get_ip() );
+        }
+        else
+        {
+            *reg_ss = CodeSegment + head.ss;
+            *reg_sp = head.sp;
+            *reg_cs = CodeSegment + head.cs;
+            *reg_ip = head.ip;
+            tracer.Trace( "  loaded %s but didn't initialize registers, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
+        }
     }
 
     return psp;
@@ -4446,7 +4526,7 @@ int main( int argc, char ** argv )
     if ( 0 == segEnvironment )
         i8086_hard_exit( "unable to create environment for the app\n", 0 );
 
-    g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment );
+    g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment, true, 0, 0, 0, 0 );
     if ( 0 == g_currentPSP )
         i8086_hard_exit( "unable to load executable\n", 0 );
 
@@ -4489,28 +4569,33 @@ int main( int argc, char ** argv )
         if ( g_use80x25 )
             throttled_UpdateDisplay( 200 );
 
-        // if the keyboard peek thread has detected a keystroke, process it with an int 9
+        // check interrupt enable flag externally to avoid side effects in the emulator
 
-        if ( !g_KbdIntWaitingForRead && g_KbdPeekAvailable )
+        if ( cpu.get_interrupt() )
         {
-            tracer.Trace( "main loop: scheduling an int 9\n" );
-            cpu.external_interrupt( 9 );
-            g_KbdIntWaitingForRead = true;
-            g_KbdPeekAvailable = false;
-            continue;
-        }
-
-        // if interrupt 0x1c (tick tock) is hooked by the app and 55 milliseconds has elapsed, invoke it
-
-        if ( InterruptHookedByApp( 0x1c ) && duration.HasTimeElapsedMS( 55 ) )
-        {
-            // this won't be precise enough to provide a clock, but it's good for delay loops.
-            // on my machine, this is invoked about every 72 million total_cycles.
-            // if the app is blocked on keyboard input this interrupt will be delivered late.
-
-            //tracer.Trace( "sending an int 1c, total_cycles %llu\n", total_cycles );
-            cpu.external_interrupt( 0x1c );
-            continue;
+            // if the keyboard peek thread has detected a keystroke, process it with an int 9
+    
+            if ( !g_KbdIntWaitingForRead && g_KbdPeekAvailable )
+            {
+                tracer.Trace( "main loop: scheduling an int 9\n" );
+                cpu.external_interrupt( 9 );
+                g_KbdIntWaitingForRead = true;
+                g_KbdPeekAvailable = false;
+                continue;
+            }
+    
+            // if interrupt 0x1c (tick tock) is hooked by the app and 55 milliseconds has elapsed, invoke it
+    
+            if ( InterruptHookedByApp( 0x1c ) && duration.HasTimeElapsedMS( 55 ) )
+            {
+                // this won't be precise enough to provide a clock, but it's good for delay loops.
+                // on my machine, this is invoked about every 72 million total_cycles.
+                // if the app is blocked on keyboard input this interrupt will be delivered late.
+    
+                //tracer.Trace( "sending an int 1c, total_cycles %llu\n", total_cycles );
+                cpu.external_interrupt( 0x1c );
+                continue;
+            }
         }
     } while ( true );
 

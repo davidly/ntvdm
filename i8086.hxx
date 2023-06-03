@@ -62,6 +62,7 @@ struct i8086
 
     bool get_carry() { return fCarry; }
     bool get_zero() { return fZero; }
+    bool get_interrupt() { return fInterrupt; }
 
     // emulator API
 
