@@ -78,7 +78,7 @@ struct i8086
               prefix_segment_override( 0xff ), prefix_repeat_opcode( 0xff ),
               _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _b12( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ), _isword( false ),
               fCarry( false ), fParityEven( false ), fAuxCarry( false ), fZero( false ), fSign( false ),
-              fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false )
+              fTrap( false ), fInterrupt( true ), fDirection( false ), fOverflow( false )
     {
         reg_pointers[ 0 ] = & ax;  // al
         reg_pointers[ 1 ] = & cx;  // cl
@@ -362,6 +362,7 @@ struct i8086
         acflags[ next++ ] = fSign ? 'S' : 's';
         acflags[ next++ ] = fDirection ? 'D' : 'd';
         acflags[ next++ ] = fOverflow ? 'O' : 'o';
+        acflags[ next++ ] = fInterrupt ? 'I' : 'i';
         acflags[ next ] = 0;
         return acflags;
     } //render_flags

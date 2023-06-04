@@ -948,7 +948,8 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x00, "exit app" },
     { 0x21, 0x02, "output character" },
     { 0x21, 0x06, "direct console character i/o" },
-    { 0x21, 0x07, "direct console character i/o (no echo)" },
+    { 0x21, 0x07, "direct character input without echo no ^c/^break check" },
+    { 0x21, 0x08, "direct character input without echo with ^c/^break check" },
     { 0x21, 0x09, "print string $-terminated" },
     { 0x21, 0x0a, "buffered keyboard input" },
     { 0x21, 0x0b, "check standard input status" },
@@ -1239,7 +1240,7 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
         }
     }
 
-    // if none of the records were useful, clear them out
+    // if none of the records were useful then clear them out
 
     if ( 0 != numRead )
         ReadConsoleInput( g_hConsoleInput, records, numRead, &numRead );
@@ -2061,8 +2062,6 @@ void handle_int_21( uint8_t c )
             return;
         }
         case 6:
-        case 7:
-        case 8:
         {
             // direct console character I/O
             // DL = 0xff means get input into AL if available and set ZF to 0. Set ZF to 1 if no character is available
@@ -2070,7 +2069,7 @@ void handle_int_21( uint8_t c )
     
             if ( 0xff == cpu.dl() )
             {
-                // input
+                // input. don't block if nothing is available
 
                 uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
                 uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
@@ -2111,6 +2110,40 @@ void handle_int_21( uint8_t c )
                     printf( "%c", ch );
             }
     
+            return;
+        }
+        case 7:
+        case 8:
+        {
+            // character input. block until a keystroke is available.
+
+            uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+            pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
+            uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
+            uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
+
+            while ( *phead == *ptail )
+            {
+                // wait for a character then return it.
+
+                while ( !peek_keyboard( true, true, false ) )
+                    continue;
+
+                consume_keyboard();
+            }
+
+            cpu.set_al( pbiosdata[ *phead ] );
+            (*phead)++;
+
+            char scan_code = pbiosdata[ *phead ];
+            (*phead)++; // consume the scancode though it's not returned
+
+            if ( *phead >= 0x3e )
+                *phead = 0x1e;
+
+            tracer.Trace( "  int_21 7/8 exit head: %04x, tail %04x\n", *phead, *ptail );
+            tracer.Trace( "  direct character input returning al %#x. scan_code %#x\n", cpu.al(), scan_code );
+
             return;
         }
         case 9:
@@ -3569,7 +3602,7 @@ void handle_int_21( uint8_t c )
 
             if ( 0 != mode && 1 != mode ) // only load an execute currently implemented
             {
-                tracer.Trace( "  load or execute with al %02x is unimplemented\n", mode );
+                tracer.Trace( "  load or execute with al mode %02x is unimplemented\n", mode );
                 cpu.set_carry( true );
                 cpu.set_ax( 1 );
                 return;
@@ -3580,7 +3613,7 @@ void handle_int_21( uint8_t c )
             uint16_t save_cs = pstack[ 1 ];
 
             const char * pathToExecute = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  path to execute: '%s'\n", pathToExecute );
+            tracer.Trace( "  CreateProcess path to execute: '%s'\n", pathToExecute );
 
             char acCommandPath[ MAX_PATH ];
             strcpy( acCommandPath, pathToExecute );
