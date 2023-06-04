@@ -4593,6 +4593,7 @@ int main( int argc, char ** argv )
     g_diskTransferSegment = cpu.get_ds();
     g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
     g_haltExecution = false;
+    cpu.set_interrupt( true ); // DOS starts app with interrupts enabled
 
     // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
     // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
