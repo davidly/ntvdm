@@ -229,7 +229,7 @@ int ends_with( const char * str, const char * end )
 bool isFilenameChar( char c )
 {
     char l = tolower( c );
-    return ( ( l >= 'a' && l <= 'z' ) || ( l >= '0' && l <= '9' ) || '_' == c || '^' == c || '$' == c || '~' == c || '!' == c );
+    return ( ( l >= 'a' && l <= 'z' ) || ( l >= '0' && l <= '9' ) || '_' == c || '^' == c || '$' == c || '~' == c || '!' == c || '*' == c );
 } //isFilenameChar
 
 static int compare_alloc_entries( const void * a, const void * b )
@@ -937,6 +937,7 @@ const IntInfo interrupt_list[] =
     { 0x10, 0x13, "write character string" },
     { 0x10, 0x14, "lcd handler" },
     { 0x10, 0x15, "return physical display characteristics" },
+    { 0x10, 0x1a, "get/set video display combination" },
     { 0x10, 0x1b, "undocumented. qbasic apps call this" },
     { 0x10, 0xef, "undocumented. qbasic apps call this" },
     { 0x12, 0x00, "get memory size" },
@@ -1811,7 +1812,7 @@ void handle_int_10( uint8_t c )
         {
             // get video mode
 
-            //PerhapsFlipTo80x25();
+            //PerhapsFlipTo80x25();  too aggressive for some apps
 
             cpu.set_al( g_videoMode );
             cpu.set_ah( ScreenColumns ); // columns
@@ -1851,6 +1852,15 @@ void handle_int_10( uint8_t c )
 
             cpu.set_ax( 0 ); // none
 
+            return;
+        }
+        case 0x1a:
+        {
+            if ( 0 == cpu.al() )
+            {
+                PerhapsFlipTo80x25();  // Turbo basic 1.1 calls this
+                cpu.set_bl( 2 ); // CGA with color
+            }
             return;
         }
         case 0x1b:
@@ -2657,6 +2667,8 @@ void handle_int_21( uint8_t c )
             cpu.set_si( cpu.get_si() + (uint16_t) ( pf - pfile_original ) );
 
             pfcb->TraceFirst16();
+
+            tracer.Trace( "  returning al %#x\n", cpu.al() );
     
             return;
         }
@@ -3876,6 +3888,10 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
                   cpu.get_ds(), cpu.get_cs(), cpu.get_ss(), cpu.get_es(), cpu.get_bp(), cpu.get_sp(),
                   get_interrupt_string( interrupt_num, c ) );
 
+    // restore interrupts since we won't exit with an iret because Carry in flags must be preserved as a return code
+
+    cpu.set_interrupt( true );
+
     if ( 0x16 != interrupt_num || 1 != c )
         g_int16_1_loop = false;
 
@@ -3970,7 +3986,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     {
         // dos idle loop / scheduler
 
-        Sleep( 1 );
+        Sleep( 1 );  // apps that call this a lot (like Turbo C 2.0) will run slowly
         return;
     }
     else if ( 0x2a == interrupt_num )
@@ -4596,6 +4612,11 @@ int main( int argc, char ** argv )
                 cpu.external_interrupt( 0x1c );
                 continue;
             }
+        }
+        else
+        {
+            if ( !g_KbdIntWaitingForRead && g_KbdPeekAvailable )
+                tracer.Trace( "can't schedule a keyboard interrupt because they are disabled!\n" );
         }
     } while ( true );
 

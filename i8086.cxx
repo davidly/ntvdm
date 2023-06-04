@@ -34,9 +34,15 @@ const uint32_t stateEndEmulation = 2;
 void i8086::trace_instructions( bool t ) { if ( t ) g_State |= stateTraceInstructions; else g_State &= ~stateTraceInstructions; }
 void i8086::end_emulation() { g_State |= stateEndEmulation; }
 
-void i8086::external_interrupt( uint8_t interrupt_num )
+bool i8086::external_interrupt( uint8_t interrupt_num )
 {
-    op_interrupt( interrupt_num, 0 ); // 0 since it's not in the instruction stream
+    if ( fInterrupt )
+    {
+        op_interrupt( interrupt_num, 0 ); // 0 since it's not in the instruction stream
+        return true;
+    }
+
+    return false;
 } //external_interrupt
 
 void i8086::trace_state()
@@ -663,6 +669,7 @@ void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
     uint16_t * vectorItem = (uint16_t *) ( memory + offset );
     materializeFlags();
     push( flags );
+    fInterrupt = false; // will be set again when flags are popped on iret
     push( cs );
     push( ip + instruction_length );
 

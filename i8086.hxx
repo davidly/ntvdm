@@ -59,6 +59,7 @@ struct i8086
     void set_carry( bool f ) { fCarry = f; }
     void set_zero( bool f ) { fZero = f; }
     void set_trap( bool f ) { fTrap = f; }
+    void set_interrupt( bool f ) { fInterrupt = f; }
 
     bool get_carry() { return fCarry; }
     bool get_zero() { return fZero; }
@@ -67,7 +68,7 @@ struct i8086
     // emulator API
 
     uint64_t emulate( uint64_t maxcycles );             // execute up to about maxcycles
-    void external_interrupt( uint8_t interrupt_num );   // invoke this simulated hardware/external interrupt immediately
+    bool external_interrupt( uint8_t interrupt_num );   // invoke this simulated hardware/external interrupt immediately
     void trace_instructions( bool trace );              // enable/disable tracing each instruction
     void trace_state( void );                           // trace the registers
     void end_emulation( void );                         // make the emulator return at the start of the next instruction
