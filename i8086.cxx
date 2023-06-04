@@ -53,8 +53,8 @@ void i8086::trace_state()
 
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
-    tracer.TraceQuiet( "ip %4x, opcode %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
-                       "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s  %s ; %u\n",
+    tracer.TraceQuiet( "ip %4x, opc %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
+                       "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s, %s ; %u\n",
                        ip, pcode[0], pcode[1], pcode[2], pcode[3], pcode[4],
                        ax, bx, cx, dx, di, si, ds, es, cs, ss, bp, sp,
                        render_flags(), pdisassemble, g_Disassembler.BytesConsumed() );
@@ -255,8 +255,8 @@ uint8_t i8086::op_inc8( uint8_t val )
 
 uint8_t i8086::op_dec8( uint8_t val )
 {
-   val--;
    fOverflow = ( 0x80 == val );
+   val--;
    fAuxCarry = ( 0xf == ( val & 0xf ) );
    set_PSZ8( val );
    return val;
@@ -273,8 +273,8 @@ uint16_t i8086::op_inc16( uint16_t val )
 
 uint16_t i8086::op_dec16( uint16_t val )
 {
-   val--;
    fOverflow = ( 0x8000 == val );
+   val--;
    fAuxCarry = ( 0xfff == ( val & 0xfff ) );
    set_PSZ16( val );
    return val;
@@ -532,7 +532,7 @@ void i8086::op_sal8( uint8_t * pval, uint8_t shift )
     *pval <<= 1;
 
     if ( 1 == shift )
-        fOverflow = ! ( ( 0 != ( *pval & 0x8000 ) ) == fCarry );
+        fOverflow = ! ( ( 0 != ( *pval & 0x80 ) ) == fCarry );
 
     set_PSZ8( *pval );
 } //sal8
@@ -665,11 +665,14 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
 
 void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
 {
+    if ( g_State & stateTraceInstructions )
+        tracer.Trace( "op_interrupt num %#x, length %d\n", interrupt_num, instruction_length );
+
     uint32_t offset = 4 * interrupt_num;
     uint16_t * vectorItem = (uint16_t *) ( memory + offset );
     materializeFlags();
     push( flags );
-    fInterrupt = false; // will be set again when flags are popped on iret
+    fInterrupt = false; // will perhaps be set again when flags are popped on iret
     push( cs );
     push( ip + instruction_length );
 
@@ -1057,7 +1060,7 @@ _after_prefix:
                 op_and16( ax, _b12 );
                 break;
             }
-            case 0xaa: // stos8 -- fill bytes with al
+            case 0xaa: // stos8 -- fill bytes with al. stosb
             {
                 if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode )
                 {
@@ -1072,7 +1075,7 @@ _after_prefix:
                     op_sto8();
                 break;
             }
-            case 0xab: // stos16 -- fill words with ax
+            case 0xab: // stos16 -- fill words with ax. stosw
             {
                 if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here in ms-dos link.exe v2.0
                 {
@@ -1087,7 +1090,7 @@ _after_prefix:
                     op_sto16();
                 break;
             }
-            case 0xac: // lods8 src-str8
+            case 0xac: // lods8 src-str8. lodsb
             {
                 if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here is illegal but used
                 {
@@ -1102,7 +1105,7 @@ _after_prefix:
                     op_lods8( cycles );
                 break;
             }
-            case 0xad: // lods16 src-str16
+            case 0xad: // lods16 src-str16. lodsw
             {
                 if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here is illegal but used
                 {
@@ -1117,7 +1120,7 @@ _after_prefix:
                     op_lods16( cycles );
                 break;
             }
-            case 0xae: // scas8 compare al with byte at es:di
+            case 0xae: // scas8 compare al with byte at es:di. scasb
             {
                 if ( 0xf2 == prefix_repeat_opcode )
                 {
@@ -1145,7 +1148,7 @@ _after_prefix:
                     op_scas8( cycles );
                 break;
             }
-            case 0xaf: // scas16 compare ax with word at es:di
+            case 0xaf: // scas16 compare ax with word at es:di. scasw
             {
                 if ( 0xf2 == prefix_repeat_opcode )
                 {
