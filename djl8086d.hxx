@@ -359,6 +359,8 @@ class CDisassemble8086
                 case 0xeb: _da( "jmp    short %d", (int) (char ) _b1 ); _bc = 2; _pcode = 0; break;
                 case 0xec: _da( "in     al, dx" ); break;
                 case 0xed: _da( "in     ax, dx" ); break;
+                case 0xee: _da( "out    al, dx" ); break;
+                case 0xef: _da( "out    ax, dx" ); break;
                 case 0xf0: _da( "lock" ); break;
                 case 0xf2: _da( "repne" ); break;
                 case 0xf3: _da( "repe" ); break;
