@@ -149,7 +149,7 @@ struct i8086
 
     void set_PSZ16( uint16_t val )
     {
-        fParityEven = ( is_parity_even8( val & 0xff ) == is_parity_even8( ( val >> 8 ) & 0xff ) );
+        fParityEven = is_parity_even8( val & 0xff ); // only the lower 8 bits are used to determine parity on the 8086
         fZero = ( 0 == val );
         fSign = ( 0 != ( 0x8000 & val ) );
     } //set_PSZ16
@@ -363,6 +363,8 @@ struct i8086
         acflags[ next++ ] = fDirection ? 'D' : 'd';
         acflags[ next++ ] = fOverflow ? 'O' : 'o';
         acflags[ next++ ] = fInterrupt ? 'I' : 'i';
+        acflags[ next++ ] = fAuxCarry ? 'A' : 'a';
+        acflags[ next++ ] = fParityEven ? 'P' : 'p';
         acflags[ next ] = 0;
         return acflags;
     } //render_flags

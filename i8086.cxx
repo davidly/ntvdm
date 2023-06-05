@@ -113,6 +113,8 @@ void i8086::update_rep_sidi8()
 uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 {
     // com == ones-complement
+    uint8_t l_nibble = lhs & 0xf;
+    uint8_t r_nibble = rhs & 0xf;
     uint8_t com_rhs = ~rhs;
     uint8_t borrow_int = borrow ? 0 : 1;
     uint16_t res16 =  (uint16_t) lhs + (uint16_t) com_rhs + (uint16_t) borrow_int;
@@ -122,13 +124,15 @@ uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 
     // if not ( ( one of lhs and com_x are negative ) and ( one of lhs and result are negative ) )
     fOverflow = ! ( ( lhs ^ com_rhs ) & 0x80 ) && ( ( lhs ^ res8 ) & 0x80 );
-    fAuxCarry = ( 0 != ( ( ( lhs & 0xf ) + ( com_rhs & 0xf ) + borrow_int ) & 0x10 ) );
+    fAuxCarry = ( 0 != ( ( l_nibble - r_nibble ) & ~0xf ) );
     return res8;
 } //op_sub8
 
 uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
 {
     // com == ones-complement
+    uint8_t l_nibble = lhs & 0xf;
+    uint8_t r_nibble = rhs & 0xf;
     uint16_t com_rhs = ~rhs;
     uint16_t borrow_int = borrow ? 0 : 1;
     uint32_t res32 =  (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) borrow_int;
@@ -136,7 +140,7 @@ uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
     fCarry = ( 0 == ( res32 & 0x10000 ) );
     set_PSZ16( res16 );
     fOverflow = ( ! ( ( lhs ^ com_rhs ) & 0x8000 ) ) && ( ( lhs ^ res16 ) & 0x8000 );
-    fAuxCarry = ( 0 != ( ( ( lhs & 0xfff ) + ( com_rhs & 0xfff ) + borrow_int ) & 0x1000 ) );
+    fAuxCarry = ( 0 != ( ( l_nibble - r_nibble ) & ~0xf ) );
     return res16;
 } //op_sub16
 
@@ -146,7 +150,7 @@ uint16_t i8086::op_add16( uint16_t lhs, uint16_t rhs, bool carry )
     uint32_t r32 = (uint32_t) lhs + (uint32_t) rhs + carry_int;
     uint16_t r16 = r32 & 0xffff;
     fCarry = ( 0 != ( r32 & 0x010000 ) );
-    fAuxCarry = ( 0 != ( ( ( 0xfff & lhs ) + ( 0xfff & rhs ) + carry_int ) & 0x1000 ) );
+    fAuxCarry = ( 0 != ( ( ( 0xf & lhs ) + ( 0xf & rhs ) + carry_int ) & 0x10 ) );
     set_PSZ16( r16 );
     fOverflow = ( ! ( ( lhs ^ rhs ) & 0x8000 ) ) && ( ( lhs ^ r16 ) & 0x8000 );
     return r16;
@@ -266,7 +270,7 @@ uint16_t i8086::op_inc16( uint16_t val )
 {
    fOverflow = ( 0x7fff == val );
    val++;
-   fAuxCarry = ( 0 == ( val & 0xfff ) );
+   fAuxCarry = ( 0 == ( val & 0xf ) );
    set_PSZ16( val );
    return val;
 } //op_inc16
@@ -275,7 +279,7 @@ uint16_t i8086::op_dec16( uint16_t val )
 {
    fOverflow = ( 0x8000 == val );
    val--;
-   fAuxCarry = ( 0xfff == ( val & 0xfff ) );
+   fAuxCarry = ( 0xf == ( val & 0xf ) );
    set_PSZ16( val );
    return val;
 } //op_dec16
@@ -734,26 +738,55 @@ _after_prefix:
             case 0x26: { prefix_segment_override = 0; ip++; goto _after_prefix; } // es segment override
             case 0x27: // daa
             {
-                uint8_t loNibble = al() & 0xf;
-                uint8_t toadd = 0;
-                if ( fAuxCarry || ( loNibble > 9 ) )
-                    toadd = 6;
-    
-                bool carry = fCarry;
-                uint8_t hiNibble = al() & 0xf0;
-                if ( ( hiNibble > 0x90 ) || ( hiNibble >= 0x90 && loNibble > 0x9 ) || carry )
+                uint8_t old_al = al();
+                bool oldCarry = fCarry;
+                fCarry = false;
+
+                if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
                 {
-                    toadd |= 0x60;
-                    carry = true;
+                    fCarry = oldCarry || ( al() > 9 );
+                    set_al( al() + 6 );
+                    fAuxCarry = true;
                 }
-    
-                set_al( op_add8( al(), toadd ) );
-                fCarry = carry; // this doesn't change regardless of the result
+                else
+                    fAuxCarry = false;
+
+                if ( ( old_al > 0x99 ) || oldCarry )
+                {
+                    set_al( al() + 0x60 );
+                    fCarry = true;
+                }
+                else
+                    fCarry = false;
+
+                set_PSZ8( al() );
                 break;
             }
             case 0x2c: { _bc++; set_al( op_sub8( al(), _b1 ) ); break; } // sub al, immed8
             case 0x2d: { _bc += 2; ax = op_sub16( ax, _b12 ); break; } // sub ax, immed16
             case 0x2e: { prefix_segment_override = 1; ip++; goto _after_prefix; } // cs segment override
+            case 0x2f: // das
+            {
+                uint8_t old_al = al();
+                bool oldCarry = fCarry;
+                fCarry = false;
+                if ( ( ( al() & 0xf ) > 9 ) || ( fAuxCarry ) )
+                {
+                    fCarry = ( oldCarry || ( al() < 6 ) );
+                    set_al( al() - 6 );
+                    fAuxCarry = true;
+                }
+                else
+                    fAuxCarry = false;
+
+                if ( ( old_al > 0x99 ) || ( oldCarry ) )
+                {
+                    set_al( al() - 0x60 );
+                    fCarry = true;
+                }
+                set_PSZ8( al() );
+                break;
+            }
             case 0x34: { _bc++; set_al( op_xor8( al(), _b1 ) ); break; } // xor al, immed8
             case 0x35: { _bc += 2; ax = op_xor16( ax, _b12 ); break; } // xor ax, immed16
             case 0x36: { prefix_segment_override = 2; ip++; goto _after_prefix; } // ss segment override
@@ -803,7 +836,10 @@ _after_prefix:
 
                 i8086_invoke_interrupt( _b1 );
 
-                if ( old_ip != ip || old_cs != cs ) // likely loaded or ended an app via int21 4b execute program or int21 4c exit app
+                // if ip or cs changed, it's likely the interrupt loaded or ended an app via int21 4b execute program or int21 4c exit app
+                // the ip/cs now point to the new app or old parent app.
+                
+                 if ( old_ip != ip || old_cs != cs )
                     continue;
 
                 break;
@@ -1403,7 +1439,7 @@ _after_prefix:
                     uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
                     ax = (uint16_t) al() * (uint16_t) rhs;
                     fCarry = fOverflow = ( 0 != ah() );
-                    fAuxCarry = ( ax > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
+                    //fAuxCarry = ( ax > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
                     set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
                     fSign = ( 0 != ( 0x80 & al() ) ); // documentation says these bits are undefined, but real hardware does this
                 }
@@ -1499,7 +1535,7 @@ _after_prefix:
                     dx = result >> 16;
                     ax = result & 0xffff;
                     fCarry = fOverflow = ( result > 0xffff );
-                    fAuxCarry = ( result > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
+                    //fAuxCarry = ( result > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
                     set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
                 }
                 else if ( 5 == _reg ) // imul. dx:ax = ax * src
