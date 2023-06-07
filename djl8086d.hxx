@@ -338,7 +338,7 @@ class CDisassemble8086
                 case 0xc7: _da( "mov    %s", opargs( false ) ); _bc++; break;
                 case 0xca: _da( "retf   %04xh", _b12 ); _bc = 3; _pcode = 0; break;
                 case 0xcb: _da( "retf"); _pcode = 0; break;
-                case 0xcc: _da( "int 3" ); break;
+                case 0xcc: _da( "int3" ); break;
                 case 0xcd: _da( "int    %02xh", _b1 ); _bc = 2; break;
                 case 0xce: _da( "into" ); break;
                 case 0xcf: _da( "iret" ); _pcode = 0; break;
