@@ -62,6 +62,14 @@ uint8_t * GetMem( uint16_t seg, uint16_t offset )
     return memory + ( ( ( (uint32_t) seg ) << 4 ) + offset );
 } //GetMem
 
+uint16_t GetSegment( uint8_t * p )
+{
+    uint64_t ptr = (uint64_t) p;
+    uint64_t mem = (uint64_t) memory;
+    ptr -= mem;
+    return (uint16_t) ( ptr >> 4 );
+} //GetSegment
+
 struct FileEntry
 {
     char path[ MAX_PATH ];
@@ -231,6 +239,14 @@ bool isFilenameChar( char c )
     char l = tolower( c );
     return ( ( l >= 'a' && l <= 'z' ) || ( l >= '0' && l <= '9' ) || '_' == c || '^' == c || '$' == c || '~' == c || '!' == c || '*' == c );
 } //isFilenameChar
+
+static void trace_all_allocations()
+{
+    size_t cEntries = g_allocEntries.size();
+    tracer.Trace( "  all allocations, count %d:\n", cEntries );
+    for ( size_t i = 0; i < cEntries; i++ )
+        tracer.Trace( "      alloc entry %d uses segment %04x, size %04x\n", i, g_allocEntries[i].segment, g_allocEntries[i].para_length );
+} //trace_all_allocations
 
 static int compare_alloc_entries( const void * a, const void * b )
 {
@@ -416,10 +432,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
         request_paragraphs = 1;
 
     tracer.Trace( "  request to allocate %04x paragraphs\n", request_paragraphs );
-
-    tracer.Trace( "  all allocations, count %d:\n", cEntries );
-    for ( size_t i = 0; i < cEntries; i++ )
-        tracer.Trace( "      alloc entry %d uses segment %04x, size %04x\n", i, g_allocEntries[i].segment, g_allocEntries[i].para_length );
+    trace_all_allocations();
 
     uint16_t allocatedSeg = 0;
     size_t insertLocation = 0;
@@ -427,7 +440,8 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     // sometimes allocate an extra spaceBetween paragraphs between blocks for overly-optimistic resize requests.
     // I'm looking at you link.exe v5.10 from 1990. QBX and cl.exe, run link.exe as a child process, so look for that too.
 
-    const uint16_t spaceBetween = ( ends_with( g_acApp, "LINK.EXE" ) || ends_with( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
+    uint16_t spaceBetween = ( ends_with( g_acApp, "LINK.EXE" ) || ends_with( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
+    spaceBetween = ( ends_with( g_acApp, "DEBUG.COM" ) || ends_with( g_lastLoadedApp, "DEBUG.COM" ) ) ? 0x60 : spaceBetween;
 
     if ( 0 == cEntries )
     {
@@ -437,6 +451,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
         {
             largest_block = ParagraphsAvailable;
             tracer.Trace( "allocating first bock, and reporting %04x paragraphs available\n", largest_block );
+            trace_all_allocations();
             return 0;
         }
 
@@ -488,6 +503,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     da.seg_process = g_currentPSP;
     g_allocEntries.insert( insertLocation + g_allocEntries.begin(), da );
     largest_block = SegmentHardware - allocatedSeg;
+    trace_all_allocations();
     return allocatedSeg;
 } //AllocateMemory
 
@@ -620,17 +636,18 @@ struct DOSPSP
         assert( 0x6c == offsetof( DOSPSP, secondFCB ) );
         assert( 0x80 == offsetof( DOSPSP, countCommandTail ) );
 
-        tracer.Trace( "  PSP:\n" );
+        tracer.Trace( "  PSP: %04x\n", GetSegment( (uint8_t *) this ) );
         tracer.TraceBinaryData( (uint8_t *) this, sizeof( DOSPSP ), 4 );
         tracer.Trace( "  topOfMemory: %04x\n", topOfMemory );
         tracer.Trace( "  segParent: %04x\n", segParent );
         tracer.Trace( "  return address: %04x\n", int22TerminateAddress );
         tracer.Trace( "  command tail: len %u, '%.*s'\n", countCommandTail, countCommandTail, commandTail );
 
+        tracer.Trace( "  segEnvironment: %04x\n", segEnvironment );
         if ( 0 != segEnvironment )
         {
             const char * penv = (char *) GetMem( segEnvironment, 0 );
-            tracer.TraceBinaryData( (uint8_t *) penv, 0x60, 2 );
+            tracer.TraceBinaryData( (uint8_t *) penv, 0x80, 4 );
         }
     }
 };
@@ -881,11 +898,11 @@ struct IntInfo
 
 const IntInfo interrupt_list_no_ah[] =
 {
-   { 0x00, 0, "divide error" },
-   { 0x01, 0, "single-step" },
+   { 0x00, 0, "divide by zero" },
+   { 0x01, 0, "trap / single-step" },
    { 0x02, 0, "non-maskable interrupt" },
-   { 0x03, 0, "1-byte interrupt" },
-   { 0x04, 0, "internal overflow" },
+   { 0x03, 0, "int3 / debug break" },
+   { 0x04, 0, "overflow" },
    { 0x05, 0, "print-screen key" },
    { 0x06, 0, "undefined opcode" },
    { 0x08, 0, "hardware timer interrupt" },
@@ -968,6 +985,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x22, "random write using FCBs" },
     { 0x21, 0x23, "get file size using FCBs" },
     { 0x21, 0x25, "set interrupt vector" },
+    { 0x21, 0x26, "create new PSP" },
     { 0x21, 0x27, "random block read using FCB" },
     { 0x21, 0x28, "write random using FCBs" },
     { 0x21, 0x29, "parse filename" },
@@ -1009,6 +1027,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x57, "get/set file date and time using handle" },
     { 0x21, 0x58, "get/set memory allocation strategy" },
     { 0x21, 0x59, "get extended error code" },
+    { 0x21, 0x62, "get psp address" },
     { 0x21, 0x63, "get lead byte table" },
 };
 
@@ -2163,14 +2182,19 @@ void handle_int_21( uint8_t c )
     
             uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
             uint8_t maxLen = p[0];
-    
-            char * result = ConsoleConfiguration::portable_gets_s( (char *) p + 2, maxLen );
+            p[2] = 0;
+
+            char * result = ConsoleConfiguration::portable_gets_s( (char *) p + 2, maxLen - 1 );
             if ( result )
-                p[1] = (uint8_t) strlen( result );
+            {
+                size_t len = strlen( result );
+                p[ 1 ] = (uint8_t) 1 + len;
+                p[ 2 + len ] = 0x0d; // replace null termination with CR, which apps like DEBUG.COM require
+            }
             else
                 p[1] = 0;
 
-            tracer.Trace( "  returning length %d, string '%s'\n", p[1], p + 2 );
+            tracer.Trace( "  returning length %d, string '%.*s'\n", p[1], p[1], p + 2 );
     
             return;
         }
@@ -2518,7 +2542,19 @@ void handle_int_21( uint8_t c )
             if ( 0x1c == cpu.al() )
                 uint32_t dw = ( (uint32_t) cpu.get_ds() << 16 ) | cpu.get_dx();
             return;
-        }           
+        }
+        case 0x26:
+        {
+            // on return: DX = segment address of new PSP
+
+            uint16_t pspSize = 1 + ( sizeof( DOSPSP ) / 16 );
+
+            uint16_t largest_block = 0;
+            uint16_t seg = AllocateMemory( pspSize, largest_block );
+            cpu.set_dx( seg  );
+
+            return;
+        }
         case 0x27:
         {
             // random block read using FCBs
@@ -2753,8 +2789,8 @@ void handle_int_21( uint8_t c )
     
             //cpu.set_al( 2 ); 
             //cpu.set_ah( 11 ); 
-            cpu.set_al( 3 ); // It's getting closer
-            cpu.set_ah( 0 ); 
+            cpu.set_al( 3 ); // Many apps require 3.0+
+            cpu.set_ah( 3 ); 
     
             tracer.Trace( "  returning DOS version %d.%d\n", cpu.al(), cpu.ah() );
             return;
@@ -3545,10 +3581,7 @@ void handle_int_21( uint8_t c )
             size_t cEntries = g_allocEntries.size();
             assert( 0 != cEntries ); // loading the app creates 1 shouldn't be freed.
             assert( 0 != cpu.get_bx() ); // not legal to allocate 0 bytes
-
-            tracer.Trace( "  all allocations:\n" );
-            for ( size_t i = 0; i < cEntries; i++ )
-                tracer.Trace( "      alloc entry %d uses segment %04x, size %04x\n", i, g_allocEntries[i].segment, g_allocEntries[i].para_length );
+            trace_all_allocations();
 
             uint16_t maxParas;
             if ( entry == ( cEntries - 1 ) )
@@ -3570,6 +3603,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_carry( false );
                 tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length, cpu.get_bx() );
                 g_allocEntries[ entry ].para_length = cpu.get_bx();
+                trace_all_allocations();
             }
 
             return;
@@ -3595,6 +3629,9 @@ void handle_int_21( uint8_t c )
             //                8 = insufficient memory
             //                a = environment invalid
             //                b = format invalid
+            //            if al == 1: parameter block (struct AppExecute) updated: sp, ss, ip, cs
+            //            if al == 1: AX pushed on the child's stack
+            //                
             // notes:     all handles, devices, and i/o redirection are inherited
             // crawl up the stack to the get cs:ip one frame above. that's where we'll return once the child process is complete.
 
@@ -3607,6 +3644,8 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( 1 );
                 return;
             }
+
+            // look up the stack to see where to return once the child process is done
 
             uint16_t * pstack = (uint16_t *) GetMem( cpu.get_ss(), cpu.get_sp() );
             uint16_t save_ip = pstack[ 0 ];
@@ -3648,6 +3687,15 @@ void handle_int_21( uint8_t c )
                                                & pae->func1SS, & pae->func1SP, & pae->func1CS, & pae->func1IP );
                 if ( 0 != seg_psp )
                 {
+                    if ( 1 == mode )
+                    {
+                       // put 0xffff on the top of the child's stack.
+
+                       pae->func1SP -= 2;
+                       uint16_t * pAX = (uint16_t *) GetMem( pae->func1SS, pae->func1SP );
+                       *pAX = 0xffff;
+                    }
+
                     strcpy( g_lastLoadedApp, acCommandPath );
                     DOSPSP * psp = (DOSPSP *) GetMem( seg_psp, 0 );
                     psp->segParent = g_currentPSP;
@@ -3896,6 +3944,13 @@ void handle_int_21( uint8_t c )
             cpu.set_bh( 1 ); // class. out of resources
             cpu.set_bl( 5 ); // suggestion action code. immediate abort.
             cpu.set_ch( 1 ); // suggestion action code. unknown
+            return;
+        }
+        case 0x62:
+        {
+            // Get PSP Address (DOS 3.x)
+
+            cpu.set_bx( g_currentPSP );
             return;
         }
         case 0x63:
@@ -4268,7 +4323,8 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             *reg_sp = head.sp;
             *reg_cs = CodeSegment + head.cs;
             *reg_ip = head.ip;
-            tracer.Trace( "  loaded %s but didn't initialize registers, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
+            tracer.Trace( "  loaded %s suspended (mode 1), cs %04x, ip %04x, ss %04x, sp %04x\n",
+                          acApp, *reg_cs, *reg_ip, *reg_ss, *reg_sp );
         }
     }
 
@@ -4553,7 +4609,7 @@ int main( int argc, char ** argv )
         uint32_t offset = intx * 5;
         pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset );
         uint8_t * routine = pRoutines + offset;
-        if ( 9 == intx ) 
+        if ( ( 9 == intx ) || ( intx <= 4 ) ) 
         {
             routine[ 0 ] = i8086_opcode_interrupt;
             routine[ 1 ] = (uint8_t) intx;
@@ -4565,7 +4621,7 @@ int main( int argc, char ** argv )
         {
             routine[ 0 ] = i8086_opcode_interrupt;
             routine[ 1 ] = (uint8_t) intx;
-            routine[ 2 ] = 0xca; // retf 2
+            routine[ 2 ] = 0xca; // retf 2 instead of iret so Carry flag isn't restored
             routine[ 3 ] = 2;
             routine[ 4 ] = 0;
         }
@@ -4594,6 +4650,7 @@ int main( int argc, char ** argv )
     g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
     g_haltExecution = false;
     cpu.set_interrupt( true ); // DOS starts app with interrupts enabled
+    uint32_t * pDailyTimer = (uint32_t *) ( pbiosdata + 0x6c );
 
     // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
     // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
@@ -4619,9 +4676,11 @@ int main( int argc, char ** argv )
         if ( g_use80x25 )
             throttled_UpdateDisplay( 200 );
 
-        // check interrupt enable flag externally to avoid side effects in the emulator
+        *pDailyTimer = GetTickCount() / 55;
 
-        if ( cpu.get_interrupt() )
+        // check interrupt enable and trap flags externally to avoid side effects in the emulator
+
+        if ( cpu.get_interrupt() && !cpu.get_trap() )
         {
             // if the keyboard peek thread has detected a keystroke, process it with an int 9
     

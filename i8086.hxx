@@ -63,6 +63,7 @@ struct i8086
 
     bool get_carry() { return fCarry; }
     bool get_zero() { return fZero; }
+    bool get_trap() { return fTrap; }
     bool get_interrupt() { return fInterrupt; }
 
     // emulator API
@@ -355,16 +356,17 @@ struct i8086
     
     const char * render_flags() // show the subset actually used with any frequency
     {
-        static char acflags[10] = {0};
+        static char acflags[13] = {0};
         size_t next = 0;
-        acflags[ next++ ] = fCarry ? 'C' : 'c';
-        acflags[ next++ ] = fZero ? 'Z' : 'z';
-        acflags[ next++ ] = fSign ? 'S' : 's';
-        acflags[ next++ ] = fDirection ? 'D' : 'd';
         acflags[ next++ ] = fOverflow ? 'O' : 'o';
+        acflags[ next++ ] = fDirection ? 'D' : 'd';
         acflags[ next++ ] = fInterrupt ? 'I' : 'i';
+        acflags[ next++ ] = fTrap ? 'T' : 't';
+        acflags[ next++ ] = fSign ? 'S' : 's';
+        acflags[ next++ ] = fZero ? 'Z' : 'z';
         acflags[ next++ ] = fAuxCarry ? 'A' : 'a';
         acflags[ next++ ] = fParityEven ? 'P' : 'p';
+        acflags[ next++ ] = fCarry ? 'C' : 'c';
         acflags[ next ] = 0;
         return acflags;
     } //render_flags

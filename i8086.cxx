@@ -36,7 +36,7 @@ void i8086::end_emulation() { g_State |= stateEndEmulation; }
 
 bool i8086::external_interrupt( uint8_t interrupt_num )
 {
-    if ( fInterrupt )
+    if ( fInterrupt && !fTrap )
     {
         op_interrupt( interrupt_num, 0 ); // 0 since it's not in the instruction stream
         return true;
@@ -47,9 +47,9 @@ bool i8086::external_interrupt( uint8_t interrupt_num )
 
 void i8086::trace_state()
 {
-//    tracer.TraceBinaryData( memory + flatten( 0x9f9, 0 ), 0x40, 0 );
-//    tracer.TraceBinaryData( memory + flatten( ds, 0x71b8 ), 2, 0 );
-//    tracer.TraceBinaryData( memory + flatten( 0x229a, 0x08b0 ), 4, 0 );
+//    tracer.Trace( "chk " ); tracer.TraceBinaryData( memory + flatten( 0x63da, 0x0c5e ), 2, 0 );
+//    tracer.Trace( "x594 + 24: " ); tracer.TraceBinaryData( memory + flatten( 0x3c9b, 0x594 + 24 ), 4, 0 );
+//    tracer.TraceBinaryData( memory + flatten( 0x124, 0x1900 ), 4, 0 );
 
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
@@ -124,7 +124,7 @@ uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 
     // if not ( ( one of lhs and com_x are negative ) and ( one of lhs and result are negative ) )
     fOverflow = ! ( ( lhs ^ com_rhs ) & 0x80 ) && ( ( lhs ^ res8 ) & 0x80 );
-    fAuxCarry = ( 0 != ( ( l_nibble - r_nibble ) & ~0xf ) );
+    fAuxCarry = ( 0 != ( ( l_nibble - r_nibble - ( borrow ? 1 : 0 ) ) & ~0xf ) );
     return res8;
 } //op_sub8
 
@@ -140,7 +140,7 @@ uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
     fCarry = ( 0 == ( res32 & 0x10000 ) );
     set_PSZ16( res16 );
     fOverflow = ( ! ( ( lhs ^ com_rhs ) & 0x8000 ) ) && ( ( lhs ^ res16 ) & 0x8000 );
-    fAuxCarry = ( 0 != ( ( l_nibble - r_nibble ) & ~0xf ) );
+    fAuxCarry = ( 0 != ( ( l_nibble - r_nibble - ( borrow ? 1 : 0 ) ) & ~0xf ) );
     return res16;
 } //op_sub16
 
@@ -301,7 +301,7 @@ void i8086::op_rol16( uint16_t * pval, uint8_t shift )
         fCarry = highBit;
     }
 
-    if ( 1 == shift )
+//    if ( 1 == shift )
         fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ fCarry );
 
     *pval = val;
@@ -325,10 +325,10 @@ void i8086::op_ror16( uint16_t * pval, uint8_t shift )
     }
 
     // Overflow only defined for 1-bit shifts
-    if ( 1 == shift )
+//    if ( 1 == shift )
         fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ ( 0 != ( val & 0x4000 ) ) );
-    else
-        fOverflow = true;
+//    else
+//        fOverflow = true;
 
     *pval = val;
 } //ror16
@@ -647,8 +647,8 @@ void i8086::op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount )
         case 3: op_rcr8( pval, amount ); break;
         case 4: op_sal8( pval, amount ); break;    // aka shr
         case 5: op_shr8( pval, amount ); break;
-        case 6: { assert( false );  break; }       // illegal
-        default: op_sar8( pval, amount ); break;   // 7 is sar
+        case 7: op_sar8( pval, amount ); break;
+        default: { assert( false );  break; }      // 6 is illegal
     }
 } //op_rotate8
 
@@ -662,8 +662,8 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
         case 3: op_rcr16( pval, amount ); break;
         case 4: op_sal16( pval, amount ); break;   // aka shl
         case 5: op_shr16( pval, amount ); break; 
-        case 6: { assert( false ); break; }        // illegal
-        default: op_sar16( pval, amount ); break;  // 7 is sar
+        case 7: op_sar16( pval, amount ); break;
+        default: { assert( false ); break; }       // 6 is illegal
     }
 } //op_rotate16
 
@@ -677,6 +677,8 @@ void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
     materializeFlags();
     push( flags );
     fInterrupt = false; // will perhaps be set again when flags are popped on iret
+    fTrap = false;
+    fAuxCarry = false;
     push( cs );
     push( ip + instruction_length );
 
@@ -840,7 +842,7 @@ _after_prefix:
                 // the ip/cs now point to the new app or old parent app.
                 
                  if ( old_ip != ip || old_cs != cs )
-                    continue;
+                    goto _trap_check;
 
                 break;
             }
@@ -949,7 +951,7 @@ _after_prefix:
                 push( ip + 5 );
                 ip = _b12;
                 cs = (uint16_t) _pcode[3] | ( (uint16_t) _pcode[ 4 ]  << 8 );
-                continue;
+                goto _trap_check;
             }
             case 0x9b: break; // wait for pending floating point exceptions
             case 0x9c: { materializeFlags(); push( flags ); break; } // pushf
@@ -1003,7 +1005,7 @@ _after_prefix:
                 _bc += 2;
                 break;
             }
-            case 0xa4: // movs dst-str8, src-str8
+            case 0xa4: // movs dst-str8, src-str8.  movsb
             {
                 if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here in ms-dos link.exe v2.0
                 {
@@ -1018,7 +1020,7 @@ _after_prefix:
                     op_movs8( cycles );
                 break;
             }
-            case 0xa5: // movs dest-str16, src-str16
+            case 0xa5: // movs dest-str16, src-str16.  movsw
             {
                 if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here in ms-dos link.exe v2.0
                 {
@@ -1033,7 +1035,7 @@ _after_prefix:
                     op_movs16( cycles );
                 break;
             }
-            case 0xa6: // cmps m8, m8
+            case 0xa6: // cmps m8, m8. cmpsb
             {
                 if ( 0xf2 == prefix_repeat_opcode )
                 {
@@ -1061,7 +1063,7 @@ _after_prefix:
                     op_cmps8( cycles );
                 break;
             }
-            case 0xa7: // cmps dest-str15, src-str16
+            case 0xa7: // cmps dest-str15, src-str16. cmpsw
             {
                 if ( 0xf2 == prefix_repeat_opcode )
                 {
@@ -1212,8 +1214,8 @@ _after_prefix:
                     op_scas16( cycles );
                 break;
             }
-            case 0xc2: { ip = pop(); sp += _b12; continue; } // ret immed16 intrasegment
-            case 0xc3: { ip = pop(); continue; } // ret intrasegment
+            case 0xc2: { ip = pop(); sp += _b12; goto _trap_check; } // ret immed16 intrasegment
+            case 0xc3: { ip = pop(); goto _trap_check; } // ret intrasegment
             case 0xc4: // les reg16, [mem16]
             {
                 _isword = true; // opcode is even, but it's a word.
@@ -1250,13 +1252,17 @@ _after_prefix:
                 *pdst = src;
                 break;
             }
-            case 0xca: { ip = pop(); cs = pop(); sp += _b12; continue; } // retf immed16
-            case 0xcb: { ip = pop(); cs = pop(); continue; } // retf
-            case 0xcc: { __debugbreak(); break; } // int 3
+            case 0xca: { ip = pop(); cs = pop(); sp += _b12; goto _trap_check; } // retf immed16
+            case 0xcb: { ip = pop(); cs = pop(); goto _trap_check; } // retf
+            case 0xcc:  // int3
+            {
+                op_interrupt( 3, 1 );
+                continue; // don't trap after an int3
+            }
             case 0xcd: // int
             {
                 op_interrupt( _b1, 2 );
-                continue;
+                goto _trap_check;
             }
             case 0xce: // into
             {
@@ -1264,7 +1270,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 69 );
                     op_interrupt( 4, 1 ); // overflow
-                    continue;
+                    goto _trap_check;
                 }
             }
             case 0xcf: // iret
@@ -1273,7 +1279,7 @@ _after_prefix:
                 cs = pop();
                 flags = pop();
                 unmaterializeFlags();
-                continue;
+                continue; // don't trap if it's set until after the next instruction
             }
             case 0xd0: // bit shift reg8/mem8, 1
             {
@@ -1323,7 +1329,7 @@ _after_prefix:
                 else
                 {
                     op_interrupt( 0, _bc );
-                    continue;
+                    goto _trap_check;
                 }
                 break;
             }
@@ -1348,7 +1354,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 14 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
-                    continue;
+                    goto _trap_check;
                 }
                 break;
             }
@@ -1360,7 +1366,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
-                    continue;
+                    goto _trap_check;
                 }
                 break;
             }
@@ -1372,7 +1378,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
-                    continue;
+                    goto _trap_check;
                 }
                 break;
             }
@@ -1382,7 +1388,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
-                    continue;
+                    goto _trap_check;
                 }
                 _bc++;
                 break;
@@ -1396,11 +1402,11 @@ _after_prefix:
                 uint16_t return_address = ip + 3;
                 push( return_address );
                 ip = return_address + _b12;
-                continue;
+                goto _trap_check;
             }
-            case 0xe9: { ip += ( 3 + (int16_t) _b12 ); continue; } // jmp near
-            case 0xea: { ip = _b12; cs = _pcode[3] | ( uint16_t) _pcode[4] << 8; continue; } // jmp far
-            case 0xeb: { ip += ( 2 + (int16_t) (int8_t) _b1 ); continue; } // jmp short i8
+            case 0xe9: { ip += ( 3 + (int16_t) _b12 ); goto _trap_check; } // jmp near
+            case 0xea: { ip = _b12; cs = _pcode[3] | ( uint16_t) _pcode[4] << 8; goto _trap_check; } // jmp far
+            case 0xeb: { ip += ( 2 + (int16_t) (int8_t) _b1 ); goto _trap_check; } // jmp short i8
             case 0xec: { set_al( i8086_invoke_in_al( dx ) ); break; } // in al, dx
             case 0xed: { ax = i8086_invoke_in_ax( dx ); break; } // in ax, dx
             case 0xee: { break; } // out al, dx
@@ -1451,7 +1457,7 @@ _after_prefix:
                     ax = result & 0xffff;
                     result &= 0xffff8000;
                     fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
-                    fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
+                    //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
                     set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
                 }
                 else if ( 6 == _reg ) // div m, r8 / src. al = result, ah = remainder
@@ -1465,15 +1471,15 @@ _after_prefix:
                         set_ah( lhs % rhs );
 
                         // documentation says these bits are undefined, but real hardware does this.
-                        bool oldZero = fZero;
-                        set_PSZ16( ax );
-                        fZero = oldZero;
+                        //bool oldZero = fZero;
+                        //set_PSZ16( ax );
+                        //fZero = oldZero;
                     }
                     else
                     {
                         tracer.Trace( "divide by zero in div m, r8\n" );
                         op_interrupt( 0, _bc );
-                        continue;
+                        goto _trap_check;
                     }
                 }
                 else if ( 7 == _reg ) // idiv r/m8
@@ -1487,15 +1493,15 @@ _after_prefix:
                         set_ah( lhs % (int16_t) rhs );
 
                         // documentation says these bits are undefined, but real hardware does this.
-                        bool oldZero = fZero;
-                        set_PSZ16( ax );
-                        fZero = oldZero;
+                        //bool oldZero = fZero;
+                        //set_PSZ16( ax );
+                        //fZero = oldZero;
                     }
                     else
                     {
                         tracer.Trace( "divide by zero in idiv r/m8\n" );
                         op_interrupt( 0, _bc );
-                        continue;
+                        goto _trap_check;
                     }
                 }
                 else
@@ -1547,7 +1553,7 @@ _after_prefix:
                     ax = result & 0xffff;
                     result &= 0xffff8000;
                     fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
-                    fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
+                    //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
                     set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
                 }
                 else if ( 6 == _reg ) // div dx:ax / src. ax = result, dx = remainder
@@ -1561,15 +1567,15 @@ _after_prefix:
                         dx = lhs % rhs;
 
                         // documentation says these bits are undefined, but real hardware does this.
-                        bool oldZero = fZero;
-                        set_PSZ16( ax );
-                        fZero = oldZero;
+                        //bool oldZero = fZero;
+                        //set_PSZ16( ax );
+                        //fZero = oldZero;
                     }
                     else
                     {
                         tracer.Trace( "divide by zero in div dx:ax / src\n" );
                         op_interrupt( 0, _bc );
-                        continue;
+                        goto _trap_check;
                     }
                 }
                 else if ( 7 == _reg ) // idiv dx:ax / src. ax = result, dx = remainder
@@ -1591,7 +1597,7 @@ _after_prefix:
                     {
                         tracer.Trace( "divide by zero in idiv dx:ax / src\n" );
                         op_interrupt( 0, _bc );
-                        continue;
+                        goto _trap_check;
                     }
                 }
                 else
@@ -1644,7 +1650,7 @@ _after_prefix:
                     uint16_t return_address = ip + _bc + 1;
                     push( return_address );
                     ip = *pfunc;
-                    continue;
+                    goto _trap_check;
                 }
                 else if ( 3 == _reg ) // call mem16:16 (inter segment)
                 {
@@ -1654,14 +1660,14 @@ _after_prefix:
                     push( ip + _bc + 1 );
                     ip = pdata[ 0 ];
                     cs = pdata[ 1 ];
-                    continue;
+                    goto _trap_check;
                 }
                 else if ( 4 == _reg ) // jmp reg16/mem16 (intra segment)
                 {
                     AddCycles( cycles, 13 );
                     AddMemCycles( cycles, 3 );
                     ip = * (uint16_t *) get_rm_ptr( _rm, cycles );
-                    continue;
+                    goto _trap_check;
                 }
                 else if ( 5 == _reg ) // jmp mem16 (inter segment)
                 {
@@ -1669,7 +1675,7 @@ _after_prefix:
                     uint16_t * pdata = (uint16_t *) get_rm_ptr( _rm, cycles );
                     ip = pdata[ 0 ];
                     cs = pdata[ 1 ];
-                    continue;
+                    goto _trap_check;
                 }
                 else if ( 6 == _reg ) // push mem16
                 {
@@ -1737,7 +1743,7 @@ _after_prefix:
                 {
                     ip += ( 2 + (int) (int8_t) _b1 );
                     AddCycles( cycles, 12 );
-                    continue;
+                    goto _trap_check;
                 }
             }
             else if ( _b0 >= 0xb0 && _b0 <= 0xbf ) // mov r, immed
@@ -1834,6 +1840,10 @@ _after_prefix:
         }
 
         ip += _bc;                                         // 3.5% of runtime
+
+_trap_check:
+        if ( fTrap )
+            op_interrupt( 1, 0 );
     } while ( cycles < maxcycles );                        // 2% of runtime
 
 _all_done:
