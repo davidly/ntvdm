@@ -1275,11 +1275,18 @@ _after_prefix:
             }
             case 0xcf: // iret
             {
+                bool previousTrap = fTrap;
                 ip = pop();
                 cs = pop();
                 flags = pop();
                 unmaterializeFlags();
-                continue; // don't trap if it's set until after the next instruction
+
+                // don't trap if it's just now set until after the next instruction
+
+                if ( !previousTrap )
+                    continue;
+
+                goto _trap_check;
             }
             case 0xd0: // bit shift reg8/mem8, 1
             {
@@ -1841,7 +1848,7 @@ _after_prefix:
 
         ip += _bc;                                         // 3.5% of runtime
 
-_trap_check:
+_trap_check:  // jump here from the switch instead of 'break' if ip was set by the instruction (jmp, call, ret, etc.)
         if ( fTrap )
             op_interrupt( 1, 0 );
     } while ( cycles < maxcycles );                        // 2% of runtime
