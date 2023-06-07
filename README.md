@@ -8,6 +8,7 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Turbo Pascal 3.02A and apps it creates
     Masm V1.10
     Link V2.00 and apps it creates
+    Debug.com for MS-DOS 2.0. Breakpoints and single-stepping work.
     QuickBasic (qbx.exe) 7.1 interpreter and apps the compiler creates
     QBasic (qbasic.exe) 1.1 interpreter
     WordStar Professional Release 4 for DOS
@@ -23,7 +24,8 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Microsoft C Compiler Version 3.00 (C) Copyright Microsoft Corp 1984 1985  
     Aztec (CG65 v3.2c 10-2-89) cross-compiler for 6502. cg65 compiler, as65 assembler, lb65 librarian, ln65 linker 
     Turbo Basic 1.1 app and apps the compiler creates.
-    Turbo C 2.0 app and apps the compiler creates.
+    Turbo C 2.0 app and apps the compiler creates. Debug breakpoints and single-stepping work.
+    Microsoft Quick C 1.0. Tested & works. Compiling, editing, breakpoints, single-stepping, etc.
     
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
 
