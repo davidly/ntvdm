@@ -146,8 +146,7 @@ const uint32_t ScreenRowsM1 = ScreenRows - 1;                     // rows minus 
 const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
 const uint32_t ScreenBufferSegment = 0xb800;                      // location in i8086 physical RAM of CGA display. 16k, 4k per page.
 const uint16_t SegmentHardware = ScreenBufferSegment;             // where hardware starts (unlike real machines, which start at 0xa000)
-const uint32_t AppSegmentOffset = 0x1000;                         // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
-const uint16_t AppSegment = AppSegmentOffset / 16;                // 
+const uint16_t AppSegment = 0x1000 / 16;                          // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
 const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
@@ -177,6 +176,7 @@ static bool g_appTerminationReturnCode = 0;        // when int 21 function 4c is
 static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
 static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0])
 static char g_lastLoadedApp[ MAX_PATH ] = {0};     // path of most recenly loaded program (though it may have terminated)
+static bool g_PackedFileCorruptWorkaround = false; // if true, allocate memory starting at 64k, not AppSegment
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -205,6 +205,7 @@ static void usage( char const * perr )
     printf( "                   stay in teletype/console mode.\n" );
     printf( "            -C     always set window to 80x25; don't use teletype mode.\n" );
     printf( "            -d     don't clear the display on app exit when in 80x25 mode\n" );
+    printf( "            -e     workaround for Packed File Corrupt error: load apps above 64k\n" );
     printf( "            -i     trace instructions as they are executed to %s.log (this is verbose!)\n", g_thisApp );
     printf( "            -p     show performance information\n" ); 
 #ifdef I8086_TRACK_CYCLES
@@ -445,7 +446,10 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
     if ( 0 == cEntries )
     {
-        const uint16_t ParagraphsAvailable = SegmentHardware - AppSegment;  // hardware starts at 0xa000, apps load at AppSegment
+        // Microsoft (R) Overlay Linker  Version 3.61 with Quick C v 1.0 is a packed EXE that requires /e
+
+        const uint16_t baseSeg = g_PackedFileCorruptWorkaround ? ( 65536 / 16 ) : AppSegment;
+        const uint16_t ParagraphsAvailable = SegmentHardware - baseSeg;  // hardware starts at 0xa000, apps load at baseSeg
 
         if ( request_paragraphs > ParagraphsAvailable )
         {
@@ -455,8 +459,8 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
             return 0;
         }
 
-        tracer.Trace( "    allocating first block, at segment %04x\n", AppSegment );
-        allocatedSeg = AppSegment; // default if nothing is allocated yet
+        allocatedSeg = baseSeg; // default if nothing is allocated yet
+        tracer.Trace( "    allocating first block at segment %04x\n", allocatedSeg );
     }
     else
     {
@@ -625,7 +629,8 @@ struct DOSPSP
     uint8_t  reserved3[9];
     uint8_t  firstFCB[16];           // later parts of a real fcb shared with secondFCB
     uint8_t  secondFCB[16];          // only the first part is used
-    uint32_t reserved4;
+    uint16_t parentSS;               // not DOS standard -- I use it to restore SS on child app exit
+    uint16_t parentSP;               // not DOS standard -- I use it to restore SP on child app exit
     uint8_t  countCommandTail;       // # of characters in command tail. This byte and beyond later used as Disk Transfer Address
     uint8_t  commandTail[127];       // command line characters after executable, newline terminated
 
@@ -1611,6 +1616,7 @@ void handle_int_10( uint8_t c )
             uint8_t page = cpu.al();
             if ( page <= 3 )
             {
+                PerhapsFlipTo80x25();
                 tracer.Trace( "  set video page to %d\n", page );
                 SetActiveDisplayPage( page );
             }
@@ -2018,11 +2024,12 @@ void HandleAppExit()
         g_currentPSP = psp->segParent;
         cpu.set_cs( ( psp->int22TerminateAddress >> 16 ) & 0xffff );
         cpu.set_ip( psp->int22TerminateAddress & 0xffff );
+        cpu.set_ss( psp->parentSS ); // not DOS standard, but workaround for apps like QCL.exe Quick C v 1.0 that doesn't restore the stack
+        cpu.set_sp( psp->parentSP ); // ""
         tracer.Trace( "  returning from nested app to return address %04x:%04x\n", cpu.get_cs(), cpu.get_ip() );
     }
     else
     {
-
         cpu.end_emulation();
         g_haltExecution = true;
     }
@@ -3651,6 +3658,9 @@ void handle_int_21( uint8_t c )
             uint16_t save_ip = pstack[ 0 ];
             uint16_t save_cs = pstack[ 1 ];
 
+            uint16_t save_ss = cpu.get_ss();
+            uint16_t save_sp = cpu.get_sp();
+
             const char * pathToExecute = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  CreateProcess path to execute: '%s'\n", pathToExecute );
 
@@ -3699,6 +3709,8 @@ void handle_int_21( uint8_t c )
                     strcpy( g_lastLoadedApp, acCommandPath );
                     DOSPSP * psp = (DOSPSP *) GetMem( seg_psp, 0 );
                     psp->segParent = g_currentPSP;
+                    psp->parentSS = save_ss; // as a courtesy to sloppy apps that don't restore their stack and use the child process stack
+                    psp->parentSP = save_sp;
                     g_currentPSP = seg_psp;
                     memcpy( psp->firstFCB, pfirstFCB, 16 );
                     memcpy( psp->secondFCB, psecondFCB, 16 );
@@ -4524,6 +4536,8 @@ int main( int argc, char ** argv )
                 g_forceConsole = true;
             else if ( 'C' == parg[1] )
                 force80x25 = true;
+            else if ( 'e' == ca )
+                g_PackedFileCorruptWorkaround = true;
             else
                 usage( "invalid argument specified" );
         }
