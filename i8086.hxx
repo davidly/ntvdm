@@ -73,6 +73,7 @@ struct i8086
     void trace_instructions( bool trace );              // enable/disable tracing each instruction
     void trace_state( void );                           // trace the registers
     void end_emulation( void );                         // make the emulator return at the start of the next instruction
+    bool update_daily_timer( void ) { return true; }    // update in the VM emulator, not the 8086 emulator
 
     i8086() : ax( 0 ), bx( 0 ), cx( 0 ), dx(0 ), si( 0 ), di( 0 ), bp( 0 ), sp( 0 ), ip( 0 ),
               es( 0 ), cs( 0 ), ss( 0 ), ds( 0 ), flags( 0 ),
@@ -372,7 +373,13 @@ struct i8086
     } //render_flags
 
     uint8_t * memptr( uint32_t address ) { return memory + address; }
-    uint32_t flatten( uint16_t seg, uint16_t offset ) { return ( ( (uint32_t) seg ) << 4 ) + offset; }
+    uint32_t flatten( uint16_t seg, uint16_t offset )
+    {
+        uint32_t flat = ( ( (uint32_t) seg ) << 4 ) + offset;
+        //if ( flat < 0x600 )
+        //    tracer.Trace( "referencing low-memory %#x\n", flat );
+        return flat;
+    }
     uint32_t flat_ip() { return flatten( cs, ip ); }
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
     uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) ( memory + flatten( seg, offset ) ); }

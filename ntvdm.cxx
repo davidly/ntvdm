@@ -464,12 +464,17 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     }
     else
     {
+        uint16_t largestGap = 0;
+
         for ( size_t i = 0; i < cEntries; i++ )
         {
             uint16_t after = g_allocEntries[ i ].segment + g_allocEntries[ i ].para_length;
             if ( i < ( cEntries - 1 ) )
             {
                 uint16_t freePara = g_allocEntries[ i + 1 ].segment - after;
+                if ( freePara > largestGap )
+                    largestGap = freePara;
+
                 if ( freePara >= ( request_paragraphs + spaceBetween) )
                 {
                     tracer.Trace( "  using gap from previously freed memory: %02x\n", after );
@@ -495,6 +500,9 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
             largest_block = SegmentHardware - firstFreeSeg;
             if ( largest_block > spaceBetween )
                 largest_block -= spaceBetween;
+
+            if ( largestGap > largest_block )
+                largest_block = largestGap;
     
             tracer.Trace( "  ERROR: unable to allocate memory. returning that %02x paragraphs are free\n", largest_block );
             return 0;
@@ -999,6 +1007,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x2f, "get disk transfer area address" },
     { 0x21, 0x30, "get version number" },
     { 0x21, 0x33, "get/set ctrl-break status" },
+    { 0x21, 0x34, "get address of DOS critical flag" },
     { 0x21, 0x35, "get interrupt vector" },
     { 0x21, 0x36, "get disk space" },
     { 0x21, 0x37, "get query switchchar" },
@@ -2809,6 +2818,16 @@ void handle_int_21( uint8_t c )
             cpu.set_dl( 0 ); // it's off regardless of what is set
             return;
         }
+        case 0x34:
+        {
+            // get address of DOS critical flag into ES:BX.
+            // undocumented DOS. QuickC version 2.51 calls this.
+            // Use an address that will remain 0 with 0s on either side
+
+            cpu.set_es( 0x50 );
+            cpu.set_bx( 1 );
+            return;
+        }
         case 0x35:
         {
             // get interrupt vector. 
@@ -2963,6 +2982,15 @@ void handle_int_21( uint8_t c )
             else
             {
                 bool readOnly = ( 0 == openmode );
+
+                if ( !stricmp( path, "CON" ) )
+                {
+                    cpu.set_ax( readOnly ? 0 : 1 );
+                    cpu.set_carry( false );
+                    tracer.Trace( "  successfully using built-in handle %d for CON\n", cpu.get_ax() );
+                    return;
+                }
+
                 FILE * fp = fopen( path, readOnly ? "rb" : "r+b" );
                 if ( fp )
                 {
@@ -4623,7 +4651,14 @@ int main( int argc, char ** argv )
         uint32_t offset = intx * 5;
         pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset );
         uint8_t * routine = pRoutines + offset;
-        if ( ( 9 == intx ) || ( intx <= 4 ) ) 
+
+        if ( 8 == intx )
+        {
+            routine[ 0 ] = 0xcd; // int
+            routine[ 1 ] = 0x1c; // int 1c
+            routine[ 2 ] = 0xcf; // iret
+        }
+        else if ( ( 9 == intx ) || ( intx <= 4 ) ) 
         {
             routine[ 0 ] = i8086_opcode_interrupt;
             routine[ 1 ] = (uint8_t) intx;
@@ -4690,7 +4725,8 @@ int main( int argc, char ** argv )
         if ( g_use80x25 )
             throttled_UpdateDisplay( 200 );
 
-        *pDailyTimer = GetTickCount() / 55;
+        if ( cpu.update_daily_timer() )
+            *pDailyTimer = GetTickCount() / 55;
 
         // check interrupt enable and trap flags externally to avoid side effects in the emulator
 
@@ -4706,8 +4742,9 @@ int main( int argc, char ** argv )
                 g_KbdPeekAvailable = false;
                 continue;
             }
-    
+
             // if interrupt 0x1c (tick tock) is hooked by the app and 55 milliseconds has elapsed, invoke it
+            // no such support exists for apps that hook int 8 like QuickC 2.51.
     
             if ( InterruptHookedByApp( 0x1c ) && duration.HasTimeElapsedMS( 55 ) )
             {
@@ -4715,7 +4752,7 @@ int main( int argc, char ** argv )
                 // on my machine, this is invoked about every 72 million total_cycles.
                 // if the app is blocked on keyboard input this interrupt will be delivered late.
     
-                //tracer.Trace( "sending an int 1c, total_cycles %llu\n", total_cycles );
+                tracer.Trace( "sending an int 1c, total_cycles %llu\n", total_cycles );
                 cpu.external_interrupt( 0x1c );
                 continue;
             }

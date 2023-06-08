@@ -49,7 +49,7 @@ void i8086::trace_state()
 {
 //    tracer.Trace( "chk " ); tracer.TraceBinaryData( memory + flatten( 0x63da, 0x0c5e ), 2, 0 );
 //    tracer.Trace( "x594 + 24: " ); tracer.TraceBinaryData( memory + flatten( 0x3c9b, 0x594 + 24 ), 4, 0 );
-//    tracer.TraceBinaryData( memory + flatten( 0x124, 0x1900 ), 4, 0 );
+//    tracer.TraceBinaryData( memory + flatten( 0, 4 * 0x1c ), 4, 0 );
 
     uint8_t * pcode = memptr( flat_ip() );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
@@ -535,7 +535,7 @@ void i8086::op_sal8( uint8_t * pval, uint8_t shift )
     fCarry = ( 0 != ( *pval & 0x80 ) );
     *pval <<= 1;
 
-    if ( 1 == shift )
+    //if ( 1 == shift )
         fOverflow = ! ( ( 0 != ( *pval & 0x80 ) ) == fCarry );
 
     set_PSZ8( *pval );
@@ -1596,9 +1596,9 @@ _after_prefix:
                         dx = (int32_t) lhs % (int32_t) rhs;
 
                         // documentation says these bits are undefined, but real hardware does this.
-                        bool oldZero = fZero;
-                        set_PSZ16( ax );
-                        fZero = oldZero;
+                        //bool oldZero = fZero;
+                        //set_PSZ16( ax );
+                        //fZero = oldZero;
                     }
                     else
                     {
