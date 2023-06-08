@@ -57,6 +57,14 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip );
 
+uint16_t round_up_to( uint16_t x, uint16_t multiple )
+{
+    if ( 0 == ( x % multiple ) )
+        return x;
+
+    return x + ( multiple - ( x % multiple ) );
+} //round_up_to
+
 uint8_t * GetMem( uint16_t seg, uint16_t offset )
 {
     return memory + ( ( ( (uint32_t) seg ) << 4 ) + offset );
@@ -2561,14 +2569,22 @@ void handle_int_21( uint8_t c )
         }
         case 0x26:
         {
-            // on return: DX = segment address of new PSP
+            // Create PSP. on return: DX = segment address of new PSP
+            // online documentation is conflicting about whether DX on entry points to the new PSP or if
+            // this function should allocate the PSP.
+            // The current PSP should be copied on top of the new PSP.
+            // The only app I know of that uses this is debug.com from MS-DOS 2.2. It allocates and passes a segment in DX in debug.asm
 
-            uint16_t pspSize = 1 + ( sizeof( DOSPSP ) / 16 );
+            #if false
+                uint16_t pspParagraphs = round_up_to( sizeof( DOSPSP ), 16 ) / 16;
+                uint16_t largest_block = 0;
+                uint16_t seg = AllocateMemory( pspParagraphs, largest_block );
+            #else
+                uint16_t seg = cpu.get_dx();
+            #endif
 
-            uint16_t largest_block = 0;
-            uint16_t seg = AllocateMemory( pspSize, largest_block );
+            memcpy( GetMem( seg, 0 ), GetMem( g_currentPSP, 0 ), sizeof DOSPSP );
             cpu.set_dx( seg  );
-
             return;
         }
         case 0x27:
@@ -2587,7 +2603,6 @@ void handle_int_21( uint8_t c )
             ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
 
             FILE * fp = pfcb->GetFP();
-
             if ( fp )
             {
                 fseek( fp, 0, SEEK_END );
@@ -4394,14 +4409,6 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
 
     return 0;
 } //PeekKeyboardThreadProc
-
-uint16_t round_up_to( uint16_t x, uint16_t multiple )
-{
-    if ( 0 == ( x % multiple ) )
-        return x;
-
-    return x + ( multiple - ( x % multiple ) );
-} //round_up_to
 
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute )
 {
