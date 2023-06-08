@@ -53,7 +53,7 @@
 #include <djl8086d.hxx>
 #include "i8086.hxx"
 
-uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute );
+uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip );
 
@@ -213,7 +213,8 @@ static void usage( char const * perr )
     printf( "                   stay in teletype/console mode.\n" );
     printf( "            -C     always set window to 80x25; don't use teletype mode.\n" );
     printf( "            -d     don't clear the display on app exit when in 80x25 mode\n" );
-    printf( "            -e     workaround for Packed File Corrupt error: load apps above 64k\n" );
+    printf( "            -e     comma-separated list of environment variables. e.g. -e:include=..\\include,lib=..\\lib\n" );
+    printf( "            -h     workaround for Packed File Corrupt error: load apps above 64k\n" );
     printf( "            -i     trace instructions as they are executed to %s.log (this is verbose!)\n", g_thisApp );
     printf( "            -p     show performance information\n" ); 
 #ifdef I8086_TRACK_CYCLES
@@ -1045,6 +1046,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x4f, "find next asciz" },
     { 0x21, 0x50, "set current process id (psp)" },
     { 0x21, 0x51, "get current process id (psp)" },
+    { 0x21, 0x52, "get list of lists" },
     { 0x21, 0x56, "rename file" },
     { 0x21, 0x57, "get/set file date and time using handle" },
     { 0x21, 0x58, "get/set memory allocation strategy" },
@@ -3733,7 +3735,7 @@ void handle_int_21( uint8_t c )
             char acTail[ 128 ] = {0};
             memcpy( acTail, commandTail + 1, *commandTail );
 
-            uint16_t segChildEnv = AllocateEnvironment( pae->segEnvironment, acCommandPath );
+            uint16_t segChildEnv = AllocateEnvironment( pae->segEnvironment, acCommandPath, 0 );
             if ( 0 != segChildEnv )
             {
                 uint16_t seg_psp = LoadBinary( acCommandPath, acTail, segChildEnv, ( 0 == mode ),
@@ -3886,7 +3888,16 @@ void handle_int_21( uint8_t c )
 
             tracer.Trace( "  current psp %#x\n", g_currentPSP );
             cpu.set_bx( g_currentPSP );
+            return;
+        }
+        case 0x52:
+        {
+            // get list of lists. internal call. debug.com uses this but does nothing with the return values.
+            // return: es:bx points to DOS list of lists
+            // This arcane set of values+pointers are not emulated. return pointers to 0
 
+            cpu.set_es( 0x50 );
+            cpu.set_bx( 0x10 );
             return;
         }
         case 0x56:
@@ -4410,7 +4421,7 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
     return 0;
 } //PeekKeyboardThreadProc
 
-uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute )
+uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv )
 {
     char fullPath[ MAX_PATH ];
     GetFullPathNameA( pathToExecute, _countof( fullPath ), fullPath, 0 );
@@ -4420,6 +4431,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     uint16_t bytesNeeded = (uint16_t) strlen( fullPath );
     uint16_t startLen = 0;
     char * pEnvStart = (char *) GetMem( segStartingEnv, 0 );
+    uint16_t cmdLineEnvLen = 0;
 
     if ( 0 != segStartingEnv )
     {
@@ -4435,7 +4447,13 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     }
     else
     {
-        bytesNeeded += (uint16_t) ( strlen( pComSpec ) + strlen( pBriefFlags ) );
+        bytesNeeded += (uint16_t) 2 + ( strlen( pComSpec ) + strlen( pBriefFlags ) );
+
+        if ( pcmdLineEnv )
+        {
+            cmdLineEnvLen = 1 + strlen( pcmdLineEnv );
+            bytesNeeded += cmdLineEnvLen;
+        }
     }
 
     // apps assume there is space at the end to write to. It should be at least 160 bytes in size
@@ -4468,6 +4486,21 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     {
         strcpy( penv, pBriefFlags ); // Brief: keyboard compat, no ^z at end, fast screen updates, my macros
         penv += 1 + strlen( penv );
+    }
+
+    if ( pcmdLineEnv )
+    {
+        strcpy( penv, pcmdLineEnv );
+        strupr( penv );
+        char * p = penv;
+        while ( *p )
+        {
+            if ( ',' == *p )
+                *p = 0;
+            p++;
+        }
+
+        penv += cmdLineEnvLen;
     }
 
     *penv++ = 0; // extra 0 to indicate there are no more environment variables
@@ -4542,6 +4575,7 @@ int main( int argc, char ** argv )
     bool traceInstructions = false;
     bool force80x25 = false;
     bool clearDisplayOnExit = true;
+    char * penvVars = 0;
 
     for ( int i = 1; i < argc; i++ )
     {
@@ -4557,7 +4591,7 @@ int main( int argc, char ** argv )
             else if ( 's' == ca )
             {
                 if ( ':' == parg[2] )
-                    clockrate = _strtoui64( parg+ 3 , 0, 10 );
+                    clockrate = _strtoui64( parg + 3 , 0, 10 );
                 else
                     usage( "colon required after s argument" );
             }
@@ -4572,6 +4606,16 @@ int main( int argc, char ** argv )
             else if ( 'C' == parg[1] )
                 force80x25 = true;
             else if ( 'e' == ca )
+            {
+                if ( penvVars )
+                    usage( "environment variables can only be specified once\n" );
+
+                if ( ':' == parg[2] )
+                    penvVars = parg + 3;
+                else
+                    usage( "colon required after e argument" );
+            }
+            else if ( 'h' == ca )
                 g_PackedFileCorruptWorkaround = true;
             else
                 usage( "invalid argument specified" );
@@ -4683,7 +4727,7 @@ int main( int argc, char ** argv )
         }
     }
 
-    uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp );
+    uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp, penvVars );
     if ( 0 == segEnvironment )
         i8086_hard_exit( "unable to create environment for the app\n", 0 );
 
