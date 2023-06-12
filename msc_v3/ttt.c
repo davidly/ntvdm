@@ -352,7 +352,7 @@ long get_ms()
 
 #else /* no elif on old compilers */
 
-#if DOSTIME
+#ifdef DOSTIME
 
 void print_time_now()
 {
