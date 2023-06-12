@@ -1054,6 +1054,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x50, "set current process id (psp)" },
     { 0x21, 0x51, "get current process id (psp)" },
     { 0x21, 0x52, "get list of lists" },
+    { 0x21, 0x55, "create new PSP" }, // undocumented/internal. Used by Turbo Pascal 5.5
     { 0x21, 0x56, "rename file" },
     { 0x21, 0x57, "get/set file date and time using handle" },
     { 0x21, 0x58, "get/set memory allocation strategy" },
@@ -3905,6 +3906,23 @@ void handle_int_21( uint8_t c )
 
             cpu.set_es( 0x50 );
             cpu.set_bx( 0x10 );
+            return;
+        }
+        case 0x55:
+        {
+            // create new psp. internal/undocumented. called by Turbo Pascal 5.5
+            // DX: new PSP segment address provided by the caller
+
+            DOSPSP * psp = (DOSPSP *) GetMem( cpu.get_dx(), 0 );
+            memset( psp, 0, sizeof( DOSPSP ) );
+            psp->segParent = g_currentPSP;
+            psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
+            psp->topOfMemory = SegmentHardware - 1;   // top of memorysegment in paragraph form
+            psp->comAvailable = 0xffff;               // .com programs bytes available in segment
+            psp->int22TerminateAddress = firstAppTerminateAddress;
+
+            g_currentPSP = cpu.get_dx();
+
             return;
         }
         case 0x56:
