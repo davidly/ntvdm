@@ -22,7 +22,7 @@
 37 DIM sb%(10)
 38 mc% = 0
 39 PRINT "start time: "; TIME$
-40 FOR l% = 1 TO 100
+40 FOR l% = 1 TO 1
 41 mc% = 0
 42 al% = 2
 43 be% = 9
@@ -44,6 +44,7 @@
 85 REM print elap$ ; " for 10000 iterations"
 86 PRINT "end time: "; TIME$
 87 PRINT "final move count "; mc%
+88 SYSTEM
 100 END
 
 2000 wi% = b%(0)

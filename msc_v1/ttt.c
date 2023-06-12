@@ -4,7 +4,10 @@
        Microsoft C Compiler V1.04 for 8086 on DOS. (This is Lattice C)
        Microsoft C Compiler V2.03 for 8086 on DOS. (Still Lattice C)
        Microsoft C Compiler V3.00 for 8086 on DOS.
+       QuickC 1.0
+       Turbo C 2.0
    The syntax is old and reminds me of 7th grade summer vacation.
+   unsigned long isn't supported in many older compilers, so long is used instead.
 */
 
 #define LINT_ARGS
@@ -201,6 +204,8 @@ char LookForWinner()
 
 #endif /* WinFunPointers */
 
+/* older compilers don't support unsigned long */
+
 long g_Moves = 0;
 
 int MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; ttype move;
@@ -328,6 +333,23 @@ void print_time_now()
     printf( "current time: %02d:%02d:%02d.%02d\n", t.h, t.m, t.s, t.l );
 } /*print_time_now*/
 
+long get_ms()
+{
+    /* This CP/M BDOS call of 105 is only implemented in NTVCM -- it's not a standard CP/M 2.2 call */
+
+    long h, m, s, l;
+    struct CPMTimeValue t;
+    t.h = t.m = t.s = t.l = 0;
+
+    bdos( 105, &t );
+    h = t.h;
+    m = t.m;
+    s = t.s;
+    l = t.l;
+
+    return h * 3600000 + m * 60000 + s * 1000 + l * 10;
+} /*get_ms*/
+
 #else /* no elif on old compilers */
 
 #if DOSTIME
@@ -341,31 +363,53 @@ void print_time_now()
     wrIn.h.ah = 0x2c;
     intdos( &wrIn, &wrOut );
     printf( "current time: %02d:%02d:%02d.%02d\n", wrOut.h.ch, wrOut.h.cl, wrOut.h.dh, wrOut.h.dl );
+    fflush( stdout );
 } /*print_time_now*/
+
+long get_ms()
+{
+    /* this function takes about 3 milliseconds on the original IBM PC */
+
+    long h, m, s, l;
+    union REGS wrIn, wrOut;
+
+    wrIn.h.ah = 0x2c;
+    intdos( &wrIn, &wrOut );
+
+    h = wrOut.h.ch;
+    m = wrOut.h.cl;
+    s = wrOut.h.dh;
+    l = wrOut.h.dl;
+
+    return h * 3600000 + m * 60000 + s * 1000 + l * 10;
+} /*get_ms*/
 
 #else
 
 int print_time_now() { return 0; }
+long get_ms() { return 0; }
 
 #endif
 #endif
 
 int main( argc, argv ) int argc; char * argv[];
 {
+    long start_time, end_time;
+
     if ( 2 == argc )
         sscanf( argv[ 1 ], "%d", &g_Iterations );  /* no atoi in MS C 1.0 */
 
-    print_time_now();
+    start_time = get_ms();
 
     FindSolution( 0 );
     FindSolution( 1 );
     FindSolution( 4 );
 
-    print_time_now();
+    end_time = get_ms();
+    printf( "runtime in ms:   %ld\n", end_time - start_time );
 
     printf( "move count:      %ld\n", g_Moves );        /* 6493 * g_Iterations */
     printf( "iteration count: %d\n", g_Iterations );
-
     return 0;
 } /*main*/
 
