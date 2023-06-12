@@ -236,8 +236,17 @@ static void usage( char const * perr )
 void PerhapsSleep()
 {
     static CDuration duration;
+
+    // Turbo C 2.0 calls dos idle then keyboard status while compiling many times.
+    // Turbo Pascal 5.5 calls these two tightly when waiting for input.
+    // The goal here is to optimize compile times for Turbo C 2.0 and minimize
+    // wasting CPU for Turbo Pascal 5.5.
+
     if ( duration.HasTimeElapsedMS( 100 ) )
-        Sleep( 1 ); // can sleep up to the tick interval, which is a long time
+    {
+        tracer.Trace( "sleeping 1ms\n" );
+        Sleep( 1 ); // can actually sleep up to the tick interval, which is a long time
+    }
 } //PerhapsSleep
 
 int ends_with( const char * str, const char * end )
@@ -425,6 +434,7 @@ size_t FindAllocationEntry( uint16_t segment )
     }
 
     tracer.Trace( "  ERROR: could not find alloc entry for segment %04x\n", segment );
+    trace_all_allocations();
     return -1;
 } //FindAllocationEntry
 
@@ -541,6 +551,8 @@ bool FreeMemory( uint16_t segment )
     if ( -1 == entry )
     {
         // The Microsoft Basic compiler BC.EXE 7.10 attempts to free segment 0x80, which it doesn't own.
+        // Turbo Pascal v5.5 exits a process never create except via int21 0x55, which frees that PSP,
+        // which isn't allocated, and the environment blocked it contains (0).
 
         tracer.Trace( "  ERROR: memory corruption possible; can't find freed segment\n" );
         return false;
@@ -2593,7 +2605,7 @@ void handle_int_21( uint8_t c )
                 uint16_t seg = cpu.get_dx();
             #endif
 
-            memcpy( GetMem( seg, 0 ), GetMem( g_currentPSP, 0 ), sizeof DOSPSP );
+            memcpy( GetMem( seg, 0 ), GetMem( g_currentPSP, 0 ), sizeof( DOSPSP ) );
             cpu.set_dx( seg  );
             return;
         }
