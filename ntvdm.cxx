@@ -233,6 +233,13 @@ static void usage( char const * perr )
     exit( 1 );
 } //usage
 
+void PerhapsSleep()
+{
+    static CDuration duration;
+    if ( duration.HasTimeElapsedMS( 100 ) )
+        Sleep( 1 ); // can sleep up to the tick interval, which is a long time
+} //PerhapsSleep
+
 int ends_with( const char * str, const char * end )
 {
     int len = strlen( str );
@@ -1985,7 +1992,7 @@ void handle_int_16( uint8_t c )
             {
                 cpu.set_zero( true );
                 if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
-                    Sleep( 1 );
+                    PerhapsSleep();
             }
             else
             {
@@ -2879,7 +2886,7 @@ void handle_int_21( uint8_t c )
             // get/set country dependent information.
 
             // some apps (um, Brief 3.1) call this in a tight loop along with get system time and keyboard status
-            Sleep( 1 );
+            PerhapsSleep();
     
             cpu.set_carry( false );
             cpu.set_bx( 1 ); // USA
@@ -4140,7 +4147,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     {
         // dos idle loop / scheduler
 
-        Sleep( 1 );  // apps that call this a lot (like Turbo C 2.0) will run slowly
+        PerhapsSleep(); // some apps like Turbo C 2.0 call this in a pretty tight loop
         return;
     }
     else if ( 0x2a == interrupt_num )
@@ -4157,7 +4164,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
             UpdateDisplay();
-            Sleep( 1 );
+            PerhapsSleep();
         }
 
         cpu.set_al( 0x01 ); // not installed, do NOT install
@@ -4266,7 +4273,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             cpu.set_ip( 0x100 );
             cpu.set_ds( ComSegment );
             cpu.set_es( ComSegment );
-            tracer.Trace( "  loaded %s, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
+            tracer.Trace( "  loaded %s, app segment %04x, ip %04x, sp %04x\n", acApp, cpu.get_cs(), cpu.get_ip(), cpu.get_sp() );
         }
         else
         {
