@@ -79,6 +79,8 @@ Usage information:
                        stay in teletype mode.
                 -C     always set window to 80x25; don't use teletype mode.
                 -d     don't clear the display when in 80x25 mode on app exit
+                -e     comma-separated list of environment variables. e.g. -e:include=..\include,lib=..\lib
+                -h     workaround for Packed File Corrupt error: load apps above 64k                
                 -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
                 -p     show performance information
                 -s:X   emulated speed in Hz. Default is to run as fast as possible.
