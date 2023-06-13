@@ -1272,6 +1272,8 @@ _after_prefix:
                     op_interrupt( 4, 1 ); // overflow
                     goto _trap_check;
                 }
+
+                break;
             }
             case 0xcf: // iret
             {
