@@ -997,12 +997,14 @@ const IntInfo interrupt_list[] =
     { 0x10, 0x15, "return physical display characteristics" },
     { 0x10, 0x1a, "get/set video display combination" },
     { 0x10, 0x1b, "undocumented. qbasic apps call this" },
+    { 0x10, 0x1c, "save/restore video state" },
     { 0x10, 0xef, "undocumented. qbasic apps call this" },
     { 0x12, 0x00, "get memory size" },
     { 0x16, 0x00, "get character" },
     { 0x16, 0x01, "keyboard status" },
     { 0x16, 0x02, "keyboard - get shift status" },
     { 0x1a, 0x00, "read real time clock" },
+    { 0x1a, 0x02, "get real-time clock time" },
     { 0x21, 0x00, "exit app" },
     { 0x21, 0x02, "output character" },
     { 0x21, 0x06, "direct console character i/o" },
@@ -1034,6 +1036,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x2c, "get system time" },
     { 0x21, 0x2f, "get disk transfer area address" },
     { 0x21, 0x30, "get version number" },
+    { 0x21, 0x31, "terminate and stay resident" },
     { 0x21, 0x33, "get/set ctrl-break status" },
     { 0x21, 0x34, "get address of DOS critical flag" },
     { 0x21, 0x35, "get interrupt vector" },
@@ -1073,6 +1076,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x59, "get extended error code" },
     { 0x21, 0x62, "get psp address" },
     { 0x21, 0x63, "get lead byte table" },
+    { 0x21, 0x68, "fflush - commit file" },
 };
 
 const char * get_interrupt_string( uint8_t i, uint8_t c )
@@ -1934,6 +1938,15 @@ void handle_int_10( uint8_t c )
 
             return;
         }
+        case 0x1c:
+        {
+            // save/restore video state
+            // ps50+, vga, so n/a
+
+            cpu.set_al( 0 ); // not supported because only CGA is supported
+
+            return;
+        }
         case 0xef:
         {
             // unknown. qbasic generated .exe files call this?!?
@@ -1954,7 +1967,6 @@ void handle_int_16( uint8_t c )
     uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
     uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
     //tracer.Trace( "  int_16 head: %04x, tail %04x\n", *phead, *ptail );
-
 
     switch( c )
     {
@@ -2817,6 +2829,7 @@ void handle_int_21( uint8_t c )
             cpu.set_cl( (uint8_t) st.wMinute );
             cpu.set_dh( (uint8_t) st.wSecond );
             cpu.set_dl( (uint8_t) ( st.wMilliseconds / 10 ) );
+            tracer.Trace( "  system time is %02d:%02d:%02d.%02d\n", cpu.ch(), cpu.cl(), cpu.dh(), cpu.dl() );
 
             #if false // useful when debugging
                 cpu.set_ch( (uint8_t) 1 );
@@ -2846,6 +2859,48 @@ void handle_int_21( uint8_t c )
             cpu.set_ah( 3 ); 
     
             tracer.Trace( "  returning DOS version %d.%d\n", cpu.al(), cpu.ah() );
+            return;
+        }
+        case 0x31:
+        {
+            // terminate and stay resident
+            // DX: # of paragraphs to keep resident
+            // AL == app return code
+
+            size_t entry = FindAllocationEntry( g_currentPSP );
+            if ( -1 == entry )
+            {
+                cpu.set_carry( true );
+                tracer.Trace( "  ERROR: attempt to terminate and stay resident with a bogus PSP\n" );
+                return;
+            }
+
+            size_t cEntries = g_allocEntries.size();
+            assert( 0 != cEntries ); // loading the app creates 1 shouldn't be freed.
+            trace_all_allocations();
+
+            uint16_t new_paragraphs = cpu.get_dx();
+            tracer.Trace( "  TSR and keep %#x paragraphs resident\n", new_paragraphs );
+            g_allocEntries[ entry ].para_length = new_paragraphs;
+
+            DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
+            if ( psp && ( firstAppTerminateAddress != psp->int22TerminateAddress ) )
+            {
+                g_appTerminationReturnCode = cpu.al();
+                g_currentPSP = psp->segParent;
+                cpu.set_cs( ( psp->int22TerminateAddress >> 16 ) & 0xffff );
+                cpu.set_ip( psp->int22TerminateAddress & 0xffff );
+                cpu.set_ss( psp->parentSS ); // not DOS standard, but workaround for apps like QCL.exe Quick C v 1.0 that doesn't restore the stack
+                cpu.set_sp( psp->parentSP ); // ""
+                tracer.Trace( "  returning from tsr to return address %04x:%04x\n", cpu.get_cs(), cpu.get_ip() );
+            }
+            else
+            {
+                tracer.Trace( "  TSR attempted to TSR with no parent app to return to; exiting ntvdm\n" );
+                cpu.end_emulation();
+                g_haltExecution = true;
+            }
+
             return;
         }
         case 0x33:
@@ -3285,7 +3340,7 @@ void handle_int_21( uint8_t c )
             {
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
-                tracer.Trace( "write file using handle, %04x bytes at address %p\n", len, p );
+                tracer.Trace( "  write file using handle, %04x bytes at address %p\n", len, p );
     
                 cpu.set_ax( 0 );
     
@@ -3508,7 +3563,7 @@ void handle_int_21( uint8_t c )
                 }
                 default:
                 {
-                    tracer.Trace( "UNIMPLEMENTED IOCTL subfunction %#x\n", cpu.al() );
+                    tracer.Trace( "unhandled IOCTL subfunction %#x\n", cpu.al() );
                     break;
                 }
             }
@@ -3568,7 +3623,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "    ERROR: force duplicate for non-built-in handle is unimplemented\n" );
+                tracer.Trace( "    ERROR: force duplicate for non-built-in handle is unhandled\n" );
                 cpu.set_carry( true );
                 cpu.set_ax( 2 );
             }
@@ -3711,7 +3766,7 @@ void handle_int_21( uint8_t c )
 
             if ( 0 != mode && 1 != mode ) // only load an execute currently implemented
             {
-                tracer.Trace( "  load or execute with al mode %02x is unimplemented\n", mode );
+                tracer.Trace( "  load or execute with al mode %02x is unhandled\n", mode );
                 cpu.set_carry( true );
                 cpu.set_ax( 1 );
                 return;
@@ -3905,6 +3960,8 @@ void handle_int_21( uint8_t c )
         case 0x51:
         {
             // get current process id PSP. set BX to the psp
+            // Same as 0x62.
+            // undocumented prior to DOS 5.0.
 
             tracer.Trace( "  current psp %#x\n", g_currentPSP );
             cpu.set_bx( g_currentPSP );
@@ -3924,12 +3981,13 @@ void handle_int_21( uint8_t c )
         {
             // create new psp. internal/undocumented. called by Turbo Pascal 5.5
             // DX: new PSP segment address provided by the caller
+            // SI: for DOS 3.0+, value to put in psp->topOfMemory
 
             DOSPSP * psp = (DOSPSP *) GetMem( cpu.get_dx(), 0 );
             memset( psp, 0, sizeof( DOSPSP ) );
             psp->segParent = g_currentPSP;
             psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
-            psp->topOfMemory = SegmentHardware - 1;   // top of memorysegment in paragraph form
+            psp->topOfMemory = cpu.get_si();
             psp->comAvailable = 0xffff;               // .com programs bytes available in segment
             psp->int22TerminateAddress = firstAppTerminateAddress;
 
@@ -4063,12 +4121,31 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true ); // not supported;
             return;
         }
+        case 0x68:
+        {
+            // FFlush -- commit file
+            // BX: file handle
+            // on return, Carry Flag cleared on success and set on failure with error code in AX
+            // Just flush all files and return success
+
+            fflush( 0 );
+            cpu.set_carry( false );
+            return;
+        }
         default:
         {
             tracer.Trace( "unhandled int21 command %02x\n", c );
         }
     }
 } //handle_int_21
+
+uint8_t toBCD( uint8_t x )
+{
+    if ( x <= 9 )
+        return x;
+
+    return ( ( x / 10 ) << 4 ) | ( x % 10 );
+} //toBCD
 
 void i8086_invoke_interrupt( uint8_t interrupt_num )
 {
@@ -4089,6 +4166,11 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     if ( 0 == interrupt_num )
     {
         tracer.Trace( "    divide by zero interrupt 0\n" );
+        return;
+    }
+    else if ( 4 == interrupt_num )
+    {
+        tracer.Trace( "    overflow exception interrupt 4\n" );
         return;
     }
     else if ( 0x09 == interrupt_num )
@@ -4140,7 +4222,25 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             cpu.set_cl( ( milliseconds >> 16 ) & 0xff );
             cpu.set_dh( ( milliseconds >> 8 ) & 0xff );
             cpu.set_dl( milliseconds & 0xff );
+            return;
+        }
+        else if ( 2 == c )
+        {
+            // get real-time clock time (at, xt286, ps)
+            // returns: cf: clear
+            //          ch: hour (bcd)
+            //          cl: minutes (bcd)
+            //          dh: seconds (bcd)
+            //          dl: dayligh savings 0 == standard, 1 == daylight
 
+            cpu.set_carry( false );
+
+            SYSTEMTIME st = {0};
+            GetLocalTime( &st );
+            cpu.set_ch( toBCD( st.wHour ) );
+            cpu.set_cl( toBCD( st.wMinute ) );
+            cpu.set_dh( toBCD( st.wSecond ) );
+            cpu.set_dl( 0 );
             return;
         }
     }
@@ -4208,7 +4308,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         return;
     }
 
-    tracer.Trace( "UNIMPLEMENTED pc interrupt: %02u == %#x, ah: %02u == %#x, al: %02u == %#x\n",
+    tracer.Trace( "UNHANDLED pc interrupt: %02u == %#x, ah: %02u == %#x, al: %02u == %#x\n",
                   interrupt_num, interrupt_num, cpu.ah(), cpu.ah(), cpu.al(), cpu.al() );
 } //i8086_invoke_interrupt
 
@@ -4831,17 +4931,17 @@ int main( int argc, char ** argv )
                 continue;
             }
 
-            // if interrupt 0x1c (tick tock) is hooked by the app and 55 milliseconds has elapsed, invoke it
-            // no such support exists for apps that hook int 8 like QuickC 2.51.
+            // if interrupt 8 (timer) or 0x1c (tick tock) are hooked by an app and 55 milliseconds has elapsed, invoke
+            // int 8, which by default then invokes int 1c.
     
-            if ( InterruptHookedByApp( 0x1c ) && duration.HasTimeElapsedMS( 55 ) )
+            if ( ( InterruptHookedByApp( 0x1c ) || InterruptHookedByApp( 8 ) ) && duration.HasTimeElapsedMS( 55 ) )
             {
                 // this won't be precise enough to provide a clock, but it's good for delay loops.
                 // on my machine, this is invoked about every 72 million total_cycles.
                 // if the app is blocked on keyboard input this interrupt will be delivered late.
     
-                tracer.Trace( "sending an int 1c, total_cycles %llu\n", total_cycles );
-                cpu.external_interrupt( 0x1c );
+                tracer.Trace( "sending an int 8, total_cycles %llu\n", total_cycles );
+                cpu.external_interrupt( 8 );
                 continue;
             }
         }
