@@ -519,7 +519,7 @@ void date_command( argc, argv ) int argc; char * argv[];
 
 void ver_command( argc, argv ) int argc; char * argv[];
 {
-    printf( "ntvdm command prompt v0.01 on DOS v%d.%d\n", _osmajor, _osminor );
+    printf( "\nntvdm command prompt v0.01 on DOS v%d.%d\n", _osmajor, _osminor );
     fflush( stdout ); /* the c runtime batches output */
 } /*ver_command*/
 
@@ -1001,6 +1001,7 @@ int parse_and_run( cmdline ) char * cmdline;
     int  sub_argc = 0;
     int ret = 0;
 
+    putchar( '\n' );
     rm_leading_and_trailing_space( cmdline );
 
     sub_argc = parse_arguments( cmdline, sub_argv );

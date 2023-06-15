@@ -5,7 +5,7 @@
 // Only CGA text modes 2 and 3 (80x25 greyscale and color) are supported.
 // No graphics, sound, mouse, or anything else not needed for simple command-line apps.
 // tested apps:
-//    Turbo Pascal 1.00A and 3.02A, both the apps and the programs they generate.
+//    Turbo Pascal 1.00A, 3.02A, and 5.5, both the apps and the programs they generate.
 //    masm.exe V1.10 and link.exe V2.00 from MS-DOS v2.0
 //    ba BASIC compiler in my ttt repo
 //    Wordstar Release 4
@@ -17,9 +17,11 @@
 //    Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10
 //    BC.exe: Microsoft Basic compiler 7.10 (part of Quick Basic 7.1)
 //    Microsoft 8086 Object Linker Version 3.01 (C) Copyright Microsoft Corp 1983, 1984, 1985
-//    Microsoft C Compiler  Version 3.00 (C) Copyright Microsoft Corp 1984 1985
+//    Microsoft C v1, v2, and v3
+//    Turbo C 2.0
+//    QuickC 1.0
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
-// Windows to OS/2 to NT, and mostly skipped DOS programming. Hence this fills a gap
+// Windows to OS/2 to NT to Mac to Linux, and mostly skipped DOS programming. Hence this fills a gap
 // in my knowledge.
 //
 // Useful: http://www2.ift.ulaval.ca/~marchand/ift17583/dosints.pdf
@@ -29,7 +31,8 @@
 //
 // Memory map:
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
-//     0x00400 -- 0x007ff   bios data
+//     0x00400 -- 0x005ff   bios data
+//     0x00600 -- 0x00bff   assembly code for various interrupt calls that can't be accomplished in C
 //     0x00c00 -- 0x00fff   interrupt routines (here, not in BIOS space because it fits)
 //     0x01000 -- 0xb7fff   apps are loaded here. On real hardware you can only go to 0x9ffff.
 //     0xb8000 -- 0xeffff   reserved for hardware (CGA in particular)
@@ -64,6 +67,26 @@ uint16_t round_up_to( uint16_t x, uint16_t multiple )
 
     return x + ( multiple - ( x % multiple ) );
 } //round_up_to
+
+// machine code for various interrupts. generated with mint.bat. 
+uint64_t int16_0_code[] = { 
+0x26c08e0040b80653, 0x001c063b26001aa1, 0x26001a1e8b26f574, 0x43001a06ff26078a, 0x001a06ff26278a26, 0x077c3e001a3e8326, 0x07001e001a06c726, 0x000000000000cb5b, 
+}; 
+uint64_t int21_8_code[] = { 
+0x26c08e0040b80653, 0x001c063b26001aa1, 0x26001a1e8b26f574, 0x26001a06ff26078a, 0x1a3e8326001a06ff, 0x1a06c726077c3e00, 0x0000cb5b07001e00, 
+}; 
+uint64_t int21_a_code[] = { 
+0x000144c6f28b5653, 0xcd01b43674003c80, 0x3c16cd00b4fa7416, 0x7400017c800c7508, 0x339010eb014cfeec, 0x3c024088015c8adb, 0xd08a0144fe10740d, 0x3a01448a21cd02b4, 
+0x00cb5b5ef8ca7504, 
+}; 
+uint64_t int21_3f_code[] = { 
+0x00f1bf5657525153, 0x0000eb06c72ef28b, 0xc5e9037500f98300, 0x50b9037e50f98300, 0xa12e00e90e892e00, 0x7c00ef063b2e00ed, 0xb4fa7416cd01b46d, 0x00e93e832e16cd00, 
+0x2e1075083c147401, 0x2ee2740000ef3e83, 0x2e901eeb00ef0eff, 0x2e01882e00ef1e8b, 0x22740d3c00ef06ff, 0xe93e832e0875083c, 0x02b4d08a06740100, 0x3b2e00efa12e21cd, 
+0x004f3d197400e906, 0x2e00ef1e8b2ea775, 0x00ef06ff2e0a01c6, 0x8b2e21cd02b40ab2, 0x8b2e018b2e00ed1e, 0x06ff2e008900eb1e, 0x2e00ed06ff2e00eb, 0x00ef063b2e00eda1, 
+0x0000ed06c72e1175, 0x000000ef06c72e00, 0x2e00e9a12e900ceb, 0xa12ec07500eb063b, 0x5b595a5f5ef800eb, 0x00000000000000cb, 0x0000000000000000, 0x0000000000000000, 
+0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 
+0x0000000000000000, 
+}; 
 
 uint8_t * GetMem( uint16_t seg, uint16_t offset )
 {
@@ -153,6 +176,7 @@ const uint32_t ScreenColumnsM1 = ScreenColumns - 1;               // columns min
 const uint32_t ScreenRowsM1 = ScreenRows - 1;                     // rows minus 1
 const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
 const uint32_t ScreenBufferSegment = 0xb800;                      // location in i8086 physical RAM of CGA display. 16k, 4k per page.
+const uint32_t MachineCodeSegment = 0x0060;                       // machine code for keyboard/etc. starts here
 const uint16_t SegmentHardware = ScreenBufferSegment;             // where hardware starts (unlike real machines, which start at 0xa000)
 const uint16_t AppSegment = 0x1000 / 16;                          // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
@@ -185,6 +209,10 @@ static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being
 static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0])
 static char g_lastLoadedApp[ MAX_PATH ] = {0};     // path of most recenly loaded program (though it may have terminated)
 static bool g_PackedFileCorruptWorkaround = false; // if true, allocate memory starting at 64k, not AppSegment
+static uint16_t g_int21_3f_seg = 0;                // segment where this code resides with ip = 0
+static uint16_t g_int21_a_seg = 0;                 // "
+static uint16_t g_int21_8_seg = 0;                 // "
+static uint16_t g_int16_0_seg = 0;                 // "
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -271,7 +299,8 @@ static void trace_all_allocations()
     size_t cEntries = g_allocEntries.size();
     tracer.Trace( "  all allocations, count %d:\n", cEntries );
     for ( size_t i = 0; i < cEntries; i++ )
-        tracer.Trace( "      alloc entry %d uses segment %04x, size %04x\n", i, g_allocEntries[i].segment, g_allocEntries[i].para_length );
+        tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x\n", i, g_allocEntries[i].seg_process,
+                      g_allocEntries[i].segment, g_allocEntries[i].para_length );
 } //trace_all_allocations
 
 static int compare_alloc_entries( const void * a, const void * b )
@@ -1972,14 +2001,21 @@ void handle_int_16( uint8_t c )
     {
         case 0:
         {
-            // get character
+            // get character. ascii into al, scancode into ah
 
             if ( g_use80x25 )
                 UpdateDisplay();
 
+#if 1
+            cpu.push( cpu.get_cs() );
+            cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
+            cpu.set_ip( 0 );
+            cpu.set_cs( g_int16_0_seg );
+            return;
+#else
             while ( *phead == *ptail )
             {
-                // wait for a character then return it.
+                // block waiting for a character then return it.
 
                 while ( !peek_keyboard( true, true, false ) )
                     continue;
@@ -1997,10 +2033,12 @@ void handle_int_16( uint8_t c )
             tracer.Trace( "  returning character %04x '%c'\n", cpu.get_ax(), printable( cpu.al() ) );
             tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
+#endif
         }
         case 1:
         {
             // check keyboard status. checks if a character is available. return it if so, but not removed from buffer
+            // set zero flag if no character is available. clear zero flag if a character is available
 
             cpu.set_ah( 0 );
 
@@ -2027,7 +2065,7 @@ void handle_int_16( uint8_t c )
             }
 
             tracer.Trace( "  returning flag %d, ax %04x\n", cpu.get_zero(), cpu.get_ax() );
-            tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
+            //tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             g_int16_1_loop = true;
             return;
         }
@@ -2049,6 +2087,7 @@ void HandleAppExit()
     tracer.Trace( "  HandleAppExit for app psp %#x, '%s'\n", g_currentPSP, GetCurrentAppPath() );
     DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
     psp->Trace();
+    trace_all_allocations();
 
     // flush and close any files opened by this process
 
@@ -2117,23 +2156,61 @@ void handle_int_21( uint8_t c )
         }
         case 2:
         {
-            // output character.
+            // output character in DL. move cursor as appropriate
             // todo: interpret 7 (beep), 8 (backspace), 9 (tab) to tab on multiples of 8. 10 lf should move cursor down and scroll if needed
     
+            char ch = cpu.dl();
+
             if ( g_use80x25 )
             {
                 uint8_t * pbuf = GetVideoMem();
                 GetCursorPosition( row, col );
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
-                pbuf[ offset ] = cpu.dl();
-                col++;
+
+                if ( 8 == ch )
+                {
+                    if ( col > 0 )
+                    {
+                        col--;
+                        offset = row * 2 * ScreenColumns + col * 2;
+                        pbuf[ offset ] = ' ';
+                    }
+                }
+                else if ( 0xa == ch ) // CR
+                    col = 0;
+                else if ( 0xd == ch ) // LF
+                {
+                    if ( row >= ScreenRowsM1 )
+                    {
+                        int lines = 1;
+                        int rul = 0;
+                        int cul = 0;
+                        int rlr = ScreenRowsM1;
+                        int clr = ScreenColumnsM1;
+                
+                        tracer.Trace( "  line feed scrolling up a line\n"  );
+                        scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
+                    }
+                    else
+                        row = row + 1;
+                }
+                else
+                {
+                    pbuf[ offset ] = ch;
+                    if ( 0 == pbuf[ offset + 1 ] )
+                        pbuf[ offset + 1 ] = DefaultVideoAttribute;
+                    col++;
+                }
                 SetCursorPosition( row, col );
             }
             else
             {
-                char ch = cpu.dl();
                 if ( 0x0d != ch )
+                {
+                    if ( 8 == ch )
+                        printf( "%c ", ch );
                     printf( "%c", ch );
+                }
             }
     
             return;
@@ -2196,11 +2273,29 @@ void handle_int_21( uint8_t c )
 
             uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
             pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
+
+            if ( g_use80x25)
+                UpdateDisplay();
+
+#if 1
+            cpu.push( cpu.get_cs() );
+            cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
+            cpu.set_ip( 0 );
+            cpu.set_cs( g_int21_8_seg );
+            return;
+#else
             uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
             uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
+            bool first = true;
 
             while ( *phead == *ptail )
             {
+                if ( first && g_use80x25 )
+                {
+                    first = false;
+                    UpdateDisplay();
+                }
+
                 // wait for a character then return it.
 
                 while ( !peek_keyboard( true, true, false ) )
@@ -2220,8 +2315,8 @@ void handle_int_21( uint8_t c )
 
             tracer.Trace( "  int_21 7/8 exit head: %04x, tail %04x\n", *phead, *ptail );
             tracer.Trace( "  direct character input returning al %#x. scan_code %#x\n", cpu.al(), scan_code );
-
             return;
+#endif
         }
         case 9:
         {
@@ -2237,24 +2332,39 @@ void handle_int_21( uint8_t c )
         case 0xa:
         {
             // Buffered Keyboard input. DS::DX pointer to buffer. byte 0 count in, byte 1 count out excluding CR, byte 2 starts the response
-    
+            // The assembler version enables the emulator to send timer and keyboard interrupts.
+
+#if 1
+            cpu.push( cpu.get_cs() );
+            cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
+            cpu.set_ip( 0 );
+            cpu.set_cs( g_int21_a_seg );
+            return;
+#else
             uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
             uint8_t maxLen = p[0];
             p[2] = 0;
+
+            // This blocks and prevents timer interrupts from being processed.
 
             char * result = ConsoleConfiguration::portable_gets_s( (char *) p + 2, maxLen - 1 );
             if ( result )
             {
                 size_t len = strlen( result );
-                p[ 1 ] = (uint8_t) 1 + len;
-                p[ 2 + len ] = 0x0d; // replace null termination with CR, which apps like DEBUG.COM require
+                p[ 1 ] = (uint8_t) len;
+
+                 // replace null termination with CR, which apps like DEBUG.COM require
+                 // the CR isn't included in the string's length.
+
+                p[ 2 + len ] = 0x0d;
             }
             else
                 p[1] = 0;
 
             tracer.Trace( "  returning length %d, string '%.*s'\n", p[1], p[1], p + 2 );
-    
+
             return;
+#endif
         }
         case 0xb:
         {
@@ -2882,15 +2992,18 @@ void handle_int_21( uint8_t c )
             uint16_t new_paragraphs = cpu.get_dx();
             tracer.Trace( "  TSR and keep %#x paragraphs resident\n", new_paragraphs );
             g_allocEntries[ entry ].para_length = new_paragraphs;
+            trace_all_allocations();
 
             DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
             if ( psp && ( firstAppTerminateAddress != psp->int22TerminateAddress ) )
             {
                 g_appTerminationReturnCode = cpu.al();
+                tracer.Trace( "  tsr termination return code: %d\n", g_appTerminationReturnCode );
+                tracer.Trace( "  tsr's environment block: %04x\n", psp->segEnvironment );
                 g_currentPSP = psp->segParent;
                 cpu.set_cs( ( psp->int22TerminateAddress >> 16 ) & 0xffff );
                 cpu.set_ip( psp->int22TerminateAddress & 0xffff );
-                cpu.set_ss( psp->parentSS ); // not DOS standard, but workaround for apps like QCL.exe Quick C v 1.0 that doesn't restore the stack
+                cpu.set_ss( psp->parentSS ); // not DOS standard, but workaround for apps like QCL.exe QuickC v1.0 that doesn't restore the stack
                 cpu.set_sp( psp->parentSP ); // ""
                 tracer.Trace( "  returning from tsr to return address %04x:%04x\n", cpu.get_cs(), cpu.get_ip() );
             }
@@ -3149,6 +3262,15 @@ void handle_int_21( uint8_t c )
     
                 if ( 0 == h )
                 {
+#if 1
+                    // This assembler version allows the emulator to send timer and keyboard interrupts
+
+                    cpu.push( cpu.get_cs() );
+                    cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
+                    cpu.set_ip( 0 );
+                    cpu.set_cs( g_int21_3f_seg );
+                    return;
+#else
                     // Callers like GWBasic ask for one character at a time but have no idea what a backspace is.
                     // So buffer until a cr, append a lf, and send that one character at a time.
     
@@ -3163,6 +3285,7 @@ void handle_int_21( uint8_t c )
                     while ( 0 == acBuffer[ 0 ] )
                     {
                         size_t len = _countof( acBuffer );
+                        // This blocks and prevents timer interrupts from being processed.
                         char * result = ConsoleConfiguration::portable_gets_s( acBuffer, _countof( acBuffer ) );
                         if ( result )
                         {
@@ -3200,11 +3323,12 @@ void handle_int_21( uint8_t c )
                         ClearLastUpdateBuffer();
 
                     return;
+#endif
                 }
                 else
                 {
                     cpu.set_carry( true );
-                    tracer.Trace( "  attempt to read from handle %04x\n", h );
+                    tracer.Trace( "  attempt to read from output handle %04x\n", h );
                 }
     
                 return;
@@ -3275,12 +3399,13 @@ void handle_int_21( uint8_t c )
                         for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                         {
                             uint8_t ch = p[ t ];
-                            if ( 0x0d == ch )
+                            if ( 0x0a == ch ) // LF
                             {
                                 col = 0;
                                 SetCursorPosition( row, col );
+                                tracer.Trace( "  linefeed, setting column to 0\n" );
                             }
-                            else if ( 0x0a == ch )
+                            else if ( 0x0d == ch ) // CR
                             {
                                 if ( row >= ScreenRowsM1 )
                                 {
@@ -3290,11 +3415,15 @@ void handle_int_21( uint8_t c )
                                     int rlr = ScreenRowsM1;
                                     int clr = ScreenColumnsM1;
                 
-                                    tracer.Trace( "  line feed scrolling up a line\n"  );
+                                    tracer.Trace( "  carriage scrolling up a line\n"  );
                                     scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
                                 }
                                 else
-                                    SetCursorPosition( row + 1, col );
+                                {
+                                    tracer.Trace( "  carriage return, moving to next row\n" );
+                                    row++;
+                                    SetCursorPosition( row, col );
+                                }
                             }
                             else
                             {
@@ -3683,8 +3812,18 @@ void handle_int_21( uint8_t c )
             // cf clear on success
 
             tracer.Trace( "  free memory segment %04x\n", cpu.get_es() );
+            trace_all_allocations();
+
+            // treat free(0) as a success
+
+            if ( 0 == cpu.get_es() )
+            {
+                cpu.set_carry( false );
+                return;
+            }
 
             bool ok = FreeMemory( cpu.get_es() );
+            trace_all_allocations();
             cpu.set_carry( !ok );
             if ( !ok )
                 cpu.set_ax( 07 ); // memory corruption
@@ -4864,6 +5003,32 @@ int main( int argc, char ** argv )
         }
     }
 
+    // write assembler routines into 0x0600 - 0x0bff
+
+    uint16_t curseg = MachineCodeSegment;
+    memcpy( GetMem( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
+    g_int21_3f_seg = curseg;
+    curseg += ( round_up_to( sizeof( int21_3f_code ), 16 ) / 16 );
+
+    memcpy( GetMem( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
+    g_int21_a_seg = curseg;
+    curseg += ( round_up_to( sizeof( int21_a_code ), 16 ) / 16 );
+
+    memcpy( GetMem( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
+    g_int21_8_seg = curseg;
+    curseg += ( round_up_to( sizeof( int21_8_code ), 16 ) / 16 );
+
+    memcpy( GetMem( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
+    g_int16_0_seg = curseg;
+    curseg += ( round_up_to( sizeof( int16_0_code ), 16 ) / 16 );
+
+    tracer.Trace( "machine code: 21_3f %04x, 21_a %04x, 21_8 %04x, 16_0 %04x\n",
+                  g_int21_3f_seg, g_int21_a_seg, g_int21_8_seg, g_int16_0_seg );
+
+    assert( curseg <= InterruptRoutineSegment );
+
+    // allocate the environment space and load the binary
+
     uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp, penvVars );
     if ( 0 == segEnvironment )
         i8086_hard_exit( "unable to create environment for the app\n", 0 );
@@ -4886,7 +5051,7 @@ int main( int argc, char ** argv )
     g_diskTransferSegment = cpu.get_ds();
     g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
     g_haltExecution = false;
-    cpu.set_interrupt( true ); // DOS starts app with interrupts enabled
+    cpu.set_interrupt( true ); // DOS starts apps with interrupts enabled
     uint32_t * pDailyTimer = (uint32_t *) ( pbiosdata + 0x6c );
 
     // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
@@ -4914,7 +5079,7 @@ int main( int argc, char ** argv )
             throttled_UpdateDisplay( 200 );
 
         if ( cpu.update_daily_timer() )
-            *pDailyTimer = GetTickCount() / 55;
+            *pDailyTimer = GetTickCount() / 55; // should really be updated every 18.2ms, which is 54.94505
 
         // check interrupt enable and trap flags externally to avoid side effects in the emulator
 

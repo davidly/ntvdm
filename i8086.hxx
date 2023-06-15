@@ -100,6 +100,19 @@ struct i8086
         reg_pointers[ 15 ] = & di;
     } //i8086
 
+    void push( uint16_t val )
+    {
+        sp -= 2;
+        setmword( ss, sp, val );
+    } //push
+
+    uint16_t pop()
+    {
+        uint16_t val = mword( ss, sp );
+        sp += 2;
+        return val;
+    } //pop
+
   private:
 
     uint16_t ax, bx, cx, dx;
@@ -466,19 +479,6 @@ struct i8086
     void op_interrupt( uint8_t interrupt_num, uint8_t instruction_length );
     void op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount );
     void op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount );
-
-    void push( uint16_t val )
-    {
-        sp -= 2;
-        setmword( ss, sp, val );
-    } //push
-
-    uint16_t pop()
-    {
-        uint16_t val = mword( ss, sp );
-        sp += 2;
-        return val;
-    } //pop
 
     #ifdef I8086_TRACK_CYCLES
         void AddCycles( uint64_t & cycles, uint8_t amount ) { cycles += amount; }
