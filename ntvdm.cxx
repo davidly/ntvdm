@@ -725,8 +725,8 @@ struct DOSFCB
     uint16_t date;
     uint16_t time;
     uint8_t reserved[8];
-    uint8_t curRecord;
-    uint32_t recNumber;      // where random reads start
+    uint8_t curRecord;       // where sequential i/o starts
+    uint32_t recNumber;      // where random i/o starts
 
     void SetFP( FILE * fp ) { * ( (FILE **) & ( this->reserved ) ) = fp; }
     FILE * GetFP() { return * ( (FILE **) &this->reserved ); }
@@ -1039,13 +1039,16 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x10, "close using FCB" },
     { 0x21, 0x11, "search first using FCB" },
     { 0x21, 0x12, "search next using FCB" },
-    { 0x21, 0x13, "delete file using FCBs" },
-    { 0x21, 0x16, "create file using FCBs" },
-    { 0x21, 0x17, "rename file using FCBs" },
+    { 0x21, 0x13, "delete file using FCB" },
+    { 0x21, 0x14, "sequential read using FCB" },
+    { 0x21, 0x15, "sequential write using FCB" },
+    { 0x21, 0x16, "create file using FCB" },
+    { 0x21, 0x17, "rename file using FCB" },
     { 0x21, 0x19, "get default drive" },
     { 0x21, 0x1a, "set disk transfer address" },
-    { 0x21, 0x22, "random write using FCBs" },
-    { 0x21, 0x23, "get file size using FCBs" },
+    { 0x21, 0x21, "random read using FCB" },
+    { 0x21, 0x22, "random write using FCB" },
+    { 0x21, 0x23, "get file size using FCB" },
     { 0x21, 0x25, "set interrupt vector" },
     { 0x21, 0x26, "create new PSP" },
     { 0x21, 0x27, "random block read using FCB" },
@@ -2430,6 +2433,8 @@ void handle_int_21( uint8_t c )
     
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
+                    pfcb->curRecord = 0;
+                    pfcb->recNumber = 0;
     
                     pfcb->Trace();
                     cpu.set_al( 0 );
@@ -2559,6 +2564,91 @@ void handle_int_21( uint8_t c )
     
             return;
         }
+        case 0x14:
+        {
+            // sequential read using FCB.
+            // input: ds:dx points at the FCB
+            // output: al: 0 success
+            //             1 end of file, no data read
+            //             2 segment wrap in DTA, no data read
+            //             3 end of file, partial record read
+            //         disk transfer area DTA is filled with data from the current file position in the random record/size of the FCB
+            //         the file position is updated after the read
+            //         partial reads are 0-filled
+            //         one record is read
+
+            cpu.set_al( 1 );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            pfcb->Trace();
+            FILE * fp = pfcb->GetFP();
+            if ( fp )
+            {
+                ULONG seekOffset = pfcb->curRecord * pfcb->recSize;
+                tracer.Trace( "  seek offset: %u\n", seekOffset );
+                bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                if ( ok )
+                {
+                    memset( GetDiskTransferAddress(), 0, pfcb->recSize );
+                    size_t num_read = fread( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
+                    if ( num_read )
+                    {
+                         tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, pfcb->recSize );
+                         if ( num_read == pfcb->recSize )
+                             cpu.set_al( 0 );
+                         else
+                             cpu.set_al( 3 );
+                         pfcb->curRecord++;
+                    }
+                    else
+                         tracer.Trace( "  read failed with error %d = %s\n", errno, strerror( errno ) );
+                }
+                else
+                    tracer.Trace( "  ERROR sequential read using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+            }
+            else
+                tracer.Trace( "  ERROR sequential read using FCBs doesn't have an open file\n" );
+
+            return;
+        }
+        case 0x15:
+        {
+            // sequential write using FCB.
+            // input: ds:dx points at the FCB
+            // output: al: 0 success
+            //             1 disk full
+            //             2 segment wrap in DTA, no data written
+            //         current record field is updates
+            //         one record is written
+
+            cpu.set_al( 1 );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            pfcb->Trace();
+            FILE * fp = pfcb->GetFP();
+            if ( fp )
+            {
+                ULONG seekOffset = pfcb->curRecord * pfcb->recSize;
+                tracer.Trace( "  seek offset: %u\n", seekOffset );
+                bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                if ( ok )
+                {
+                    size_t num_written = fwrite( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
+                    if ( num_written )
+                    {
+                         tracer.Trace( "  write succeded: %u bytes. recsize %u bytes\n", num_written, pfcb->recSize );
+                         cpu.set_al( 0 );
+                         pfcb->curRecord++;
+                    }
+                    else
+                         tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
+                }
+                else
+                    tracer.Trace( "  ERROR sequential write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+            }
+            else
+                tracer.Trace( "  ERROR sequential write using FCBs doesn't have an open file\n" );
+
+            return;
+        }
         case 0x16:
         {
             // create using FCB
@@ -2582,9 +2672,11 @@ void handle_int_21( uint8_t c )
                     cpu.set_al( 0 );
                     pfcb->SetFP( fp );
     
-                    pfcb->fileSize = 0;
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
+                    pfcb->fileSize = 0;
+                    pfcb->recNumber = 0;
+                    pfcb->curRecord = 0;
     
                     pfcb->Trace();
                 }
@@ -2652,6 +2744,55 @@ void handle_int_21( uint8_t c )
     
             return;
         }
+        case 0x21:
+        {
+            // random read using FCBs.
+            // input: ds:dx points at the FCB
+            // output: al: 0 success
+            //             1 end of file, no data read
+            //             2 segment wrap in DTA, no data read
+            //             3 end of file, partial record read
+            //         disk transfer area DTA is filled with data from the current file position in the random record/size of the FCB
+            //         the file position isn't updated after the read
+            //         partial reads are 0-filled
+            //         one record is read
+
+            cpu.set_al( 1 );
+            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            pfcb->Trace();
+            FILE * fp = pfcb->GetFP();
+            if ( fp )
+            {
+                // lotus 123 1.0a writes a random value to the high byte; mask it away
+
+                ULONG seekOffset = ( pfcb->recNumber & 0xffffff ) * pfcb->recSize;
+                tracer.Trace( "  seek offset: %u\n", seekOffset );
+                bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                if ( ok )
+                {
+                    memset( GetDiskTransferAddress(), 0, pfcb->recSize );
+                    size_t num_read = fread( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
+                    if ( num_read )
+                    {
+                         tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, pfcb->recSize );
+                         if ( num_read == pfcb->recSize )
+                             cpu.set_al( 0 );
+                         else
+                             cpu.set_al( 3 );
+    
+                         // don't update the fcb's record number for this version of the API
+                    }
+                    else
+                         tracer.Trace( "  read failed with error %d = %s\n", errno, strerror( errno ) );
+                }
+                else
+                    tracer.Trace( "  ERROR random read using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+            }
+            else
+                tracer.Trace( "  ERROR random read using FCBs doesn't have an open file\n" );
+
+            return;
+        }
         case 0x22:
         {
             // random write using FCBs. on output, 0 if success, 1 if disk full, 2 if DTA too small
@@ -2665,7 +2806,9 @@ void handle_int_21( uint8_t c )
             FILE * fp = pfcb->GetFP();
             if ( fp )
             {
-                ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
+                // lotus 123 1.0a writes a random value to the high byte; mask it away
+
+                ULONG seekOffset = ( pfcb->recNumber & 0xffffff ) * pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
@@ -4412,7 +4555,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     else if ( 0x2a == interrupt_num )
     {
         // dos network / netbios
-        cpu.set_ah( 0 ); // not network installed (for function ah==00 )
+        cpu.set_ah( 0 ); // no network installed (for function ah==00 )
         return;
     }
     else if ( 0x2f == interrupt_num )
@@ -4673,14 +4816,14 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
         if ( WAIT_OBJECT_0 == ret )
             break;
 
-        WaitForSingleObject( g_hConsoleInput, 20 );
+        ret = WaitForSingleObject( g_hConsoleInput, 20 );
 
         if ( !g_KbdIntWaitingForRead && !g_KbdPeekAvailable )
         {
             uint8_t asciiChar, scancode;
             if ( peek_keyboard( asciiChar, scancode ) )
             {
-                tracer.Trace( "async thread noticed that a keystroke is available: %02x%02x\n", scancode, asciiChar );
+                tracer.Trace( "async thread (woken via %08x) noticed that a keystroke is available: %02x%02x\n", ret, scancode, asciiChar );
                 g_KbdPeekAvailable = true;
                 cpu.exit_emulate_early(); // no time to lose processing the keystroke
             }
@@ -5150,7 +5293,7 @@ int main( int argc, char ** argv )
         printf( "app exit code:    %20d\n", g_appTerminationReturnCode );
     }
 
-    tracer.Trace( "exit code of ntvdm: %d\n", g_appTerminationReturnCode );
+    tracer.Trace( "exit code of %s: %d\n", g_thisApp, g_appTerminationReturnCode );
 
     tracer.Shutdown();
 
