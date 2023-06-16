@@ -200,7 +200,6 @@ static uint8_t g_videoMode = 3;                    // 2=80x25 16 grey, 3=80x25 1
 static uint16_t g_currentPSP = 0;                  // psp of the currently running process
 static bool g_use80x25 = false;                    // true to force 80x25 with cursor positioning
 static bool g_forceConsole = false;                // true to force teletype mode, with no cursor positioning
-static bool g_int16_1_loop = false;                // true if an app is looping to get keyboard input. don't busy loop.
 static bool g_KbdIntWaitingForRead = false;        // true when a kbd int happens and no read has happened since
 static bool g_KbdPeekAvailable = false;            // true when peek on the keyboard sees keystrokes
 static bool g_injectControlC = false;              // true when ^c is hit and it must be put in the keyboard buffer
@@ -213,6 +212,7 @@ static uint16_t g_int21_3f_seg = 0;                // segment where this code re
 static uint16_t g_int21_a_seg = 0;                 // "
 static uint16_t g_int21_8_seg = 0;                 // "
 static uint16_t g_int16_0_seg = 0;                 // "
+static char cwd[ MAX_PATH ] = {0};                 // used as a temporary in several locations
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -292,6 +292,14 @@ static void trace_all_allocations()
         tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x\n", i, g_allocEntries[i].seg_process,
                       g_allocEntries[i].segment, g_allocEntries[i].para_length );
 } //trace_all_allocations
+
+uint8_t get_current_drive()
+{
+    // 0 == A...
+
+    GetCurrentDirectoryA( sizeof( cwd ), cwd );
+    return toupper( cwd[0] ) - 'A' ;
+} //get_current_drive
 
 static int compare_alloc_entries( const void * a, const void * b )
 {
@@ -2046,17 +2054,12 @@ void handle_int_16( uint8_t c )
             // apps like WordStar draw a bunch of text to video memory then call this, which is the chance to update the display
 
             if ( g_use80x25 )
-            {
-                bool update = throttled_UpdateDisplay();
-                if ( update )
-                    g_int16_1_loop = false;
-            }
+                throttled_UpdateDisplay();
 
             if ( *phead == *ptail )
             {
                 cpu.set_zero( true );
-                if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
-                    SleepAndScheduleInterruptCheck();
+                SleepAndScheduleInterruptCheck();
             }
             else
             {
@@ -2067,7 +2070,6 @@ void handle_int_16( uint8_t c )
 
             tracer.Trace( "  returning flag %d, ax %04x\n", cpu.get_zero(), cpu.get_ax() );
             //tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
-            g_int16_1_loop = true;
             return;
         }
         case 2:
@@ -2142,7 +2144,6 @@ void HandleAppExit()
 
 void handle_int_21( uint8_t c )
 {
-    static char cwd[ MAX_PATH ] = {0};
     uint8_t row, col;
 
     switch( c )
@@ -2407,12 +2408,15 @@ void handle_int_21( uint8_t c )
         }
         case 0xf:
         {
-            // open using FCB
+            // open file using FCB
     
-            tracer.Trace( "open using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
+            tracer.Trace( "open file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
+
+            if ( 0 == pfcb->drive )
+                pfcb->drive = get_current_drive();
     
             cpu.set_al( 0xff );
             char filename[ DOS_FILENAME_SIZE ];
@@ -2659,6 +2663,9 @@ void handle_int_21( uint8_t c )
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
             cpu.set_al( 0xff );
     
+            if ( 0 == pfcb->drive )
+                pfcb->drive = get_current_drive();
+    
             char filename[ DOS_FILENAME_SIZE ];
             if ( GetDOSFilename( *pfcb, filename ) )
             {
@@ -2725,12 +2732,10 @@ void handle_int_21( uint8_t c )
         case 0x19:
         {
             // get default drive. 0 == a:, 1 == b:, etc. returned in AL
-    
-            GetCurrentDirectoryA( sizeof( cwd ), cwd );
-            _strupr( cwd );
-            cpu.set_al( cwd[0] - 'A' );
-            tracer.Trace( "  returning default drive as '%c'\n", (char) cwd[0] );
 
+            uint8_t drive = get_current_drive();
+            cpu.set_al( drive );
+            tracer.Trace( "  returning default drive as '%c', # %d\n", (char) drive + 'A' , drive );
             return;
         }
         case 0x1a:
@@ -4427,9 +4432,6 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     // restore interrupts since we won't exit with an iret because Carry in flags must be preserved as a return code
 
     cpu.set_interrupt( true );
-
-    if ( 0x16 != interrupt_num || 1 != c )
-        g_int16_1_loop = false;
 
     if ( 0 == interrupt_num )
     {
