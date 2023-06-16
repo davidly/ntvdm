@@ -31,8 +31,7 @@ begin:
     int 16h
     jz wait_for_kbd
 
-    ; note: ah is overwritten with the scancode above. I haven't found any apps that care.
-
+    mov ah, 8                                    ; restore the function code in case the caller cares
     add word ptr es: [kbd_head], 2               ; consume the character and scancode
     cmp word ptr es: [kbd_head], kbd_beyond      ; has the head moved beyond the buffer?
     jl all_done

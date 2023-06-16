@@ -73,7 +73,7 @@ uint64_t int16_0_code[] = {
 0x01b4c08e0040b806, 0x1a068326fa7416cd, 0x3e001a3e83260200, 0x1e001a06c726077c, 0x0000000000cb0700, 
 }; 
 uint64_t int21_8_code[] = { 
-0x01b4c08e0040b806, 0x1a068326fa7416cd, 0x3e001a3e83260200, 0x1e001a06c726077c, 0x0000000000cb0700, 
+0x01b4c08e0040b806, 0x832608b4fa7416cd, 0x1a3e832602001a06, 0x1a06c726077c3e00, 0x000000cb07001e00, 
 }; 
 uint64_t int21_a_code[] = { 
 0x000144c6f28b5653, 0xcd01b43674003c80, 0x3c16cd00b4fa7416, 0x7400017c800c7508, 0x339010eb014cfeec, 0x3c024088015c8adb, 0xd08a0144fe10740d, 0x3a01448a21cd02b4, 
@@ -206,7 +206,7 @@ static bool g_KbdPeekAvailable = false;            // true when peek on the keyb
 static bool g_injectControlC = false;              // true when ^c is hit and it must be put in the keyboard buffer
 static bool g_appTerminationReturnCode = 0;        // when int 21 function 4c is invoked to terminate an app, this is the app return code
 static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
-static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0])
+static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0]), likely NTVDM
 static char g_lastLoadedApp[ MAX_PATH ] = {0};     // path of most recenly loaded program (though it may have terminated)
 static bool g_PackedFileCorruptWorkaround = false; // if true, allocate memory starting at 64k, not AppSegment
 static uint16_t g_int21_3f_seg = 0;                // segment where this code resides with ip = 0
@@ -261,16 +261,11 @@ static void usage( char const * perr )
     exit( 1 );
 } //usage
 
-void PerhapsSleep()
+void SleepAndScheduleInterruptCheck()
 {
-    static CDuration duration;
-
-    if ( duration.HasTimeElapsedMS( 100 ) )
-    {
-        tracer.Trace( "sleeping 1ms\n" );
-        Sleep( 1 ); // can actually sleep up to the tick interval, which is a long time
-    }
-} //PerhapsSleep
+    SleepEx( 1, TRUE );
+    cpu.exit_emulate_early(); // fall out of the instruction loop early to check for a timer interrupt
+} //SleepAndScheduleInterruptCheck
 
 int ends_with( const char * str, const char * end )
 {
@@ -2058,7 +2053,7 @@ void handle_int_16( uint8_t c )
             {
                 cpu.set_zero( true );
                 if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
-                    Sleep( 1 ); 
+                    SleepAndScheduleInterruptCheck();
             }
             else
             {
@@ -3063,9 +3058,6 @@ void handle_int_21( uint8_t c )
         {
             // get/set country dependent information.
 
-            // some apps (um, Brief 3.1) call this in a tight loop along with get system time and keyboard status
-            PerhapsSleep();
-    
             cpu.set_carry( false );
             cpu.set_bx( 1 ); // USA
             uint8_t * pinfo = GetMem( cpu.get_ds(), cpu.get_dx() );
@@ -4409,8 +4401,12 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     else if ( 0x28 == interrupt_num )
     {
         // dos idle loop / scheduler
+        // Some apps like Turbo C 2.0 call this repeatedly while busy compiling.
+        // Other apps call this in a tight loop while idling.
+        // So it's not obvious whether to Sleep here to reduce system CPU usage.
 
-        PerhapsSleep(); // some apps like Turbo C 2.0 call this in a pretty tight loop
+        if ( !ends_with( g_acApp, "TC.EXE" ) )
+            SleepAndScheduleInterruptCheck();
         return;
     }
     else if ( 0x2a == interrupt_num )
@@ -4427,7 +4423,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
             UpdateDisplay();
-            Sleep( 1 );
+            SleepAndScheduleInterruptCheck();
         }
 
         cpu.set_al( 0x01 ); // not installed, do NOT install
