@@ -26,6 +26,8 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Aztec (CG65 v3.2c 10-2-89) cross-compiler for 6502. cg65 compiler, as65 assembler, lb65 librarian, ln65 linker 
     Turbo Basic 1.1 app and apps the compiler creates.
     Turbo C 2.0 app and apps the compiler creates. Debug breakpoints and single-stepping work.
+    Turbo Assembler Version 3.2
+    Turbo Link Version 2.0
     Microsoft Quick C 1.0. Tested & works. Compiling, editing, breakpoints, single-stepping, etc.
     
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
@@ -62,7 +64,7 @@ seems close. I validated the mips.com results on an actual 8088 running at 4.77M
 The msc_v3 folder contains command.c, a greatly simplified replacement for command.com that can be built
 with that compiler. It's handy for when apps like WordStar and QBX shell out to command.com.
 
-Folders with test apps:
+Folders with test apps, copyrights owned by those owners.
 
     gwbasic -- gwbasic 3.22
     msc_v3 -- Microsoft C Compiler Version 3.00
@@ -70,6 +72,7 @@ Folders with test apps:
     turbo3dos -- Turbo Pascal 3.02A
     qbx -- Quick Basic 7.1
     wordstar -- WordStar Professional Release 4
+    task -- Turbo Assembler
 
 Usage information:
 
