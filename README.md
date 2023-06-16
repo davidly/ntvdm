@@ -29,6 +29,7 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Turbo Assembler Version 3.2
     Turbo Link Version 2.0
     Microsoft Quick C 1.0. Tested & works. Compiling, editing, breakpoints, single-stepping, etc.
+    Lotus 1-2-3 Release 1A
     
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
 
