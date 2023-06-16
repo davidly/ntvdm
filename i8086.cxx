@@ -30,9 +30,11 @@ static uint32_t g_State = 0;
 
 const uint32_t stateTraceInstructions = 1;
 const uint32_t stateEndEmulation = 2;
+const uint32_t stateExitEmulateEarly = 4;
 
 void i8086::trace_instructions( bool t ) { if ( t ) g_State |= stateTraceInstructions; else g_State &= ~stateTraceInstructions; }
 void i8086::end_emulation() { g_State |= stateEndEmulation; }
+void i8086::exit_emulate_early() { g_State |= stateExitEmulateEarly; }
 
 bool i8086::external_interrupt( uint8_t interrupt_num )
 {
@@ -700,6 +702,15 @@ _after_prefix:
             if ( g_State & stateEndEmulation )
             {
                 g_State &= ~stateEndEmulation;
+                break;
+            }
+
+            if ( ( g_State & stateExitEmulateEarly ) &&
+                 ( 0xff == prefix_segment_override ) &&    // wait until there is no prefix to exit
+                 ( 0xff == prefix_repeat_opcode ) )
+            {
+                tracer.Trace( "exiting emulate() after just %lld cycles instead of %lld cycles\n", cycles, maxcycles );
+                g_State &= ~stateExitEmulateEarly;
                 break;
             }
 

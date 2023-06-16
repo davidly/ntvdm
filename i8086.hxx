@@ -69,6 +69,7 @@ struct i8086
     // emulator API
 
     uint64_t emulate( uint64_t maxcycles );             // execute up to about maxcycles
+    void exit_emulate_early( void );                    // tell the emulator not to wait for maxcycles to return
     bool external_interrupt( uint8_t interrupt_num );   // invoke this simulated hardware/external interrupt immediately
     void trace_instructions( bool trace );              // enable/disable tracing each instruction
     void trace_state( void );                           // trace the registers

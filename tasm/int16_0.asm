@@ -22,31 +22,23 @@ kbd_beyond equ 3eh
 bios_seg equ 40h
 
 begin:
-    push bx
     push es
 
     mov ax, bios_seg
     mov es, ax
 
-  wait_for_kbd:                                  ; wait for head != tail
-    mov ax, es: [kbd_head]
-    cmp ax, es: [kbd_tail]
-    je wait_for_kbd
+  wait_for_kbd:                                  ; wait for a keystroke to be available
+    mov ah, 1                                    ; use int16 1 instead of a busy loop to enable the emulator to not pin the CPU
+    int 16h
+    jz wait_for_kbd
 
-    mov bx, word ptr es: [kbd_head]
-    mov al, byte ptr es: [bx]			 ; store the ascii character
-    inc word ptr es: [kbd_head]                  ; consume the ascii char
-    inc bx
-    mov ah, byte ptr es: [bx]			 ; store the scancode
-    inc word ptr es: [kbd_head]                  ; consume the scancode (thrown away)
-
+    add word ptr es: [kbd_head], 2               ; consume the character and scancode
     cmp word ptr es: [kbd_head], kbd_beyond      ; has the head moved beyond the buffer?
     jl all_done
     mov word ptr es: [kbd_head], kbd_start       ; if so, restore it to the start
 
   all_done:
     pop es
-    pop bx
     retf
 
 code ends               

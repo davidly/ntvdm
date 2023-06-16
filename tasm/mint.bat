@@ -12,8 +12,8 @@ goto :eof
 
 :buildit
 
-ntvdm -c tasm /t /la %~1.asm
-ntvdm -c tlink  /m /l /s %~1.obj >nul
+ntvdm tasm /t /la %~1.asm
+ntvdm tlink  /m /l /s %~1.obj >nul
 echo uint64_t %~1_code[] = { >>asm.txt
 hd %~1.exe /q /o:512 /n >>asm.txt
 echo }; >>asm.txt

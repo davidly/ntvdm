@@ -70,10 +70,10 @@ uint16_t round_up_to( uint16_t x, uint16_t multiple )
 
 // machine code for various interrupts. generated with mint.bat. 
 uint64_t int16_0_code[] = { 
-0x26c08e0040b80653, 0x001c063b26001aa1, 0x26001a1e8b26f574, 0x43001a06ff26078a, 0x001a06ff26278a26, 0x077c3e001a3e8326, 0x07001e001a06c726, 0x000000000000cb5b, 
+0x01b4c08e0040b806, 0x1a068326fa7416cd, 0x3e001a3e83260200, 0x1e001a06c726077c, 0x0000000000cb0700, 
 }; 
 uint64_t int21_8_code[] = { 
-0x26c08e0040b80653, 0x001c063b26001aa1, 0x26001a1e8b26f574, 0x26001a06ff26078a, 0x1a3e8326001a06ff, 0x1a06c726077c3e00, 0x0000cb5b07001e00, 
+0x01b4c08e0040b806, 0x1a068326fa7416cd, 0x3e001a3e83260200, 0x1e001a06c726077c, 0x0000000000cb0700, 
 }; 
 uint64_t int21_a_code[] = { 
 0x000144c6f28b5653, 0xcd01b43674003c80, 0x3c16cd00b4fa7416, 0x7400017c800c7508, 0x339010eb014cfeec, 0x3c024088015c8adb, 0xd08a0144fe10740d, 0x3a01448a21cd02b4, 
@@ -86,7 +86,7 @@ uint64_t int21_3f_code[] = {
 0x0000ed06c72e1175, 0x000000ef06c72e00, 0x2e00e9a12e900ceb, 0xa12ec07500eb063b, 0x5b595a5f5ef800eb, 0x00000000000000cb, 0x0000000000000000, 0x0000000000000000, 
 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 
 0x0000000000000000, 
-}; 
+};
 
 uint8_t * GetMem( uint16_t seg, uint16_t offset )
 {
@@ -264,11 +264,6 @@ static void usage( char const * perr )
 void PerhapsSleep()
 {
     static CDuration duration;
-
-    // Turbo C 2.0 calls dos idle then keyboard status while compiling many times.
-    // Turbo Pascal 5.5 calls these two tightly when waiting for input.
-    // The goal here is to optimize compile times for Turbo C 2.0 and minimize
-    // wasting CPU for Turbo Pascal 5.5.
 
     if ( duration.HasTimeElapsedMS( 100 ) )
     {
@@ -1608,6 +1603,17 @@ void scroll_up( uint8_t * pbuf, int lines, int rul, int cul, int rlr, int clr )
     }
 } //scroll_up
 
+void invoke_assembler_routine( uint16_t code_segment )
+{
+    // when the fint routine returns, execution will start here. The function
+    // will return far to just after the fint invocation.
+
+    cpu.push( cpu.get_cs() );
+    cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
+    cpu.set_ip( 0 );
+    cpu.set_cs( code_segment );
+} //invoke_assembler_routine
+
 void handle_int_10( uint8_t c )
 {
     uint8_t row, col;
@@ -2007,10 +2013,7 @@ void handle_int_16( uint8_t c )
                 UpdateDisplay();
 
 #if 1
-            cpu.push( cpu.get_cs() );
-            cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
-            cpu.set_ip( 0 );
-            cpu.set_cs( g_int16_0_seg );
+            invoke_assembler_routine( g_int16_0_seg );
             return;
 #else
             while ( *phead == *ptail )
@@ -2055,7 +2058,7 @@ void handle_int_16( uint8_t c )
             {
                 cpu.set_zero( true );
                 if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
-                    PerhapsSleep();
+                    Sleep( 1 ); 
             }
             else
             {
@@ -2278,10 +2281,7 @@ void handle_int_21( uint8_t c )
                 UpdateDisplay();
 
 #if 1
-            cpu.push( cpu.get_cs() );
-            cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
-            cpu.set_ip( 0 );
-            cpu.set_cs( g_int21_8_seg );
+            invoke_assembler_routine( g_int21_8_seg );
             return;
 #else
             uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
@@ -2335,10 +2335,7 @@ void handle_int_21( uint8_t c )
             // The assembler version enables the emulator to send timer and keyboard interrupts.
 
 #if 1
-            cpu.push( cpu.get_cs() );
-            cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
-            cpu.set_ip( 0 );
-            cpu.set_cs( g_int21_a_seg );
+            invoke_assembler_routine( g_int21_a_seg );
             return;
 #else
             uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
@@ -3265,10 +3262,7 @@ void handle_int_21( uint8_t c )
 #if 1
                     // This assembler version allows the emulator to send timer and keyboard interrupts
 
-                    cpu.push( cpu.get_cs() );
-                    cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
-                    cpu.set_ip( 0 );
-                    cpu.set_cs( g_int21_3f_seg );
+                    invoke_assembler_routine( g_int21_3f_seg );
                     return;
 #else
                     // Callers like GWBasic ask for one character at a time but have no idea what a backspace is.
@@ -4433,7 +4427,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
             UpdateDisplay();
-            PerhapsSleep();
+            Sleep( 1 );
         }
 
         cpu.set_al( 0x01 ); // not installed, do NOT install
@@ -4679,9 +4673,11 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
 
     do
     {
-        DWORD ret = WaitForSingleObject( hStop, 20 );
+        DWORD ret = WaitForSingleObject( hStop, 0 );
         if ( WAIT_OBJECT_0 == ret )
             break;
+
+        WaitForSingleObject( g_hConsoleInput, 20 );
 
         if ( !g_KbdIntWaitingForRead && !g_KbdPeekAvailable )
         {
@@ -4690,6 +4686,7 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
             {
                 tracer.Trace( "async thread noticed that a keystroke is available: %02x%02x\n", scancode, asciiChar );
                 g_KbdPeekAvailable = true;
+                cpu.exit_emulate_early(); // no time to lose processing the keystroke
             }
         }
     } while( true );
@@ -5003,9 +5000,11 @@ int main( int argc, char ** argv )
         }
     }
 
-    // write assembler routines into 0x0600 - 0x0bff
+    // write assembler routines into 0x0600 - 0x0bff. make each function segment-aligned so
+    // exection can start at ip 0.
 
     uint16_t curseg = MachineCodeSegment;
+
     memcpy( GetMem( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
     g_int21_3f_seg = curseg;
     curseg += ( round_up_to( sizeof( int21_3f_code ), 16 ) / 16 );
