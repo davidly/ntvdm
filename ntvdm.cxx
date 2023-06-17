@@ -4810,15 +4810,15 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
 
 DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
 {
-    HANDLE hStop = (HANDLE) param;
+    HANDLE aHandles[ 2 ];
+    aHandles[ 0 ] = (HANDLE) param;    // the stop/shutdown event
+    aHandles[ 1 ] = g_hConsoleInput;
 
     do
     {
-        DWORD ret = WaitForSingleObject( hStop, 0 );
+        DWORD ret = WaitForMultipleObjects( 2, aHandles, FALSE, 20 );
         if ( WAIT_OBJECT_0 == ret )
             break;
-
-        ret = WaitForSingleObject( g_hConsoleInput, 20 );
 
         if ( !g_KbdIntWaitingForRead && !g_KbdPeekAvailable )
         {
