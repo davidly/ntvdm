@@ -73,7 +73,7 @@ uint64_t int16_0_code[] = {
 0x01b4c08e0040b806, 0x1a068326fa7416cd, 0x3e001a3e83260200, 0x1e001a06c726077c, 0x0000000000cb0700, 
 }; 
 uint64_t int21_8_code[] = { 
-0x01b4c08e0040b806, 0x832608b4fa7416cd, 0x1a3e832602001a06, 0x1a06c726077c3e00, 0x000000cb07001e00, 
+0x00cb08b416cd00b4, 
 }; 
 uint64_t int21_a_code[] = { 
 0x000144c6f28b5653, 0xcd01b43674003c80, 0x3c16cd00b4fa7416, 0x7400017c800c7508, 0x339010eb014cfeec, 0x3c024088015c8adb, 0xd08a0144fe10740d, 0x3a01448a21cd02b4, 
@@ -200,6 +200,7 @@ static uint8_t g_videoMode = 3;                    // 2=80x25 16 grey, 3=80x25 1
 static uint16_t g_currentPSP = 0;                  // psp of the currently running process
 static bool g_use80x25 = false;                    // true to force 80x25 with cursor positioning
 static bool g_forceConsole = false;                // true to force teletype mode, with no cursor positioning
+static bool g_int16_1_loop = false;                // true if an app is looping to get keyboard input. don't busy loop.
 static bool g_KbdIntWaitingForRead = false;        // true when a kbd int happens and no read has happened since
 static bool g_KbdPeekAvailable = false;            // true when peek on the keyboard sees keystrokes
 static bool g_injectControlC = false;              // true when ^c is hit and it must be put in the keyboard buffer
@@ -2054,12 +2055,17 @@ void handle_int_16( uint8_t c )
             // apps like WordStar draw a bunch of text to video memory then call this, which is the chance to update the display
 
             if ( g_use80x25 )
-                throttled_UpdateDisplay();
+            {
+                bool update = throttled_UpdateDisplay();
+                if ( update )
+                    g_int16_1_loop = false;
+            }
 
             if ( *phead == *ptail )
             {
                 cpu.set_zero( true );
-                SleepAndScheduleInterruptCheck();
+                if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
+                    SleepAndScheduleInterruptCheck();
             }
             else
             {
@@ -2068,6 +2074,7 @@ void handle_int_16( uint8_t c )
                 cpu.set_zero( false );
             }
 
+            g_int16_1_loop = true;
             tracer.Trace( "  returning flag %d, ax %04x\n", cpu.get_zero(), cpu.get_ax() );
             //tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
@@ -4433,6 +4440,15 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
     cpu.set_interrupt( true );
 
+    // try to figure out if an app is looping looking for keyboard input
+
+    if ( ! ( ( 0x28 == interrupt_num ) ||
+             ( ( 0x16 == interrupt_num ) && ( 1 == c || 2 == c ) ) ) )
+    {
+        tracer.Trace( "resetting int16_t loop\n" );
+        g_int16_1_loop = false;
+    }
+
     if ( 0 == interrupt_num )
     {
         tracer.Trace( "    divide by zero interrupt 0\n" );
@@ -4475,7 +4491,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     {
         if ( 0 == c )
         {
-            // real time. get ticks since system boot. 18.2 ticks per second.
+            // read real time clock. get ticks since system boot. 18.2 ticks per second.
 
             ULONGLONG milliseconds = GetTickCount64();
             milliseconds *= 1821;
@@ -4547,10 +4563,12 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     {
         // dos idle loop / scheduler
         // Some apps like Turbo C 2.0 call this repeatedly while busy compiling.
-        // Other apps call this in a tight loop while idling.
-        // So it's not obvious whether to Sleep here to reduce system CPU usage.
+        // Other apps like Turbo Pascal 5.5 call this in a tight loop while idling.
+        // So it's not obvious whether to Sleep here to reduce host system CPU usage.
 
-        if ( !ends_with( g_acApp, "TC.EXE" ) )
+        if ( ends_with( g_acApp, "TC.EXE" ) )
+            g_int16_1_loop = false;
+        else
             SleepAndScheduleInterruptCheck();
         return;
     }

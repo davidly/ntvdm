@@ -709,7 +709,7 @@ _after_prefix:
                  ( 0xff == prefix_segment_override ) &&    // wait until there is no prefix to exit
                  ( 0xff == prefix_repeat_opcode ) )
             {
-                tracer.Trace( "exiting emulate() after just %lld cycles instead of %lld cycles\n", cycles, maxcycles );
+                tracer.Trace( "exiting emulate() early\n" );
                 g_State &= ~stateExitEmulateEarly;
                 break;
             }
@@ -732,22 +732,22 @@ _after_prefix:
         switch( _b0 )                                      // 20.3% of runtime
         {
             case 0x04: { set_al( op_add8( al(), _b1 ) ); _bc++; break; } // add al, immed8
-            case 0x05: { ax = op_add16( ax, _b12 ); _bc += 2; break; } // add ax, immed16
+            case 0x05: { ax = op_add16( ax, b12() ); _bc += 2; break; } // add ax, immed16
             case 0x06: { push( es ); break; } // push es
             case 0x07: { es = pop(); break; } // pop es
             case 0x0c: { _bc++; set_al( op_or8( al(), _b1 ) ); break; } // or al, immed8
-            case 0x0d: { _bc += 2; ax = op_or16( ax, _b12 ); break; } // or ax, immed16
+            case 0x0d: { _bc += 2; ax = op_or16( ax, b12() ); break; } // or ax, immed16
             case 0x0e: { push( cs ); break; } // push cs
             case 0x14: { _bc++; set_al( op_add8( al(), _b1, fCarry ) ); break; } // adc al, immed8
-            case 0x15: { _bc += 2; ax = op_add16( ax, _b12, fCarry ); break; } // adc ax, immed16
+            case 0x15: { _bc += 2; ax = op_add16( ax, b12(), fCarry ); break; } // adc ax, immed16
             case 0x16: { push( ss ); break; } // push ss
             case 0x17: { ss = pop(); break; } // pop ss
             case 0x1c: { _bc++; set_al( op_sub8( al(), _b1, fCarry ) ); break; } // sbb al, immed8
-            case 0x1d: { _bc += 2; ax = op_sub16( ax, _b12, fCarry ); break; } // sbb ax, immed16
+            case 0x1d: { _bc += 2; ax = op_sub16( ax, b12(), fCarry ); break; } // sbb ax, immed16
             case 0x1e: { push( ds ); break; } // push ds
             case 0x1f: { ds = pop(); break; } // pop ds
             case 0x24: { _bc++; set_al( op_and8( al(), _b1 ) ); break; } // and al, immed8
-            case 0x25: { _bc += 2; ax = op_and16( ax, _b12 ); break; } // and ax, immed16
+            case 0x25: { _bc += 2; ax = op_and16( ax, b12() ); break; } // and ax, immed16
             case 0x26: { prefix_segment_override = 0; ip++; goto _after_prefix; } // es segment override
             case 0x27: // daa
             {
@@ -776,7 +776,7 @@ _after_prefix:
                 break;
             }
             case 0x2c: { _bc++; set_al( op_sub8( al(), _b1 ) ); break; } // sub al, immed8
-            case 0x2d: { _bc += 2; ax = op_sub16( ax, _b12 ); break; } // sub ax, immed16
+            case 0x2d: { _bc += 2; ax = op_sub16( ax, b12() ); break; } // sub ax, immed16
             case 0x2e: { prefix_segment_override = 1; ip++; goto _after_prefix; } // cs segment override
             case 0x2f: // das
             {
@@ -801,7 +801,7 @@ _after_prefix:
                 break;
             }
             case 0x34: { _bc++; set_al( op_xor8( al(), _b1 ) ); break; } // xor al, immed8
-            case 0x35: { _bc += 2; ax = op_xor16( ax, _b12 ); break; } // xor ax, immed16
+            case 0x35: { _bc += 2; ax = op_xor16( ax, b12() ); break; } // xor ax, immed16
             case 0x36: { prefix_segment_override = 2; ip++; goto _after_prefix; } // ss segment override
             case 0x37: // aaa. ascii adjust after addition
             {
@@ -821,7 +821,7 @@ _after_prefix:
                 break;
             }
             case 0x3c: { _bc++; op_sub8( al(), _b1 ); break; } // cmp al, i8
-            case 0x3d: { _bc += 2; op_sub16( ax, _b12 ); break; } // cmp ax, i16
+            case 0x3d: { _bc += 2; op_sub16( ax, b12() ); break; } // cmp ax, i16
             case 0x3e: { prefix_segment_override = 3; ip++; goto _after_prefix; } // ds segment override
             case 0x3f: // aas. ascii adjust al after subtraction
             {
@@ -960,8 +960,8 @@ _after_prefix:
             {
                 push( cs );
                 push( ip + 5 );
-                ip = _b12;
-                cs = (uint16_t) _pcode[3] | ( (uint16_t) _pcode[ 4 ]  << 8 );
+                ip = b12();
+                cs = b34();
                 goto _trap_check;
             }
             case 0x9b: break; // wait for pending floating point exceptions
@@ -990,28 +990,28 @@ _after_prefix:
             }
             case 0xa0: // mov al, mem8
             {
-                uint32_t flat = flatten( get_seg_value( ds, cycles ), _b12 );
+                uint32_t flat = flatten( get_seg_value( ds, cycles ), b12() );
                 set_al( * (uint8_t *) ( memory + flat ) );
                 _bc += 2;
                 break;
             }
             case 0xa1: // mov ax, mem16
             {
-                uint32_t flat = flatten( get_seg_value( ds, cycles ), _b12 );
+                uint32_t flat = flatten( get_seg_value( ds, cycles ), b12() );
                 ax = * (uint16_t *) ( memory + flat );
                 _bc += 2;
                 break;
             }
             case 0xa2: // mov mem8, al
             {
-                uint8_t * pdst = (uint8_t *) ( memory + flatten( get_seg_value( ds, cycles ), _b12 ) );
+                uint8_t * pdst = (uint8_t *) ( memory + flatten( get_seg_value( ds, cycles ), b12() ) );
                 *pdst = al();
                 _bc += 2;
                 break;
             }
             case 0xa3: // mov mem16, ax
             {
-                uint16_t * pdst = (uint16_t *) ( memory + flatten( get_seg_value( ds, cycles ), _b12 ) );
+                uint16_t * pdst = (uint16_t *) ( memory + flatten( get_seg_value( ds, cycles ), b12() ) );
                 *pdst = ax;
                 _bc += 2;
                 break;
@@ -1106,7 +1106,7 @@ _after_prefix:
             case 0xa9: // test ax, immed16
             {
                 _bc += 2;
-                op_and16( ax, _b12 );
+                op_and16( ax, b12() );
                 break;
             }
             case 0xaa: // stos8 -- fill bytes with al. stosb
@@ -1225,7 +1225,7 @@ _after_prefix:
                     op_scas16( cycles );
                 break;
             }
-            case 0xc2: { ip = pop(); sp += _b12; goto _trap_check; } // ret immed16 intrasegment
+            case 0xc2: { ip = pop(); sp += b12(); goto _trap_check; } // ret immed16 intrasegment
             case 0xc3: { ip = pop(); goto _trap_check; } // ret intrasegment
             case 0xc4: // les reg16, [mem16]
             {
@@ -1263,7 +1263,7 @@ _after_prefix:
                 *pdst = src;
                 break;
             }
-            case 0xca: { ip = pop(); cs = pop(); sp += _b12; goto _trap_check; } // retf immed16
+            case 0xca: { ip = pop(); cs = pop(); sp += b12(); goto _trap_check; } // retf immed16
             case 0xcb: { ip = pop(); cs = pop(); goto _trap_check; } // retf
             case 0xcc:  // int3
             {
@@ -1421,18 +1421,18 @@ _after_prefix:
             {
                 uint16_t return_address = ip + 3;
                 push( return_address );
-                ip = return_address + _b12;
+                ip = return_address + b12();
                 goto _trap_check;
             }
-            case 0xe9: { ip += ( 3 + (int16_t) _b12 ); goto _trap_check; } // jmp near
-            case 0xea: { ip = _b12; cs = _pcode[3] | ( uint16_t) _pcode[4] << 8; goto _trap_check; } // jmp far
+            case 0xe9: { ip += ( 3 + (int16_t) b12() ); goto _trap_check; } // jmp near
+            case 0xea: { ip = b12(); cs = b34(); goto _trap_check; } // jmp far
             case 0xeb: { ip += ( 2 + (int16_t) (int8_t) _b1 ); goto _trap_check; } // jmp short i8
             case 0xec: { set_al( i8086_invoke_in_al( dx ) ); break; } // in al, dx
             case 0xed: { ax = i8086_invoke_in_ax( dx ); break; } // in ax, dx
             case 0xee: { break; } // out al, dx
             case 0xef: { break; } // out ax, dx
             case 0xf0: { break; } // lock prefix. ignore since interrupts won't happen
-            case 0xf2: { prefix_repeat_opcode = _b0; ip++; goto _after_prefix; } // repne/repnz
+            case 0xf2: // repne/repnz -- fall through to the f3 code
             case 0xf3: { prefix_repeat_opcode = _b0; ip++; goto _after_prefix; } // rep/repe/repz
             case 0xf4: { i8086_invoke_halt(); goto _all_done; } // hlt
             case 0xf5: { fCarry = !fCarry; break; } //cmc
@@ -1537,8 +1537,8 @@ _after_prefix:
                 {
                     AddMemCycles( cycles, 8 );
                     uint16_t lhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
-                    uint16_t rhs = _pcode[ _bc++ ];
-                    rhs |= ( (uint16_t) ( _pcode[ _bc++ ] ) << 8 );
+                    uint16_t rhs = * (uint16_t *) ( _pcode + _bc );
+                    _bc += 2;
                     op_and16( lhs, rhs );
                 }
                 else if ( 2 == _reg ) // not reg16/mem16 -- no flags updated
@@ -1775,7 +1775,7 @@ _after_prefix:
                 }
                 else
                 {
-                    * get_preg16( 8 + ( _b0 & 7 ) ) = _b12;
+                    * get_preg16( 8 + ( _b0 & 7 ) ) = b12();
                     _bc = 3;
                 }
             }

@@ -79,7 +79,7 @@ struct i8086
     i8086() : ax( 0 ), bx( 0 ), cx( 0 ), dx(0 ), si( 0 ), di( 0 ), bp( 0 ), sp( 0 ), ip( 0 ),
               es( 0 ), cs( 0 ), ss( 0 ), ds( 0 ), flags( 0 ),
               prefix_segment_override( 0xff ), prefix_repeat_opcode( 0xff ),
-              _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _b12( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ), _isword( false ),
+              _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ), _isword( false ),
               fCarry( false ), fParityEven( false ), fAuxCarry( false ), fZero( false ), fSign( false ),
               fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false )
     {
@@ -120,8 +120,9 @@ struct i8086
     uint16_t si, di, bp, sp, ip;
     uint16_t es, cs, ss, ds;
     uint16_t flags;
+    // keep these two prefix variables consecutive so the compiler can initialize both of them at once in emulate()
     uint8_t prefix_segment_override; // 0xff for none, 0..3 for es, cs, ss, ds
-    uint8_t prefix_repeat_opcode;
+    uint8_t prefix_repeat_opcode;    // 0xff for none, f2 repne/repnz, f3 rep/repe/repz
     void * reg_pointers[ 16 ];
 
     // bits   0,           2,         4,     6,     7,     8,          9,         10,        11
@@ -406,7 +407,6 @@ struct i8086
     uint8_t _bc;      // # of bytes consumed by currenly running instruction
     uint8_t _b0;      // pcode[ 0 ] -- the first opcode
     uint8_t _b1;      // pcode[ 1 ]
-    uint16_t _b12;    // pcode[1] and pcode[2] as a little-endian word
     uint8_t _mod;     // bits 7:6 of _b1
     uint8_t _reg;     // bits 5:3 of _b1
     uint8_t _rm;      // bits 2:0 of _b1
@@ -417,15 +417,16 @@ struct i8086
         _bc = 1;
         _pcode = pcode;
         _b0 = pcode[0];
+        _isword = ( _b0 & 1 );
         _b1 = pcode[1];
-        _b12 = _b1 | ( (uint16_t) pcode[2] << 8 );
-        _mod = ( _b1 >> 6 ) & 3;
+        _mod = ( _b1 >> 6 );
         _reg = ( _b1 >> 3 ) & 7;
         _rm = _b1 & 7;
-        _isword = ( _b0 & 1 );
     } //decode_instruction
 
     bool toreg() { return ( 2 == ( _b0 & 2 ) ); } // decode on the fly since it's rarely used
+    uint16_t b12() { return * (uint16_t *) ( _pcode + 1 ); } // bytes 1 and 2 from the start of the opcode
+    uint16_t b34() { return * (uint16_t *) ( _pcode + 3 ); } // bytes 3 and 4 from the start of the opcode
 
     void trace_decode()
     {
