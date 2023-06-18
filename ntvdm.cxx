@@ -270,13 +270,13 @@ void SleepAndScheduleInterruptCheck()
 
 int ends_with( const char * str, const char * end )
 {
-    int len = strlen( str );
-    int lenend = strlen( end );
+    size_t len = strlen( str );
+    size_t lenend = strlen( end );
 
     if ( len < lenend )
         return false;
 
-    return !stricmp( str + len - lenend, end );
+    return !_stricmp( str + len - lenend, end );
 } //ends_with
 
 bool isFilenameChar( char c )
@@ -3332,7 +3332,7 @@ void handle_int_21( uint8_t c )
             {
                 bool readOnly = ( 0 == openmode );
 
-                if ( !stricmp( path, "CON" ) )
+                if ( !_stricmp( path, "CON" ) )
                 {
                     cpu.set_ax( readOnly ? 0 : 1 );
                     cpu.set_carry( false );
@@ -4444,10 +4444,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
     if ( ! ( ( 0x28 == interrupt_num ) ||
              ( ( 0x16 == interrupt_num ) && ( 1 == c || 2 == c ) ) ) )
-    {
-        tracer.Trace( "resetting int16_t loop\n" );
         g_int16_1_loop = false;
-    }
 
     if ( 0 == interrupt_num )
     {
@@ -4523,9 +4520,9 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             SYSTEMTIME st = {0};
             GetLocalTime( &st );
-            cpu.set_ch( toBCD( st.wHour ) );
-            cpu.set_cl( toBCD( st.wMinute ) );
-            cpu.set_dh( toBCD( st.wSecond ) );
+            cpu.set_ch( toBCD( (uint8_t) st.wHour ) );
+            cpu.set_cl( toBCD( (uint8_t) st.wMinute ) );
+            cpu.set_dh( toBCD( (uint8_t) st.wSecond ) );
             cpu.set_dl( 0 );
             return;
         }
@@ -4675,7 +4672,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         fseek( fp, 0, SEEK_END );
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
-        int blocks_read = fread( GetMem( ComSegment, 0x100 ), file_size, 1, fp );
+        size_t blocks_read = fread( GetMem( ComSegment, 0x100 ), file_size, 1, fp );
         fclose( fp );
 
         if ( 1 != blocks_read )
@@ -4734,7 +4731,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
         vector<uint8_t> theexe( file_size );
-        int blocks_read = fread( theexe.data(), file_size, 1, fp );
+        size_t blocks_read = fread( theexe.data(), file_size, 1, fp );
         fclose( fp );
         if ( 1 != blocks_read )
         {
@@ -4879,18 +4876,18 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     }
     else
     {
-        bytesNeeded += (uint16_t) 2 + ( strlen( pComSpec ) + strlen( pBriefFlags ) );
+        bytesNeeded += (uint16_t) 2 + (uint16_t) ( strlen( pComSpec ) + strlen( pBriefFlags ) );
 
         if ( pcmdLineEnv )
         {
-            cmdLineEnvLen = 1 + strlen( pcmdLineEnv );
+            cmdLineEnvLen = 1 + (uint16_t) strlen( pcmdLineEnv );
             bytesNeeded += cmdLineEnvLen;
         }
     }
 
     // apps assume there is space at the end to write to. It should be at least 160 bytes in size
 
-    bytesNeeded += 256;
+    bytesNeeded += (uint16_t) 256;
 
     uint16_t remaining;
     uint16_t segEnvironment = AllocateMemory( round_up_to( bytesNeeded, 16 ) / 16, remaining );
@@ -4923,7 +4920,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     if ( pcmdLineEnv )
     {
         strcpy( penv, pcmdLineEnv );
-        strupr( penv );
+        _strupr( penv );
         char * p = penv;
         while ( *p )
         {
@@ -4978,6 +4975,24 @@ static char * RenderNumberWithCommas( long long n, char * ac )
     RenderNumber( n, ac );
     return ac;
 } //RenderNumberWithCommas
+
+uint32_t GetBiosDailyTimer()
+{
+    // the daily timer bios value should increment 18.206 times per second -- every 54.925 ms
+
+#if true
+    // this method is more accurate and rolls less often, but maybe 15% slower
+    // get 100ns intervals since 1/1/1601.
+    // 1 ms = 1000000 ns == 10000 100ns
+
+    uint64_t since_epoch;
+    GetSystemTimeAsFileTime( (FILETIME *) & since_epoch ); // this cast is terrible
+    return (uint32_t) ( since_epoch / 549451 );
+#else
+    // less accurate and rolls more often, but maybe 15% faster
+    return GetTickCount() / 55;
+#endif
+} //GetBiosDailyTimer
 
 int main( int argc, char ** argv )
 {
@@ -5219,7 +5234,6 @@ int main( int argc, char ** argv )
     CSimpleThread peekKbdThread( PeekKeyboardThreadProc );
     uint64_t total_cycles = 0; // this will be inacurate if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
-    CDuration duration;
     high_resolution_clock::time_point tStart = high_resolution_clock::now();
 
     do
@@ -5236,8 +5250,10 @@ int main( int argc, char ** argv )
         if ( g_use80x25 )
             throttled_UpdateDisplay( 200 );
 
-        if ( cpu.update_daily_timer() )
-            *pDailyTimer = GetTickCount() / 55; // should really be updated every 18.2ms, which is 54.94505
+        uint32_t dt = GetBiosDailyTimer();
+        bool timer_changed = ( dt != *pDailyTimer );
+        if ( timer_changed )
+            *pDailyTimer = dt;
 
         // check interrupt enable and trap flags externally to avoid side effects in the emulator
 
@@ -5257,11 +5273,9 @@ int main( int argc, char ** argv )
             // if interrupt 8 (timer) or 0x1c (tick tock) are hooked by an app and 55 milliseconds has elapsed, invoke
             // int 8, which by default then invokes int 1c.
     
-            if ( ( InterruptHookedByApp( 0x1c ) || InterruptHookedByApp( 8 ) ) && duration.HasTimeElapsedMS( 55 ) )
+            if ( timer_changed && ( InterruptHookedByApp( 0x1c ) || InterruptHookedByApp( 8 ) ) )
             {
-                // this won't be precise enough to provide a clock, but it's good for delay loops.
-                // on my machine, this is invoked about every 72 million total_cycles.
-                // if the app is blocked on keyboard input this interrupt will be delivered late.
+                // on my machine this is invoked about every 72 million total_cycles if no throttle sleeping happened (tens of thousands if so)
     
                 tracer.Trace( "sending an int 8, total_cycles %llu\n", total_cycles );
                 cpu.external_interrupt( 8 );

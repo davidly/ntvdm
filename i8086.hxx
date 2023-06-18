@@ -74,7 +74,6 @@ struct i8086
     void trace_instructions( bool trace );              // enable/disable tracing each instruction
     void trace_state( void );                           // trace the registers
     void end_emulation( void );                         // make the emulator return at the start of the next instruction
-    bool update_daily_timer( void ) { return true; }    // update in the VM emulator, not the 8086 emulator
 
     i8086() : ax( 0 ), bx( 0 ), cx( 0 ), dx(0 ), si( 0 ), di( 0 ), bp( 0 ), sp( 0 ), ip( 0 ),
               es( 0 ), cs( 0 ), ss( 0 ), ds( 0 ), flags( 0 ),
@@ -116,11 +115,12 @@ struct i8086
 
   private:
 
+    // the code assumes relative positions of all of these member variables. they can't easily be moved around.
+
     uint16_t ax, bx, cx, dx;
     uint16_t si, di, bp, sp, ip;
     uint16_t es, cs, ss, ds;
     uint16_t flags;
-    // keep these two prefix variables consecutive so the compiler can initialize both of them at once in emulate()
     uint8_t prefix_segment_override; // 0xff for none, 0..3 for es, cs, ss, ds
     uint8_t prefix_repeat_opcode;    // 0xff for none, f2 repne/repnz, f3 rep/repe/repz
     void * reg_pointers[ 16 ];
@@ -166,7 +166,7 @@ struct i8086
 
     void set_PSZ16( uint16_t val )
     {
-        fParityEven = is_parity_even8( val & 0xff ); // only the lower 8 bits are used to determine parity on the 8086
+        fParityEven = is_parity_even8( (uint8_t) val ); // only the lower 8 bits are used to determine parity on the 8086
         fZero = ( 0 == val );
         fSign = ( 0 != ( 0x8000 & val ) );
     } //set_PSZ16
@@ -263,7 +263,7 @@ struct i8086
         {
             _bc += 2;
             AddCycles( cycles, 5 );
-            uint16_t offset = _pcode[2] + ( (uint16_t) _pcode[3] << 8 );
+            uint16_t offset = * (uint16_t *) ( _pcode + 2 );
             uint16_t regval = get_displacement( rm_to_use, cycles );
             uint16_t segment = get_displacement_seg( rm_to_use, cycles );
             return memory + flatten( segment, regval + offset );
@@ -273,7 +273,7 @@ struct i8086
         {
             _bc += 2;
             AddCycles( cycles, 5 );
-            return memory + flatten( get_seg_value( ds, cycles ), ( (uint32_t) _pcode[ 2 ] + ( (uint32_t) _pcode[ 3 ] << 8 ) ) );
+            return memory + flatten( get_seg_value( ds, cycles ), * (uint16_t *) ( _pcode + 2 ) );
         }
 
         uint16_t val = get_displacement( rm_to_use, cycles );
@@ -303,7 +303,7 @@ struct i8086
         if  ( 2 == _mod )
         {
             _bc += 2;
-            uint16_t offset = _pcode[2] + ( (uint16_t) ( _pcode[3] ) << 8 );
+            uint16_t offset = * (uint16_t *) ( _pcode + 2 );
             uint16_t regval = get_displacement( rm_to_use, cycles );
             return regval + offset;
         }
@@ -311,7 +311,7 @@ struct i8086
         if ( 0x6 == rm_to_use )  // 0 == mod. least frequent
         {
             _bc += 2;
-            return (uint16_t) _pcode[ 2 ] + ( ( (uint16_t) _pcode[ 3 ] ) << 8 );
+            return * (uint16_t *) ( _pcode + 2 );
         }
 
         return get_displacement( rm_to_use, cycles );
@@ -327,10 +327,7 @@ struct i8086
             if ( firstArgReg )
             {
                 void * pin = get_rm_ptr( _rm, cycles );
-                if ( _isword )
-                    rhs = * (uint16_t *) pin;
-                else
-                    rhs = * (uint8_t *) pin;
+                rhs = _isword ? ( * (uint16_t *) pin ) : ( * (uint8_t *) pin );
                 return get_preg( _reg );
             }
 
@@ -347,7 +344,7 @@ struct i8086
         
                 if ( _isword )
                 {
-                    rhs = _pcode[ immoffset ] | ( ( (uint16_t) _pcode[ 1 + immoffset ] ) << 8 ) ;
+                    rhs = * (uint16_t *) ( _pcode + immoffset );
                     _bc += 2;
                 }
                 else
@@ -362,10 +359,7 @@ struct i8086
             return pdst;
         }
 
-        if ( _isword )
-            rhs = * get_preg16( _reg );
-        else
-            rhs = * get_preg8( _reg );
+        rhs = _isword ? ( * get_preg16( _reg ) ) : ( * get_preg8( _reg ) );
 
         return get_rm_ptr( _rm, cycles );
     } //get_op_args

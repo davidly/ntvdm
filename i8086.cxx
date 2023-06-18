@@ -693,11 +693,11 @@ uint64_t i8086::emulate( uint64_t maxcycles )
     uint64_t cycles = 0;
     do 
     {
-        prefix_segment_override = 0xff;
+        prefix_segment_override = 0xff;                    // .66% of runtime
         prefix_repeat_opcode = 0xff;
 
 _after_prefix:
-        if ( 0 != g_State )                                // 6.7% of runtime
+        if ( 0 != g_State )                                // 2.8% of runtime
         {
             if ( g_State & stateEndEmulation )
             {
@@ -719,17 +719,17 @@ _after_prefix:
         }
 
         assert( 0 != cs || 0 != ip );                      // almost certainly an app bug.
-        decode_instruction( memptr( flat_ip() ) );         // 26.6 % of runtime
+        decode_instruction( memptr( flat_ip() ) );         // 29 % of runtime
 
         #ifdef I8086_TRACK_CYCLES
-            cycles += i8086_cycles[ _b0 ];                 // 4% of runtime
+            cycles += i8086_cycles[ _b0 ];                 // .25% of runtime
         #else
             cycles += 18; // average for the mips.com benchmark
         #endif
 
         bool handled = true;
 
-        switch( _b0 )                                      // 20.3% of runtime
+        switch( _b0 )                                      // 21.2% of runtime setting up for jumptable
         {
             case 0x04: { set_al( op_add8( al(), _b1 ) ); _bc++; break; } // add al, immed8
             case 0x05: { ax = op_add16( ax, b12() ); _bc += 2; break; } // add ax, immed16
@@ -1859,12 +1859,12 @@ _after_prefix:
             }
         }
 
-        ip += _bc;                                         // 3.5% of runtime
+        ip += _bc;                                         // 4.4% of runtime
 
 _trap_check:  // jump here from the switch instead of 'break' if ip was set by the instruction (jmp, call, ret, etc.)
-        if ( fTrap )
+        if ( fTrap )                                       // 2.9% of runtime. ouch
             op_interrupt( 1, 0 );
-    } while ( cycles < maxcycles );                        // 2% of runtime
+    } while ( cycles < maxcycles );                        // .91% of runtime
 
 _all_done:
     return cycles;
