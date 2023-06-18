@@ -59,6 +59,7 @@
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip );
+uint16_t LoadOverlay( const char * app, uint16_t segLoadAddress, uint16_t segmentRelocationFactor );
 
 uint16_t round_up_to( uint16_t x, uint16_t multiple )
 {
@@ -108,6 +109,7 @@ struct FileEntry
     uint16_t handle; // DOS handle, not host OS
     bool writeable;
     uint16_t seg_process; // process that opened the file
+    uint16_t refcount;
 
     void Trace()
     {
@@ -115,10 +117,23 @@ struct FileEntry
     }
 };
 
+struct AppExecuteMode3
+{
+    uint16_t segLoadAddress;
+    uint16_t segmentRelocationFactor;
+
+    void Trace()
+    {
+        tracer.Trace( "  AppExecuteMode3:\n" );
+        tracer.Trace( "    segLoadAddress: %#x\n", segLoadAddress );
+        tracer.Trace( "    segmentRelocationFactor: %#x\n", segmentRelocationFactor );
+    } //Trace
+};
+
 struct AppExecute
 {
-    uint16_t segEnvironment;
-    uint16_t offsetCommandTail;
+    uint16_t segEnvironment;            // for mode 3, this is segment load address
+    uint16_t offsetCommandTail;         // for mode 3, this is segment relocation factor
     uint16_t segCommandTail;
     uint16_t offsetFirstFCB;
     uint16_t segFirstFCB;
@@ -290,9 +305,24 @@ static void trace_all_allocations()
     size_t cEntries = g_allocEntries.size();
     tracer.Trace( "  all allocations, count %d:\n", cEntries );
     for ( size_t i = 0; i < cEntries; i++ )
-        tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x\n", i, g_allocEntries[i].seg_process,
-                      g_allocEntries[i].segment, g_allocEntries[i].para_length );
+    {
+        DosAllocation & da = g_allocEntries[i];
+        tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x\n", i,
+                      da.seg_process, da.segment, da.para_length );
+    }
 } //trace_all_allocations
+
+static void trace_all_open_files()
+{
+    size_t cEntries = g_fileEntries.size();
+    tracer.Trace( "  all files, count %d:\n", cEntries );
+    for ( size_t i = 0; i < cEntries; i++ )
+    {
+        FileEntry & fe = g_fileEntries[ i ];
+        tracer.Trace( "    file entry %d, fp %p, handle %u, writable %d, process %u, refcount %u, path %s\n", i,
+                      fe.fp, fe.handle, fe.writeable, fe.seg_process, fe.refcount, fe.path );
+    }
+} //trace_all_open_files
 
 uint8_t get_current_drive()
 {
@@ -341,7 +371,7 @@ FILE * RemoveFileEntry( uint16_t handle )
         if ( handle == g_fileEntries[ i ].handle )
         {
             FILE * fp = g_fileEntries[ i ].fp;
-            tracer.Trace( "  removing file entry %s: %z\n", g_fileEntries[ i ].path, i );
+            tracer.Trace( "  removing file entry %s: %d\n", g_fileEntries[ i ].path, i );
             g_fileEntries.erase( g_fileEntries.begin() + i );
             return fp;
         }
@@ -357,7 +387,7 @@ FILE * FindFileEntry( uint16_t handle )
     {
         if ( handle == g_fileEntries[ i ].handle )
         {
-            tracer.Trace( "  found file entry '%s': %z\n", g_fileEntries[ i ].path, i );
+            tracer.Trace( "  found file entry '%s': %d\n", g_fileEntries[ i ].path, i );
             return g_fileEntries[ i ].fp;
         }
     }
@@ -372,7 +402,7 @@ size_t FindFileEntryIndex( uint16_t handle )
     {
         if ( handle == g_fileEntries[ i ].handle )
         {
-            tracer.Trace( "  found file entry '%s': %z\n", g_fileEntries[ i ].path, i );
+            tracer.Trace( "  found file entry '%s': %d\n", g_fileEntries[ i ].path, i );
             return i;
         }
     }
@@ -397,7 +427,7 @@ const char * FindFileEntryPath( uint16_t handle )
     {
         if ( handle == g_fileEntries[ i ].handle )
         {
-            tracer.Trace( "  found file entry '%s': %z\n", g_fileEntries[ i ].path, i );
+            tracer.Trace( "  found file entry '%s': %d\n", g_fileEntries[ i ].path, i );
             return g_fileEntries[ i ].path;
         }
     }
@@ -410,7 +440,7 @@ void TraceOpenFiles()
 {
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
     {
-        tracer.Trace( "    file index %z\n", i );
+        tracer.Trace( "    file index %d\n", i );
         g_fileEntries[ i ].Trace();
     }
 } //TraceOpenFiles
@@ -421,7 +451,7 @@ size_t FindFileEntryFromPath( const char * pfile )
     {
         if ( !_stricmp( pfile, g_fileEntries[ i ].path ) )
         {
-            tracer.Trace( "  found file entry '%s': %z\n", g_fileEntries[ i ].path, i );
+            tracer.Trace( "  found file entry '%s': %d\n", g_fileEntries[ i ].path, i );
             return i;
         }
     }
@@ -1024,13 +1054,15 @@ const IntInfo interrupt_list[] =
     { 0x10, 0x14, "lcd handler" },
     { 0x10, 0x15, "return physical display characteristics" },
     { 0x10, 0x1a, "get/set video display combination" },
-    { 0x10, 0x1b, "undocumented. qbasic apps call this" },
+    { 0x10, 0x1b, "video functionality/state information" },
     { 0x10, 0x1c, "save/restore video state" },
     { 0x10, 0xef, "undocumented. qbasic apps call this" },
     { 0x12, 0x00, "get memory size" },
     { 0x16, 0x00, "get character" },
     { 0x16, 0x01, "keyboard status" },
     { 0x16, 0x02, "keyboard - get shift status" },
+    { 0x16, 0x05, "keyboard - store keystroke in keyboard buffer" },
+    { 0x16, 0x11, "get enhanced keystroke" },
     { 0x1a, 0x00, "read real time clock" },
     { 0x1a, 0x02, "get real-time clock time" },
     { 0x21, 0x00, "exit app" },
@@ -1044,8 +1076,8 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x0c, "clear input buffer and execute int 0x21 on AL" },
     { 0x21, 0x0d, "disk reset" },
     { 0x21, 0x0e, "select disk" },
-    { 0x21, 0x0f, "open using FCB" },
-    { 0x21, 0x10, "close using FCB" },
+    { 0x21, 0x0f, "open file using FCB" },
+    { 0x21, 0x10, "close file using FCB" },
     { 0x21, 0x11, "search first using FCB" },
     { 0x21, 0x12, "search next using FCB" },
     { 0x21, 0x13, "delete file using FCB" },
@@ -1943,6 +1975,7 @@ void handle_int_10( uint8_t c )
         {
             // character generator (ignore)
 
+            PerhapsFlipTo80x25();  // QuickPascal calls this, and it's a good indication of 80x25 mode
             return;
         }
         case 0x12:
@@ -1976,7 +2009,9 @@ void handle_int_10( uint8_t c )
         }
         case 0x1b:
         {
-            // unknown. qbasic generated .exe files call this?!?
+            // video functionality / state information
+
+            cpu.set_al( 0 ); // indicate that the call isn't supported and es:di wasn't populated with mcga+ info
 
             return;
         }
@@ -2046,6 +2081,7 @@ void handle_int_16( uint8_t c )
 #endif
         }
         case 1:
+        case 0x11: // 0x11 is really the same behavior as 1 except it can return a wider set of characters
         {
             // check keyboard status. checks if a character is available. return it if so, but not removed from buffer
             // set zero flag if no character is available. clear zero flag if a character is available
@@ -2087,6 +2123,31 @@ void handle_int_16( uint8_t c )
             tracer.Trace( "  keyboard flag status: %02x\n", pbiosdata[ 0x17 ] );
             return;
         }
+        case 5:
+        {
+            // store keystroke in keyboard buffer
+            // ch: scancode, cl ascii char
+            // returns: al: 0 success, 1 keyboard buffer full
+
+            if ( ! ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ) )
+            {
+                pbiosdata[ *ptail ] = cpu.cl();
+                (*ptail)++;
+                pbiosdata[ *ptail ] = cpu.ch();
+                (*ptail)++;
+                if ( *ptail >= 0x3e )
+                    *ptail = 0x1e;
+                cpu.set_al( 0 );
+                tracer.Trace( "  successfully stored keystroke in buffer\n" );
+            }
+            else
+            {
+                cpu.set_al( 1 );
+                tracer.Trace( "  keyboard buffer full; can't store character\n" );
+            }
+
+            return;
+        }
     }
 
     tracer.Trace( "unhandled int16 command %02x\n", c );
@@ -2103,6 +2164,8 @@ void HandleAppExit()
 
     fflush( 0 ); // the app may have written to files and not flushed or closed them
 
+    trace_all_open_files();
+
     do
     {
         size_t index = FindFileEntryIndexByProcess( g_currentPSP );
@@ -2115,6 +2178,7 @@ void HandleAppExit()
     } while ( true );
 
     g_appTerminationReturnCode = cpu.al();
+    tracer.Trace( "  app exit code: %d\n", g_appTerminationReturnCode );
     uint16_t pspToDelete = g_currentPSP;
     tracer.Trace( "  app exiting, segment %04x, psp: %p, environment segment %04x\n", g_currentPSP, psp, psp->segEnvironment );
     FreeMemory( psp->segEnvironment );
@@ -3293,10 +3357,12 @@ void handle_int_21( uint8_t c )
                 fe.handle = FindFirstFreeFileHandle();
                 fe.writeable = true;
                 fe.seg_process = g_currentPSP;
+                fe.refcount = 1;
                 g_fileEntries.push_back( fe );
                 cpu.set_ax( fe.handle );
                 cpu.set_carry( false );
                 tracer.Trace( "  successfully created file and using new handle %04x\n", cpu.get_ax() );
+                trace_all_open_files();
             }
             else
             {
@@ -3320,13 +3386,15 @@ void handle_int_21( uint8_t c )
             size_t index = FindFileEntryFromPath( path );
             if ( -1 != index )
             {
-                // file is already open. return the same handle, no refcounting
+                // file is already open. return the same handle and add to refcount.
 
                 cpu.set_ax( g_fileEntries[ index ].handle );
                 cpu.set_carry( false );
+                g_fileEntries[ index ].refcount++;
                 fseek( g_fileEntries[ index ].fp, 0, SEEK_SET ); // rewind it to the start
 
                 tracer.Trace( "  successfully found already open file, using existing handle %04x\n", cpu.get_ax() );
+                trace_all_open_files();
             }
             else
             {
@@ -3349,10 +3417,12 @@ void handle_int_21( uint8_t c )
                     fe.handle = FindFirstFreeFileHandle();
                     fe.writeable = !readOnly;
                     fe.seg_process = g_currentPSP;
+                    fe.refcount = 1;
                     g_fileEntries.push_back( fe );
                     cpu.set_ax( fe.handle );
                     cpu.set_carry( false );
                     tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.get_ax() );
+                    trace_all_open_files();
                 }
                 else
                 {
@@ -3368,6 +3438,7 @@ void handle_int_21( uint8_t c )
         {
             // close file handle in BX
 
+            trace_all_open_files();
             uint16_t handle = cpu.get_bx();
             if ( handle <= 4 )
             {
@@ -3376,12 +3447,22 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                FILE * fp = RemoveFileEntry( handle );
-                if ( fp )
+                size_t index = FindFileEntryIndex( handle );
+                if ( -1 != index )
                 {
-                    tracer.Trace( "  close file handle %04x\n", handle );
-                    fclose( fp );
-                    cpu.set_carry( false );
+                    assert( g_fileEntries[ index ].refcount > 0 );
+                    g_fileEntries[ index ].refcount--;
+                    tracer.Trace( "  file close, new refcount %u\n", g_fileEntries[ index ].refcount );
+                    if ( 0 == g_fileEntries[ index ].refcount )
+                    {
+                        FILE * fp = RemoveFileEntry( handle );
+                        if ( fp )
+                        {
+                            tracer.Trace( "  close file handle %04x\n", handle );
+                            fclose( fp );
+                            cpu.set_carry( false );
+                        }
+                    }
                 }
                 else
                 {
@@ -3642,6 +3723,7 @@ void handle_int_21( uint8_t c )
     
             char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  deleting file '%s'\n", pfile );
+            trace_all_open_files();
 
             // apps like the Microsoft C Compiler V3 make the assumption that you can delete open files
 
@@ -3861,10 +3943,12 @@ void handle_int_21( uint8_t c )
                     fe.handle = FindFirstFreeFileHandle();
                     fe.writeable = entry.writeable;
                     fe.seg_process = g_currentPSP;
+                    fe.refcount = 1;
                     g_fileEntries.push_back( fe );
                     cpu.set_ax( fe.handle );
                     cpu.set_carry( false );
                     tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", existing_handle, cpu.get_ax() );
+                    trace_all_open_files();
                 }
                 else
                 {
@@ -4020,7 +4104,7 @@ void handle_int_21( uint8_t c )
             // load or execute program
             // input: al: 0 = program, 1 = (undocumented) load and set cs:ip + ss:sp, 3 = overlay/load, 4 = msc spawn p_nowait
             //        ds:dx: ascii pathname
-            //        es:bx: parameter block
+            //        es:bx: parameter block (except for mode 3)
             //            0-1: segment to environment block
             //            2-3: offset of command tail
             //            4-5: segment of command tail
@@ -4044,9 +4128,9 @@ void handle_int_21( uint8_t c )
 
             uint8_t mode = cpu.al();
 
-            if ( 0 != mode && 1 != mode ) // only load an execute currently implemented
+            if ( 0 != mode && 1 != mode && 3 != mode ) // only a subset of modes are implemented
             {
-                tracer.Trace( "  load or execute with al mode %02x is unhandled\n", mode );
+                tracer.Trace( "  CreateProcess load or execute with al mode %02x is unhandled\n", mode );
                 cpu.set_carry( true );
                 cpu.set_ax( 1 );
                 return;
@@ -4062,7 +4146,7 @@ void handle_int_21( uint8_t c )
             uint16_t save_sp = cpu.get_sp();
 
             const char * pathToExecute = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  CreateProcess path to execute: '%s'\n", pathToExecute );
+            tracer.Trace( "  CreateProcess mode %u path to execute: '%s'\n", mode, pathToExecute );
 
             char acCommandPath[ MAX_PATH ];
             strcpy( acCommandPath, pathToExecute );
@@ -4072,6 +4156,18 @@ void handle_int_21( uint8_t c )
 
                 GetCurrentDirectoryA( sizeof( cwd ), cwd );
                 acCommandPath[ 0 ] = cwd[ 0 ];
+            }
+
+            if ( 3 == mode )
+            {
+                AppExecuteMode3 * pae = (AppExecuteMode3 *) GetMem( cpu.get_es(), cpu.get_bx() );
+                pae->Trace();
+
+                uint16_t result = LoadOverlay( acCommandPath, pae->segLoadAddress, pae->segmentRelocationFactor );
+                cpu.set_ax( result );
+                cpu.set_carry( false );
+                tracer.Trace( "  result of LoadOverlay: %#x\n", result );
+                return;
             }
 
             AppExecute * pae = (AppExecute *) GetMem( cpu.get_es(), cpu.get_bx() );
@@ -4619,30 +4715,138 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     psp->Trace();
 } //InitializePSP
 
-uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment, bool setupRegs,
-                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip )
+bool IsBinaryCOM( const char * app )
 {
-    uint16_t psp = 0;
-    bool isCOM = ends_with( acApp, ".com" );
+    bool isCOM = ends_with( app, ".com" );
 
     if ( isCOM )
     {
         // look for signature indicating it's actually a .exe file named .com. Later versions of DOS really do this.
 
-        tracer.Trace( "  checking if '%s' is actually a .exe\n", acApp );
-        FILE * fp = fopen( acApp, "rb" );
+        tracer.Trace( "  checking if '%s' is actually a .exe\n", app );
+        FILE * fp = fopen( app, "rb" );
         if ( !fp )
-            return 0;
+            return false;
 
         char ac[2];
         bool ok = ( 0 != fread( ac, _countof( ac ), 1, fp ) );
         fclose( fp );
 
         if ( !ok )
-            return 0;
+            return false;
 
         isCOM = ! ( 'M' == ac[0] && 'Z' == ac[1] );
     }
+
+    return isCOM;
+} //IsBinaryCOM
+
+uint16_t LoadOverlay( const char * app, uint16_t segCode, uint16_t segRelocationFactor )
+{
+    // Used by int21, 4b mode 3: Load Overlay and don't execute.
+    // returns AX return code: 1 on failure, 0 on success
+
+    bool isCOM = IsBinaryCOM( app );
+
+    if ( isCOM )
+    {
+        FILE * fp = fopen( app, "rb" );
+        if ( 0 == fp )
+        {
+            tracer.Trace( "open .com file, error %d\n", errno );
+            return 1;
+        }
+    
+        fseek( fp, 0, SEEK_END );
+        long file_size = ftell( fp );
+        fseek( fp, 0, SEEK_SET );
+        size_t blocks_read = fread( GetMem( segCode, 0 ), file_size, 1, fp );
+        fclose( fp );
+
+        if ( 1 != blocks_read )
+        {
+            tracer.Trace( "can't read .com file into RAM, error %d\n", errno );
+            return 1;
+        }
+    }
+    else // EXE
+    {
+        // Apps own all free memory by default. They can realloc this to free space for other allocations
+
+        FILE * fp = fopen( app, "rb" );
+        if ( 0 == fp )
+        {
+            tracer.Trace( "  can't open input executable '%s', error %d\n", app, errno );
+            return 1;
+        }
+    
+        fseek( fp, 0, SEEK_END );
+        long file_size = ftell( fp );
+        fseek( fp, 0, SEEK_SET );
+        vector<uint8_t> theexe( file_size );
+        size_t blocks_read = fread( theexe.data(), file_size, 1, fp );
+        fclose( fp );
+        if ( 1 != blocks_read )
+        {
+            tracer.Trace( "  can't read input exe file, error %d", errno );
+            return 1;
+        }
+
+        ExeHeader & head = * (ExeHeader *) theexe.data();
+        if ( 0x5a4d != head.signature )
+        {
+            tracer.Trace( "  exe isn't MZ" );
+            return 1;
+        }
+
+        tracer.Trace( "  loading app %s\n", app );
+        tracer.Trace( "  looks like an MZ exe... size %u, size from blocks %u, bytes in last block %u\n",
+                      file_size, ( (uint32_t) head.blocks_in_file ) * 512, head.bytes_in_last_block );
+        tracer.Trace( "  relocation entry count %u, header paragraphs %u (%u bytes)\n",
+                      head.num_relocs, head.header_paragraphs, head.header_paragraphs * 16 );
+        tracer.Trace( "  relative value of stack segment: %#x, initial sp: %#x, initial ip %#x, initial cs relative to segment: %#x\n",
+                      head.ss, head.sp, head.ip, head.cs );
+        tracer.Trace( "  relocation table offset %u, overlay number %u\n",
+                      head.reloc_table_offset, head.overlay_number );
+
+        if ( head.reloc_table_offset > 100 )
+        {
+            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %d", head.reloc_table_offset );
+            return 1;
+        }
+
+        uint32_t codeStart = 16 * (uint32_t) head.header_paragraphs;
+        uint32_t cbUsed = head.blocks_in_file * 512;
+        if ( 0 != head.bytes_in_last_block )
+            cbUsed -= ( 512 - head.bytes_in_last_block );
+        cbUsed -= codeStart; // don't include the header
+        tracer.Trace( "  bytes used by load module: %u, and code starts at %u\n", cbUsed, codeStart );
+
+        uint8_t * pcode = GetMem( segCode, 0 );
+        memcpy( pcode, theexe.data() + codeStart, cbUsed );
+        tracer.Trace( "  start of the code:\n" );
+        tracer.TraceBinaryData( pcode, 0x200, 4 );
+
+        // apply relocation entries
+
+        ExeRelocation * pRelocationEntries = (ExeRelocation *) ( theexe.data() + head.reloc_table_offset );
+        for ( uint16_t r = 0; r < head.num_relocs; r++ )
+        {
+            uint32_t offset = pRelocationEntries[ r ].offset + pRelocationEntries[ r ].segment * 16;
+            uint16_t * target = (uint16_t *) ( pcode + offset );
+            //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + segRelocationFactor );
+            *target += segRelocationFactor;
+        }
+    }
+
+    return 0;
+} //LoadOverlay
+
+uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment, bool setupRegs,
+                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip )
+{
+    uint16_t psp = 0;
+    bool isCOM = IsBinaryCOM( acApp );
 
     if ( isCOM )
     {
