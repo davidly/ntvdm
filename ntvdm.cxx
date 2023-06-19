@@ -361,8 +361,6 @@ static int compare_int_entries( const void * a, const void * b )
 
         if ( pa->c == pb->c )
             return 0;
-
-        return -1;
     }
 
     return -1;

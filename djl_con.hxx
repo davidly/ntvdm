@@ -113,8 +113,28 @@ class ConsoleConfiguration
                     newInfo.dwSize.Y = height;
                     newInfo.dwMaximumWindowSize.X = width;
                     newInfo.dwMaximumWindowSize.Y = height;
+
+                    newInfo.wAttributes = FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_GREEN;
+
+                    // legacy DOS RGB values
+                    newInfo.ColorTable[ 0 ] = 0;
+                    newInfo.ColorTable[ 1 ] = 0x800000;
+                    newInfo.ColorTable[ 2 ] = 0x008000;
+                    newInfo.ColorTable[ 3 ] = 0x808000;
+                    newInfo.ColorTable[ 4 ] = 0x000080;
+                    newInfo.ColorTable[ 5 ] = 0x800080;
+                    newInfo.ColorTable[ 6 ] = 0x008080;
+                    newInfo.ColorTable[ 7 ] = 0xc0c0c0;
+                    newInfo.ColorTable[ 8 ] = 0x808080;
+                    newInfo.ColorTable[ 9 ] = 0xff0000;
+                    newInfo.ColorTable[ 10 ] = 0x00ff00;
+                    newInfo.ColorTable[ 11 ] = 0xffff00;
+                    newInfo.ColorTable[ 12 ] = 0x0000ff;
+                    newInfo.ColorTable[ 13 ] = 0xff00ff;
+                    newInfo.ColorTable[ 14 ] = 0x00ffff;
+                    newInfo.ColorTable[ 15 ] = 0xffffff;
                     SetConsoleScreenBufferInfoEx( consoleOutputHandle, &newInfo );
-    
+
                     COORD newSize = { width, height };
                     SetConsoleScreenBufferSize( consoleOutputHandle, newSize );
                 }
