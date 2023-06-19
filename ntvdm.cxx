@@ -5482,10 +5482,11 @@ int main( int argc, char ** argv )
     if ( 0 == g_currentPSP )
         i8086_hard_exit( "unable to load executable\n", 0 );
 
-    if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) )
-    {
-        // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
+    // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
+    // turbo pascal v3 doesn't give a good indication that it wants 80x25.
 
+    if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) || ends_with( g_acApp, "turbo.com" ) )
+    {
         if ( !g_forceConsole )
             force80x25 = true;
     }
