@@ -16,7 +16,7 @@
     #include <direct.h>
     #include <intrin.h>
 
-    inline void sleep_ms( uint64_t ms ) { SleepEx( ms, FALSE ); }
+    inline void sleep_ms( uint64_t ms ) { SleepEx( (DWORD) ms, FALSE ); }
 
     inline bool file_exists( char const * pfile )
     {
