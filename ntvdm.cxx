@@ -20,6 +20,8 @@
 //    Microsoft C v1, v2, and v3
 //    Turbo C 2.0
 //    QuickC 1.0
+//    Quick Pascal 1.0
+//    Lotus 1-2-3 v1.0a
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
 // Windows to OS/2 to NT to Mac to Linux, and mostly skipped DOS programming. Hence this fills a gap
 // in my knowledge.
@@ -28,6 +30,8 @@
 //         https://en.wikipedia.org/wiki/Program_Segment_Prefix
 //         https://stanislavs.org/helppc/bios_data_area.html
 //         https://stanislavs.org/helppc/scan_codes.html
+//         http://www.ctyme.com/intr/int.htm
+//         https://grandidierite.github.io/dos-interrupts/
 //
 // Memory map:
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
@@ -184,6 +188,13 @@ struct DosAllocation
     uint16_t seg_process; 
 };
 
+struct IntCalled
+{
+    uint8_t i;      // interrupt #
+    uint16_t c;     // ah command (0xffff if n/a)
+    uint32_t calls; // # of times invoked
+};
+
 const uint8_t DefaultVideoAttribute = 7;                          // light grey text
 const uint32_t ScreenColumns = 80;                                // this is the only mode supported
 const uint32_t ScreenRows = 25;                                   // this is the only mode supported
@@ -229,6 +240,7 @@ static uint16_t g_int21_a_seg = 0;                 // "
 static uint16_t g_int21_8_seg = 0;                 // "
 static uint16_t g_int16_0_seg = 0;                 // "
 static char cwd[ MAX_PATH ] = {0};                 // used as a temporary in several locations
+static vector<IntCalled> g_InterruptsCalled;       // track interrupt usage
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -331,6 +343,30 @@ uint8_t get_current_drive()
     GetCurrentDirectoryA( sizeof( cwd ), cwd );
     return toupper( cwd[0] ) - 'A' ;
 } //get_current_drive
+
+static int compare_int_entries( const void * a, const void * b )
+{
+    // sort by int then ah
+
+    IntCalled const * pa = (IntCalled const *) a;
+    IntCalled const * pb = (IntCalled const *) b;
+
+    if ( pa->i > pb->i )
+        return 1;
+
+    if ( pa->i == pb->i )
+    {
+        if ( pa->c > pb->c )
+            return 1;
+
+        if ( pa->c == pb->c )
+            return 0;
+
+        return -1;
+    }
+
+    return -1;
+} //compare_int_entries
 
 static int compare_alloc_entries( const void * a, const void * b )
 {
@@ -1124,11 +1160,11 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x48, "allocate memory" },
     { 0x21, 0x49, "free memory" },
     { 0x21, 0x4a, "modify memory allocation" },
-    { 0x21, 0x4b, "load or execute execute program" },
+    { 0x21, 0x4b, "load or execute overlay or program" },
     { 0x21, 0x4c, "exit app" },
     { 0x21, 0x4d, "get exit code of subprogram" },
-    { 0x21, 0x4e, "find first asciz" },
-    { 0x21, 0x4f, "find next asciz" },
+    { 0x21, 0x4e, "find first asciiz" },
+    { 0x21, 0x4f, "find next asciiz" },
     { 0x21, 0x50, "set current process id (psp)" },
     { 0x21, 0x51, "get current process id (psp)" },
     { 0x21, 0x52, "get list of lists" },
@@ -1142,11 +1178,16 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x68, "fflush - commit file" },
 };
 
-const char * get_interrupt_string( uint8_t i, uint8_t c )
+const char * get_interrupt_string( uint8_t i, uint8_t c, bool & ah_used )
 {
+    ah_used = false;
+
     for ( int x = 0; x < _countof( interrupt_list ); x++ )
         if ( interrupt_list[ x ].i == i && interrupt_list[ x ].c == c )
+        {
+            ah_used = true;
             return interrupt_list[ x ].name;
+        }
 
     for ( int x = 0; x < _countof( interrupt_list_no_ah ); x++ )
         if ( interrupt_list_no_ah[ x ].i == i )
@@ -2216,6 +2257,7 @@ void HandleAppExit()
 void handle_int_21( uint8_t c )
 {
     uint8_t row, col;
+    bool ah_used = false;
 
     switch( c )
     {
@@ -2913,7 +2955,7 @@ void handle_int_21( uint8_t c )
         {
             // set interrupt vector
     
-            tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0 ), cpu.get_ds(), cpu.get_dx() );
+            tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_ds(), cpu.get_dx() );
             uint16_t * pvec = (uint16_t *) GetMem( 0, 4 * (uint16_t) cpu.al() );
             pvec[0] = cpu.get_dx();
             pvec[1] = cpu.get_ds();
@@ -3251,7 +3293,7 @@ void handle_int_21( uint8_t c )
             uint16_t * pvec = (uint16_t *) GetMem( 0, 4 * (uint16_t) cpu.al() );
             cpu.set_bx( pvec[ 0 ] );
             cpu.set_es( pvec[ 1 ] );
-            tracer.Trace( "  getting interrupt vector %02x %s which is %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0 ), cpu.get_es(), cpu.get_bx() );
+            tracer.Trace( "  getting interrupt vector %02x %s which is %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_es(), cpu.get_bx() );
             return;
         }
         case 0x36:
@@ -3288,7 +3330,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x39:
         {
-            // create directory ds:dx asciz directory name. cf set on error with code in ax
+            // create directory ds:dx asciiz directory name. cf set on error with code in ax
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  create directory '%s'\n", path );
 
@@ -3306,7 +3348,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x3a:
         {
-            // remove directory ds:dx asciz directory name. cf set on error with code in ax
+            // remove directory ds:dx asciiz directory name. cf set on error with code in ax
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  remove directory '%s'\n", path );
 
@@ -3324,7 +3366,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x3b:
         {
-            // change directory ds:dx asciz directory name. cf set on error with code in ax
+            // change directory ds:dx asciiz directory name. cf set on error with code in ax
             char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  change directory to '%s'\n", path );
 
@@ -3813,7 +3855,7 @@ void handle_int_21( uint8_t c )
             // get/put file attributes
             // al: 0 == get file attributes, 1 == put file attributes
             // cx: attributes (bits: 0 ro, 1 hidden, 2 system, 3 volume, 4 subdir, 5 archive)
-            // ds:dx: asciz filename
+            // ds:dx: asciiz filename
             // returns: ax = error code if CF set. CX = file attributes on get.
     
             char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
@@ -4250,7 +4292,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x4e:
         {
-            // find first asciz
+            // find first asciiz
             // in: cx = attribute used during search: 7..0 unused, archive, subdir, volume, system, hidden, read-only
             //     ds:dx pointer to null-terminated ascii string including wildcards
             // out: CF: true on error, false on success
@@ -4260,7 +4302,7 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             char * psearch_string = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  Find First Asciz for pattern '%s'\n", psearch_string );
+            tracer.Trace( "  Find First Asciiz for pattern '%s'\n", psearch_string );
 
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
@@ -4285,11 +4327,11 @@ void handle_int_21( uint8_t c )
         }
         case 0x4f:
         {
-            // find next asciz. ds:dx should be unchanged from find first, but they are not used below.
+            // find next asciiz. ds:dx should be unchanged from find first, but they are not used below.
     
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
-            tracer.Trace( "  Find Next Asciz\n" );
+            tracer.Trace( "  Find Next Asciiz\n" );
     
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
@@ -4523,14 +4565,42 @@ uint8_t toBCD( uint8_t x )
     return ( ( x / 10 ) << 4 ) | ( x % 10 );
 } //toBCD
 
+void TrackInterruptsCalled( uint8_t interrupt_num, uint8_t ah, bool ah_used )
+{
+    bool found = false;
+    size_t cEntries = g_InterruptsCalled.size();
+    for ( size_t i = 0; i < cEntries; i++ )
+    {
+        IntCalled & ic = g_InterruptsCalled[ i ];
+        if ( ( interrupt_num == ic.i ) && ( ( !ah_used ) || ( ah == ic.c ) ) )
+        {
+            ic.calls++;
+            found = true;
+            break;
+        }
+    }
+
+    if ( !found )
+    {
+        IntCalled ic;
+        ic.i = interrupt_num;
+        ic.c = ah_used ? ah : 0xffff;
+        ic.calls = 1;
+        g_InterruptsCalled.push_back( ic );
+    }
+} //TrackInterruptsCalled
+
 void i8086_invoke_interrupt( uint8_t interrupt_num )
 {
     unsigned char c = cpu.ah();
+    bool ah_used = false;
+    const char * pintstr = get_interrupt_string( interrupt_num, c, ah_used );
     tracer.Trace( "int %02x ah %02x al %02x bx %04x cx %04x dx %04x di %04x si %04x ds %04x cs %04x ss %04x es %04x bp %04x sp %04x %s\n",
                   interrupt_num, cpu.ah(), cpu.al(),
                   cpu.get_bx(), cpu.get_cx(), cpu.get_dx(), cpu.get_di(), cpu.get_si(),
-                  cpu.get_ds(), cpu.get_cs(), cpu.get_ss(), cpu.get_es(), cpu.get_bp(), cpu.get_sp(),
-                  get_interrupt_string( interrupt_num, c ) );
+                  cpu.get_ds(), cpu.get_cs(), cpu.get_ss(), cpu.get_es(), cpu.get_bp(), cpu.get_sp(), pintstr );
+
+    TrackInterruptsCalled( interrupt_num, c, ah_used );
 
     // restore interrupts since we won't exit with an iret because Carry in flags must be preserved as a return code
 
@@ -5529,6 +5599,23 @@ int main( int argc, char ** argv )
         #endif
 
         printf( "app exit code:    %20d\n", g_appTerminationReturnCode );
+    }
+
+    {
+        qsort( g_InterruptsCalled.data(), g_InterruptsCalled.size(), sizeof( IntCalled ), compare_int_entries );
+        bool ah_used = false;
+        size_t cEntries = g_InterruptsCalled.size();
+        tracer.Trace( "Interrupt usage by the app:\n" );
+        tracer.Trace( "  int     ah       calls    name\n" );
+        for ( size_t i = 0; i < cEntries; i++ )
+        {
+            IntCalled & ic = g_InterruptsCalled[ i ];
+            const char * pintstr = get_interrupt_string( ic.i, ic.c, ah_used );
+            if ( ah_used )
+                tracer.Trace( "   %02x     %02x  %10d    %s\n", ic.i, ic.c, ic.calls, pintstr );
+            else
+                tracer.Trace( "   %02x         %10d    %s\n", ic.i, ic.calls, pintstr );
+        }
     }
 
     tracer.Trace( "exit code of %s: %d\n", g_thisApp, g_appTerminationReturnCode );
