@@ -270,7 +270,7 @@ static void usage( char const * perr )
     printf( "            -C     always set window to 80x25; don't use teletype mode.\n" );
     printf( "            -d     don't clear the display on app exit when in 80x25 mode\n" );
     printf( "            -e     comma-separated list of environment variables. e.g. -e:include=..\\include,lib=..\\lib\n" );
-    printf( "            -h     workaround for Packed File Corrupt error: load apps above 64k\n" );
+    printf( "            -h     workaround for Packed File Corrupt error: load apps High, above 64k\n" );
     printf( "            -i     trace instructions as they are executed to %s.log (this is verbose!)\n", g_thisApp );
     printf( "            -p     show performance information\n" ); 
 #ifdef I8086_TRACK_CYCLES
@@ -279,6 +279,10 @@ static void usage( char const * perr )
     printf( "                   to roughly match a 4.77Mhz 8088, use -s:3900000\n" );
 #endif
     printf( "            -t     enable debug tracing to %s.log\n", g_thisApp );
+    printf( "            -z:X   applies X as a hex mask to SetProcessAffinityMask, e.g.:\n" );
+    printf( "                     /z:11    2 performance cores on an i7-1280P\n" );
+    printf( "                     /z:3000  2 efficiency cores on an i7-1280P\n" );
+    printf( "                     /z:11    2 random good cores on a 5950x\n" );
     printf( " [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command\n" );
     printf( "  examples:\n" );
     printf( "      %s -c -t app.com foo bar\n", g_thisApp );
@@ -5259,7 +5263,7 @@ uint32_t GetBiosDailyTimer()
 
     uint64_t since_epoch;
     GetSystemTimeAsFileTime( (FILETIME *) & since_epoch ); // this cast is terrible
-    return (uint32_t) ( since_epoch / 549451 );
+    return (uint32_t) ( since_epoch / 549251 );
 #else
     // less accurate and rolls more often, but maybe 15% faster
     return GetTickCount() / 55;
@@ -5295,6 +5299,7 @@ int main( int argc, char ** argv )
     bool force80x25 = false;
     bool clearDisplayOnExit = true;
     char * penvVars = 0;
+    DWORD_PTR dwProcessAffinityMask = 0; // by default let the OS decide
 
     for ( int i = 1; i < argc; i++ )
     {
@@ -5336,6 +5341,13 @@ int main( int argc, char ** argv )
             }
             else if ( 'h' == ca )
                 g_PackedFileCorruptWorkaround = true;
+            else if ( 'z' == ca )
+            {
+                if ( ':' == parg[2] )
+                    dwProcessAffinityMask = _strtoui64( parg + 3 , 0, 16 );
+                else
+                    usage( "colon required after z argument" );
+            }
             else
                 usage( "invalid argument specified" );
         }
@@ -5383,6 +5395,12 @@ int main( int argc, char ** argv )
                     usage( "can't find command file" );
             }
         }
+    }
+
+    if ( 0 != dwProcessAffinityMask )
+    {
+        BOOL ok = SetProcessAffinityMask( (HANDLE) -1, dwProcessAffinityMask );
+        tracer.Trace( "Result of SetProcessAffinityMask( %#x ) is %d\n", dwProcessAffinityMask, ok );
     }
 
     // global bios memory
