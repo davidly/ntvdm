@@ -80,17 +80,22 @@ Usage information:
 
     usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
       notes:
-                -c     don't auto-detect apps that want 80x25 then set window to that size;
-                       stay in teletype mode.
-                -C     always set window to 80x25; don't use teletype mode.
-                -d     don't clear the display when in 80x25 mode on app exit
-                -e     comma-separated list of environment variables. e.g. -e:include=..\include,lib=..\lib
-                -h     workaround for Packed File Corrupt error: load apps above 64k                
-                -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
-                -p     show performance information
-                -s:X   emulated speed in Hz. Default is to run as fast as possible.
-                       for 4.77Mhz, use -s:4770000
-                -t     enable debug tracing to ntvdm.log
+            -c     don't auto-detect apps that want 80x25 then set window to that size;
+                   stay in teletype/console mode.
+            -C     always set window to 80x25; don't use teletype mode.
+            -d     don't clear the display on app exit when in 80x25 mode
+            -e     comma-separated list of environment variables. e.g. -e:include=..\include,lib=..\lib
+            -h     workaround for Packed File Corrupt error: load apps High, above 64k
+            -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
+            -p     show performance information
+            -s:X   speed in Hz. Default is to run as fast as possible.
+                   for 4.77Mhz, use -s:4770000
+                   to roughly match a 4.77Mhz 8088, use -s:3900000
+            -t     enable debug tracing to ntvdm.log
+            -z:X   applies X as a hex mask to SetProcessAffinityMask, e.g.:
+                     /z:11    2 performance cores on an i7-1280P
+                     /z:3000  2 efficiency cores on an i7-1280P
+                     /z:11    2 random good cores on a 5950x
      [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command
       examples:
           ntvdm -c -t app.com foo bar
