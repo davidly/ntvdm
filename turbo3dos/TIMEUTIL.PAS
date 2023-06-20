@@ -43,7 +43,6 @@ begin
 end;
 
 procedure print_time( var t: timetype );
-
 begin
   print_time_part( t.h );
   write( ':' );
@@ -63,4 +62,4 @@ begin
   print_time( timeDiff );
   writeln;
 end;
-
+

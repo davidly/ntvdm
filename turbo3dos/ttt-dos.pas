@@ -53,32 +53,28 @@ begin
   begin
     t := board[1];
     if ( t = board[4] ) and ( t = board[7] ) then
-       p := t;
-
-    if pieceBlank = p then
+      p := t
+    else
     begin
       t := board[2];
       if ( t = board[5] ) and ( t = board[8] ) then
-        p := t;
-
-      if pieceBlank = p then
+        p := t
+      else
       begin
         t := board[3];
         if ( t = board[4] ) and ( t = board[5] ) then
-          p := t;
-
-        if pieceBlank = p then
+          p := t
+        else
         begin
           t := board[6];
           if ( t = board[7] ) and ( t = board[8] ) then
-            p := t;
-
-          if pieceBlank = p then
+            p := t
+          else
           begin
             t := board[4];
             if ( ( ( t = board[0] ) and ( t = board[8] ) ) or
                  ( ( t = board[2] ) and ( t = board[6] ) ) ) then
-              p := t;
+              p := t
           end;
         end;
       end;
@@ -164,14 +160,18 @@ begin
 end;
 
 var
-  i: integer;
+  i, loops, errpos: integer;
 begin
+  loops := Iterations;
+
+  if 0 <> Length( ParamStr( 1 ) ) then Val( ParamStr( 1 ), loops, errpos );
+
   for i := 0 to 8 do
     board[i] := pieceBlank;
 
   get_time( timeStart );
 
-  for i := 1 to Iterations do
+  for i := 1 to loops do
   begin
     evaluated := 0;  { once per loop to prevent overflow }
     runit( 0 );
@@ -182,7 +182,6 @@ begin
   get_time( timeEnd );
   print_elapsed_time( timeStart, timeEnd );
 
-  Write( 'moves evaluated: ' ); Write( evaluated ); WriteLn;
-  Write( 'iterations: ' ); Write( iterations ); WriteLn;
+  WriteLn( 'moves evaluated: ', evaluated );
+  WriteLn( 'iterations: ', loops );
 end.
-
