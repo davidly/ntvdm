@@ -387,6 +387,8 @@ struct i8086
         uint32_t flat = ( ( (uint32_t) seg ) << 4 ) + offset;
         //if ( flat < 0x600 )
         //    tracer.Trace( "referencing low-memory %#x\n", flat );
+        //if ( flat >= 0xb8000 && flat < 0xeffff )
+        //    tracer.Trace( "referencing cga-memory %#x\n", flat );
         return flat;
     }
     uint32_t flat_ip() { return flatten( cs, ip ); }
@@ -490,8 +492,10 @@ extern i8086 cpu;
 
 // callbacks when instructions are executed
 
-extern void i8086_invoke_interrupt( uint8_t interrupt ); // called by default for all interrupts
-extern void i8086_invoke_halt();                         // called when the HLT instruction is executed
-extern uint8_t i8086_invoke_in_al( uint16_t port );      // called for the instructions: in al, dx and in al, im8
-extern uint16_t i8086_invoke_in_ax( uint16_t port );     // called for the instructions: in ax, dx and in ax, im8
+extern void i8086_invoke_interrupt( uint8_t interrupt );          // called by default for all interrupts
+extern void i8086_invoke_halt();                                  // called when the HLT instruction is executed
+extern uint8_t i8086_invoke_in_al( uint16_t port );               // called for the instructions: in al, dx and in al, im8
+extern uint16_t i8086_invoke_in_ax( uint16_t port );              // called for the instructions: in ax, dx and in ax, im8
+extern void i8086_invoke_out_al( uint16_t port, uint8_t val );    // called for the instructions: out al, dx and out al, im8
+extern void i8086_invoke_out_ax( uint16_t port, uint16_t val );   // called for the instructions: out ax, dx and out ax, im8
 extern void i8086_hard_exit( const char * pcerror, uint8_t arg ); // called for fatal errors

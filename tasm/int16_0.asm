@@ -29,7 +29,8 @@ begin:
 
   wait_for_kbd:                                  ; wait for a keystroke to be available
     mov ah, 1                                    ; use int16 1 instead of a busy loop to enable the emulator to not pin the CPU
-    int 16h
+    injectcode db 69h, 16h                       ; intf 16. don't use int 16 because apps like qc 2.0 hook that
+    ; int 16
     jz wait_for_kbd
 
     add word ptr es: [kbd_head], 2               ; consume the character and scancode

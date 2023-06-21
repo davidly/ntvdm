@@ -709,7 +709,7 @@ _after_prefix:
                  ( 0xff == prefix_segment_override ) &&    // wait until there is no prefix to exit
                  ( 0xff == prefix_repeat_opcode ) )
             {
-                tracer.Trace( "exiting emulate() early\n" );
+                //tracer.Trace( "exiting emulate() early\n" );
                 g_State &= ~stateExitEmulateEarly;
                 break;
             }
@@ -1415,8 +1415,8 @@ _after_prefix:
             }
             case 0xe4: { set_al( i8086_invoke_in_al( _b1 ) ); _bc++; break; } // in al, immed8
             case 0xe5: { ax = i8086_invoke_in_ax( _b1 ); _bc++; break; } // in ax, immed8
-            case 0xe6: { _bc++; break; } // out al, immed8
-            case 0xe7: { _bc++; break; } // out ax, immed8
+            case 0xe6: { i8086_invoke_out_al( _b1, al() ); _bc++; break; } // out al, immed8
+            case 0xe7: { i8086_invoke_out_ax( _b1, ax ); _bc++; break; } // out ax, immed8
             case 0xe8: // call a8
             {
                 uint16_t return_address = ip + 3;

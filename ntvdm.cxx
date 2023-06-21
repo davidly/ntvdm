@@ -75,7 +75,7 @@ uint16_t round_up_to( uint16_t x, uint16_t multiple )
 
 // machine code for various interrupts. generated with mint.bat. 
 uint64_t int16_0_code[] = { 
-0x01b4c08e0040b806, 0x1a068326fa7416cd, 0x3e001a3e83260200, 0x1e001a06c726077c, 0x0000000000cb0700, 
+0x01b4c08e0040b806, 0x1a068326fa741669, 0x3e001a3e83260200, 0x1e001a06c726077c, 0x0000000000cb0700, 
 }; 
 uint64_t int21_8_code[] = { 
 0x00cb08b416cd00b4, 
@@ -91,7 +91,8 @@ uint64_t int21_3f_code[] = {
 0x0000ed06c72e1175, 0x000000ef06c72e00, 0x2e00e9a12e900ceb, 0xa12ec07500eb063b, 0x5b595a5f5ef800eb, 0x00000000000000cb, 0x0000000000000000, 0x0000000000000000, 
 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 
 0x0000000000000000, 
-};
+}; 
+// end of machine code 
 
 uint8_t * GetMem( uint16_t seg, uint16_t offset )
 {
@@ -241,6 +242,7 @@ static uint16_t g_int21_8_seg = 0;                 // "
 static uint16_t g_int16_0_seg = 0;                 // "
 static char cwd[ MAX_PATH ] = {0};                 // used as a temporary in several locations
 static vector<IntCalled> g_InterruptsCalled;       // track interrupt usage
+static uint64_t g_startSystemTime;                 // system time at app start
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -920,6 +922,26 @@ void ClearLastUpdateBuffer()
     memset( bufferLastUpdate, 0, sizeof( bufferLastUpdate ) );
 } //ClearLastUpdateBuffer
 
+void traceDisplayBuffers()
+{
+    for ( int i = 0; i < 2; i++ )
+    {
+        tracer.Trace( "cga memory buffer %d\n", i );
+        uint8_t * pbuf = GetMem( ScreenBufferSegment, 0x1000 * i );
+        for ( uint16_t y = 0; y < ScreenRows; y++ )
+        {
+            uint32_t yoffset = y * ScreenColumns * 2;
+            tracer.Trace( "    row %02u: '", y );
+            for ( uint16_t x = 0; x < ScreenColumns; x++ )
+            {
+                uint32_t offset = yoffset + x * 2;
+                tracer.Trace( "%c", printable( pbuf[ offset ] ) );
+            }
+            tracer.Trace( "'\n" );
+        }
+    }
+} //traceDisplayBuffers
+
 bool UpdateDisplay()
 {
     assert( g_use80x25 );
@@ -976,6 +998,8 @@ bool UpdateDisplay()
             }
         }
 
+        //traceDisplayBuffers();
+        //cpu.trace_instructions( true );
         UpdateWindowsCursorPosition();
         return true;
     }
@@ -1094,7 +1118,8 @@ const IntInfo interrupt_list[] =
     { 0x10, 0x1a, "get/set video display combination" },
     { 0x10, 0x1b, "video functionality/state information" },
     { 0x10, 0x1c, "save/restore video state" },
-    { 0x10, 0xef, "undocumented. qbasic apps call this" },
+    { 0x10, 0xef, "hercules -- get video adapter type and mode" },
+    { 0x10, 0xfa, "ega register interface library" },
     { 0x12, 0x00, "get memory size" },
     { 0x16, 0x00, "get character" },
     { 0x16, 0x01, "keyboard status" },
@@ -1514,6 +1539,8 @@ uint8_t i8086_invoke_in_al( uint16_t port )
 {
     static uint8_t port40 = 0;
 
+    //tracer.Trace( "invoke_in_al port %#x\n", port );
+
     if ( 0x3da == port )
     {
         // toggle this or apps will spin waiting for the I/O port to work.
@@ -1521,6 +1548,10 @@ uint8_t i8086_invoke_in_al( uint16_t port )
         static uint8_t cga_status = 9;
         cga_status ^= 9;
         return cga_status;
+    }
+    else if ( 0x3d5 == port )
+    {
+        return 0;
     }
     else if ( 0x20 == port ) // pic1 int request register
     {
@@ -1560,8 +1591,19 @@ uint8_t i8086_invoke_in_al( uint16_t port )
 
 uint16_t i8086_invoke_in_ax( uint16_t port )
 {
+    tracer.Trace( "invoke_in_ax port %#x\n", port );
     return 0;
 } //i8086_invoke_in_ax
+
+void i8086_invoke_out_al( uint16_t port, uint8_t val )
+{
+    tracer.Trace( "invoke_out_al port %#x, val %#x\n", port, val );
+} //i8086_invoke_out_al
+
+void i8086_invoke_out_ax( uint16_t port, uint16_t val )
+{
+    tracer.Trace( "invoke_out_ax port %#x, val %#x\n", port, val );
+} //i8086_invoke_out_ax
 
 void i8086_invoke_halt()
 {
@@ -1712,10 +1754,12 @@ void handle_int_10( uint8_t c )
 
             if ( 2 == mode || 3 == mode ) // only 80x25 is supported with buffer address 0xb8000
             {
-                g_videoMode = mode;
+                g_videoMode = 3; // it's all we support
                 uint8_t * pmode = GetMem( 0x40, 0x49 ); // update the mode in bios data
                 *pmode = mode;
             }
+
+            cpu.set_al( 0x30 );
 
             return;
         }
@@ -2027,8 +2071,14 @@ void handle_int_10( uint8_t c )
 
             if ( 0x10 == cpu.bl() )
             {
-                cpu.set_bx( 0 );
-                cpu.set_cx( 0 );
+                // Quick C 2.01 thinks it's an EGA card at 80x43 if 0 is returned. I can't explain it.
+                // This doesn't break Quick C 1.
+                // Not setting bx to 0 breaks apps like QBX 7.1
+
+                if ( ! ends_with( g_acApp, "qc.exe" ) ) 
+                    cpu.set_bx( 0 );
+
+                // setting this breaks quick pascal cpu.set_cx( 0x5 ); // primary cga 80x25
             }
 
             return;
@@ -2046,7 +2096,8 @@ void handle_int_10( uint8_t c )
             if ( 0 == cpu.al() )
             {
                 PerhapsFlipTo80x25();  // Turbo basic 1.1 calls this
-                cpu.set_bl( 2 ); // CGA with color
+                cpu.set_bl( 2 ); // CGA with color (active display)
+                cpu.set_bh( 2 ); // CGA with color (alternate display)
             }
             return;
         }
@@ -2069,7 +2120,17 @@ void handle_int_10( uint8_t c )
         }
         case 0xef:
         {
-            // unknown. qbasic generated .exe files call this?!?
+            // get video adapter type and mode
+
+            cpu.set_dl( 0xff ); // not a hercules-compatible card
+
+            return;
+        }
+        case 0xfa:
+        {
+            // ega register interface library -- interrogate driver
+
+            cpu.set_bx( 0 ); // RIL / mouse driver not present
 
             return;
         }
@@ -2145,6 +2206,8 @@ void handle_int_16( uint8_t c )
                 cpu.set_zero( true );
                 if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
                     SleepAndScheduleInterruptCheck();
+                else
+                    g_int16_1_loop = true;
             }
             else
             {
@@ -2153,7 +2216,6 @@ void handle_int_16( uint8_t c )
                 cpu.set_zero( false );
             }
 
-            g_int16_1_loop = true;
             tracer.Trace( "  returning flag %d, ax %04x\n", cpu.get_zero(), cpu.get_ax() );
             //tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
@@ -2191,9 +2253,9 @@ void handle_int_16( uint8_t c )
 
             return;
         }
+        default: 
+            tracer.Trace( "unhandled int16 command %02x\n", c );
     }
-
-    tracer.Trace( "unhandled int16 command %02x\n", c );
 } //handle_int_16
 
 void HandleAppExit()
@@ -5260,9 +5322,11 @@ uint32_t GetBiosDailyTimer()
     // this method is more accurate and rolls less often, but maybe 15% slower
     // get 100ns intervals since 1/1/1601.
     // 1 ms = 1000000 ns == 10000 100ns
+    // need to subtract starting system time or apps like Quick C 2.0 fail to run.
 
     uint64_t since_epoch;
-    GetSystemTimeAsFileTime( (FILETIME *) & since_epoch ); // this cast is terrible
+    GetSystemTimeAsFileTime( (FILETIME *) & since_epoch );
+    since_epoch -= g_startSystemTime;
     return (uint32_t) ( since_epoch / 549251 );
 #else
     // less accurate and rolls more often, but maybe 15% faster
@@ -5272,6 +5336,8 @@ uint32_t GetBiosDailyTimer()
 
 int main( int argc, char ** argv )
 {
+    GetSystemTimeAsFileTime( (FILETIME *) & g_startSystemTime );
+
     // put the app name without a path or .exe into g_thisApp
 
     char * pname = argv[ 0 ];
@@ -5568,7 +5634,7 @@ int main( int argc, char ** argv )
             {
                 // on my machine this is invoked about every 72 million total_cycles if no throttle sleeping happened (tens of thousands if so)
     
-                tracer.Trace( "sending an int 8, total_cycles %llu\n", total_cycles );
+                tracer.Trace( "sending an int 8, dt: %#x, total_cycles %llu\n", dt, total_cycles );
                 cpu.external_interrupt( 8 );
                 continue;
             }
