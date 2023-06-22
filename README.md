@@ -31,6 +31,7 @@ so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
     Microsoft Quick C 1.0. Tested & works. Compiling, editing, breakpoints, single-stepping, etc.
     Lotus 1-2-3 Release 1A
     Quick Pascal 1.0
+    QuickC v2.01 and v2.51 work provided incremental linking is disabled. ilink.exe reads memory control blocks, which don't exist.
     
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
 
