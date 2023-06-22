@@ -4242,14 +4242,10 @@ void handle_int_21( uint8_t c )
                 return;
             }
 
-            // look up the stack to see where to return once the child process is done
-
-            uint16_t * pstack = (uint16_t *) GetMem( cpu.get_ss(), cpu.get_sp() );
-            uint16_t save_ip = pstack[ 0 ];
-            uint16_t save_cs = pstack[ 1 ];
-
-            uint16_t save_ss = cpu.get_ss();
+            uint16_t save_ip = cpu.get_ip();
+            uint16_t save_cs = cpu.get_cs();
             uint16_t save_sp = cpu.get_sp();
+            uint16_t save_ss = cpu.get_ss();
 
             const char * pathToExecute = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  CreateProcess mode %u path to execute: '%s'\n", mode, pathToExecute );
@@ -5322,7 +5318,7 @@ uint32_t GetBiosDailyTimer()
     // this method is more accurate and rolls less often, but maybe 15% slower
     // get 100ns intervals since 1/1/1601.
     // 1 ms = 1000000 ns == 10000 100ns
-    // need to subtract starting system time or apps like Quick C 2.0 fail to run.
+    // Need to subtract starting system time or apps like Quick C 2.0 fail to run.
 
     uint64_t since_epoch;
     GetSystemTimeAsFileTime( (FILETIME *) & since_epoch );
