@@ -3667,7 +3667,7 @@ void handle_int_21( uint8_t c )
             {
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
-                tracer.Trace( "  read from file using handle %04x bytes at address %02x:%02x\n", len, cpu.get_ds(), cpu.get_dx() );
+                tracer.Trace( "  read from file using handle %04x bytes at address %02x:%02x. offset just beyond: %02x\n", len, cpu.get_ds(), cpu.get_dx(), cpu.get_dx() + len );
     
                 uint32_t cur = ftell( fp );
                 fseek( fp, 0, SEEK_END );
@@ -3677,13 +3677,13 @@ void handle_int_21( uint8_t c )
     
                 if ( cur < size )
                 {
-                    memset( p, 0, len );
                     uint32_t toRead = __min( len, size - cur );
+                    memset( p, 0, toRead );
                     size_t numRead = fread( p, toRead, 1, fp );
                     if ( numRead )
                     {
                         cpu.set_ax( toRead );
-                        tracer.Trace( "  successfully read %u bytes\n", toRead );
+                        tracer.Trace( "  successfully read %04x (%u) bytes\n", toRead, toRead );
                         tracer.TraceBinaryData( p, toRead, 4 );
                     }
                 }
@@ -5483,8 +5483,7 @@ int main( int argc, char ** argv )
     * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer start
     * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
     * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
-
-    * (uint8_t *) ( GetMem( 0xffff, 0xe ) ) = 0x69;       // machine ID. nice.
+    * (uint8_t *) ( GetMem( 0xffff, 0xe ) ) = 0xff;       // original pc
 
     // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
     // routines starting at InterruptRoutineSegment. The routines are almost all the same -- fake opcode, interrupt #, retf 2
