@@ -15,6 +15,7 @@ class ConsoleConfiguration
             DWORD oldConsoleMode;
             CONSOLE_CURSOR_INFO oldCursorInfo;
             int16_t setWidth;
+            UINT oldOutputCP;
         #else
             bool initialized;
             bool established;
@@ -100,7 +101,9 @@ class ConsoleConfiguration
                 {
                     oldWindowPlacement.length = sizeof oldWindowPlacement;
                     GetWindowPlacement( GetConsoleWindow(), &oldWindowPlacement );
-                
+
+                    oldOutputCP = GetConsoleOutputCP();
+                    SetConsoleOutputCP( 437 );
                 
                     oldScreenInfo.cbSize = sizeof oldScreenInfo;
                     GetConsoleScreenBufferInfoEx( consoleOutputHandle, &oldScreenInfo );
@@ -164,6 +167,7 @@ class ConsoleConfiguration
                     if ( clearScreen )
                         SendClsSequence();
 
+                    SetConsoleOutputCP( oldOutputCP );
                     SetConsoleCursorInfo( consoleOutputHandle, & oldCursorInfo );
 
                     if ( 0 != setWidth )

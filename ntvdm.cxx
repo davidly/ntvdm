@@ -35,7 +35,8 @@
 //
 // Memory map:
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
-//     0x00400 -- 0x005ff   bios data
+//     0x00400 -- 0x0057f   bios data
+//     0x00580 -- 0x005ff   "list of lists" is 0x5b0 and extends in both directions
 //     0x00600 -- 0x00bff   assembly code for various interrupt calls that can't be accomplished in C
 //     0x00c00 -- 0x00fff   interrupt routines (here, not in BIOS space because it fits)
 //     0x01000 -- 0xb7fff   apps are loaded here. On real hardware you can only go to 0x9ffff.
@@ -184,9 +185,9 @@ struct ExeRelocation
 
 struct DosAllocation
 {
-    uint16_t segment;
-    uint16_t para_length;
-    uint16_t seg_process; 
+    uint16_t segment;          // segment handed out to the app, 1 past the MCB
+    uint16_t para_length;      // length in paragraphs including MCB
+    uint16_t seg_process;      // the process PSP that allocated the memory or 0 prior to the app running
 };
 
 struct IntCalled
@@ -209,6 +210,8 @@ const uint16_t AppSegment = 0x1000 / 16;                          // base addres
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
 const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
+const uint16_t SegmentListOfLists = 0x50;
+const uint16_t OffsetListOfLists = 0xb0;
 
 CDJLTrace tracer;
 
@@ -317,18 +320,6 @@ bool isFilenameChar( char c )
     char l = tolower( c );
     return ( ( l >= 'a' && l <= 'z' ) || ( l >= '0' && l <= '9' ) || '_' == c || '^' == c || '$' == c || '~' == c || '!' == c || '*' == c );
 } //isFilenameChar
-
-static void trace_all_allocations()
-{
-    size_t cEntries = g_allocEntries.size();
-    tracer.Trace( "  all allocations, count %d:\n", cEntries );
-    for ( size_t i = 0; i < cEntries; i++ )
-    {
-        DosAllocation & da = g_allocEntries[i];
-        tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x\n", i,
-                      da.seg_process, da.segment, da.para_length );
-    }
-} //trace_all_allocations
 
 static void trace_all_open_files()
 {
@@ -520,6 +511,35 @@ uint16_t FindFirstFreeFileHandle()
     return freehandle;
 } //FindFirstFreeFileHandle
 
+#pragma pack( push, 1 )
+// Note: this app doesn't use the MCB for anything other than making it available for apps
+// that (unfortunately) assume it's there to do their thing (QuickC 2.x are prime examples).
+struct DOSMemoryControlBlock
+{
+    uint8_t header;        // 'M' for member or 'Z' for last entry in the chain
+    uint16_t psp;          // PSP of owning process or 0 if free or 8 if allocated by DOS
+    uint16_t paras;        // # of paragraphs for the allocation excluding the MCB
+    uint8_t reserved[3];
+    uint8_t appname[8];    // ascii name of app, null-terminated if < 8 chars long
+    // beyond here is the segment handed to the app for the allocation
+};
+#pragma pack(pop)
+
+static void trace_all_allocations()
+{
+    size_t cEntries = g_allocEntries.size();
+    tracer.Trace( "  all allocations, count %d:\n", cEntries );
+    for ( size_t i = 0; i < cEntries; i++ )
+    {
+        DosAllocation & da = g_allocEntries[i];
+        DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( da.segment - 1, 0 );
+
+        tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x, (MCB %04x - %04x)  header %c, psp %04x, paras %04x\n", i,
+                      da.seg_process, da.segment, da.para_length, da.segment - 1, da.segment - 1 + da.para_length - 1,
+                      pmcb->header, pmcb->psp, pmcb->paras );
+    }
+} //trace_all_allocations
+
 size_t FindAllocationEntry( uint16_t segment )
 {
     for ( size_t i = 0; i < g_allocEntries.size(); i++ )
@@ -547,6 +567,42 @@ size_t FindAllocationEntryByProcess( uint16_t segment )
     return -1;
 } //FindAllocationEntry
 
+void reset_mcb_tags()
+{
+    // 1) update header with M for non-last and Z for last entries
+    // 2) update paras to point to the next MCB, even if that means lying about the actually allocated size
+
+    for ( size_t i = 0; i < g_allocEntries.size(); i++ )
+    {
+        DosAllocation & da = g_allocEntries[i];
+        DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( da.segment - 1, 0 );
+        
+        if ( i == ( g_allocEntries.size() - 1 ) )
+            pmcb->header = 'Z';
+        else
+        {
+            pmcb->header = 'M';
+            pmcb->paras = g_allocEntries[ i + 1 ].segment - da.segment - 1; // -1 to exclude the MCB
+        }
+    }
+} //reset_mcb_tags
+
+void initialize_mcb( uint16_t segMCB, uint16_t paragraphs )
+{
+    DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( segMCB, 0 );
+
+    pmcb->header = 'M'; // mark as not the last in the chain
+    pmcb->psp = ( 0 == g_currentPSP ) ? 8 : g_currentPSP; // this is what's expected
+    pmcb->paras = paragraphs;
+    memset( pmcb->appname, 0, sizeof( pmcb->appname ) );
+} //initialize_mcb
+
+void update_mcb_length( uint16_t segMCB, uint16_t paragraphs )
+{
+    DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( segMCB, 0 );
+    pmcb->paras = paragraphs;
+} //update_mcb_length
+
 uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 {
     size_t cEntries = g_allocEntries.size();
@@ -556,7 +612,12 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     if ( 0 == request_paragraphs )
         request_paragraphs = 1;
 
-    tracer.Trace( "  request to allocate %04x paragraphs\n", request_paragraphs );
+    // save room for the MCB prior to the allocation if the call isn't just to see how much RAM is available
+
+    if ( 0xffff != request_paragraphs )
+        request_paragraphs++;
+
+    tracer.Trace( "  request to allocate %04x paragraphs (including MCB)\n", request_paragraphs );
     trace_all_allocations();
 
     uint16_t allocatedSeg = 0;
@@ -564,16 +625,19 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
     // sometimes allocate an extra spaceBetween paragraphs between blocks for overly-optimistic resize requests.
     // I'm looking at you link.exe v5.10 from 1990. QBX and cl.exe, run link.exe as a child process, so look for that too.
+    // debug.com from DOS v2 is even worse about this.
 
     uint16_t spaceBetween = ( ends_with( g_acApp, "LINK.EXE" ) || ends_with( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
     spaceBetween = ( ends_with( g_acApp, "DEBUG.COM" ) || ends_with( g_lastLoadedApp, "DEBUG.COM" ) ) ? 0x60 : spaceBetween;
+    if ( ends_with( g_acApp, "ILINK.EXE" ) )
+        spaceBetween = 0;
 
     if ( 0 == cEntries )
     {
-        // Microsoft (R) Overlay Linker  Version 3.61 with Quick C v 1.0 is a packed EXE that requires /e
+        // Microsoft (R) Overlay Linker  Version 3.61 with Quick C v 1.0 is a packed EXE that requires /h to be in high memory
 
         const uint16_t baseSeg = g_PackedFileCorruptWorkaround ? ( 65536 / 16 ) : AppSegment;
-        const uint16_t ParagraphsAvailable = SegmentHardware - baseSeg;  // hardware starts at 0xa000, apps load at baseSeg
+        const uint16_t ParagraphsAvailable = SegmentHardware - baseSeg - 1;  // hardware starts at 0xb800, apps load at baseSeg, -1 for MCB
 
         if ( request_paragraphs > ParagraphsAvailable )
         {
@@ -585,6 +649,12 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
         allocatedSeg = baseSeg; // default if nothing is allocated yet
         tracer.Trace( "    allocating first block at segment %04x\n", allocatedSeg );
+
+        // update the entry in the "list of lists" of the first memory control block
+
+        uint16_t *pFirstBlockInListOfLists = (uint16_t *) GetMem( SegmentListOfLists, OffsetListOfLists - 2 );
+        *pFirstBlockInListOfLists = allocatedSeg;
+        tracer.Trace( "wrote segment of first allocation %04x to list of lists - 2 at %04x:%04x\n", allocatedSeg, SegmentListOfLists, OffsetListOfLists - 2 );
     }
     else
     {
@@ -592,10 +662,10 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
         for ( size_t i = 0; i < cEntries; i++ )
         {
-            uint16_t after = g_allocEntries[ i ].segment + g_allocEntries[ i ].para_length;
+            uint16_t after = g_allocEntries[ i ].segment - 1 + g_allocEntries[ i ].para_length;
             if ( i < ( cEntries - 1 ) )
             {
-                uint16_t freePara = g_allocEntries[ i + 1 ].segment - after;
+                uint16_t freePara = g_allocEntries[ i + 1 ].segment - 1 - after;
                 if ( freePara > largestGap )
                     largestGap = freePara;
 
@@ -615,11 +685,42 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
                 break;
             }
         }
+
+        // if allocation failed, try again without spaceBetween
+
+        if ( 0 != spaceBetween && 0 == allocatedSeg )
+        {
+            for ( size_t i = 0; i < cEntries; i++ )
+            {
+                uint16_t after = g_allocEntries[ i ].segment - 1 + g_allocEntries[ i ].para_length;
+                if ( i < ( cEntries - 1 ) )
+                {
+                    uint16_t freePara = g_allocEntries[ i + 1 ].segment - 1 - after;
+                    if ( freePara > largestGap )
+                        largestGap = freePara;
+    
+                    if ( freePara >= request_paragraphs )
+                    {
+                        tracer.Trace( "  using gap from previously freed memory: %02x\n", after );
+                        allocatedSeg = after;
+                        insertLocation = i + 1;
+                        break;
+                    }
+                }
+                else if ( ( after + request_paragraphs ) <= SegmentHardware )
+                {
+                    tracer.Trace( "  using gap after allocated memory: %02x\n", after );
+                    allocatedSeg = after;
+                    insertLocation = i + 1;
+                    break;
+                }
+            }
+        }
     
         if ( 0 == allocatedSeg )
         {
             DosAllocation & last = g_allocEntries[ cEntries - 1 ];
-            uint16_t firstFreeSeg = last.segment + last.para_length;
+            uint16_t firstFreeSeg = last.segment - 1 + last.para_length;
             assert( firstFreeSeg <= SegmentHardware );
             largest_block = SegmentHardware - firstFreeSeg;
             if ( largest_block > spaceBetween )
@@ -627,11 +728,15 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
             if ( largestGap > largest_block )
                 largest_block = largestGap;
+
+            largest_block--; // don't include the MCB
     
             tracer.Trace( "  ERROR: unable to allocate memory. returning that %02x paragraphs are free\n", largest_block );
             return 0;
         }
     }
+
+    allocatedSeg++; // move past the MCB
 
     DosAllocation da;
     da.segment = allocatedSeg;
@@ -639,6 +744,8 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     da.seg_process = g_currentPSP;
     g_allocEntries.insert( insertLocation + g_allocEntries.begin(), da );
     largest_block = SegmentHardware - allocatedSeg;
+    initialize_mcb( allocatedSeg - 1, request_paragraphs - 1 );
+    reset_mcb_tags();
     trace_all_allocations();
     return allocatedSeg;
 } //AllocateMemory
@@ -657,6 +764,8 @@ bool FreeMemory( uint16_t segment )
     }
 
     g_allocEntries.erase( g_allocEntries.begin() + entry );
+    reset_mcb_tags();
+
     return true;
 } //FreeMemory
 
@@ -942,6 +1051,12 @@ void traceDisplayBuffers()
     }
 } //traceDisplayBuffers
 
+static WCHAR awcLowDOSChars[ 32 ] =
+{ 
+    0,      0x263a, 0x2638, 0x2665, 0x2666, 0x2663, 0x2600, 0x2022, 0x25d8, 0x25cb, 0x25d9, 0x2642, 0x2640, 0x266a, 0x266b, 0x263c,
+    0x25ba, 0x25c4, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x2190, 0x221f, 0x2194, 0x2582, 0x25bc,
+};
+
 bool UpdateDisplay()
 {
     assert( g_use80x25 );
@@ -967,15 +1082,24 @@ bool UpdateDisplay()
             if ( memcmp( bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 ) )
             {
                 memcpy( bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
-                char aChars[ScreenColumns]; // 8-bit not 16 bit or the wrong codepage is used
                 WORD aAttribs[ScreenColumns];
-                for ( uint16_t x = 0; x < _countof( aChars ); x++ )
+                char ac[ScreenColumns];
+                for ( size_t x = 0; x < ScreenColumns; x++ )
                 {
                     uint32_t offset = yoffset + x * 2;
-                    aChars[ x ] = pbuf[ offset ];
+                    ac[ x ] = pbuf[ offset ];
                     aAttribs[ x ] = pbuf[ 1 + offset ]; 
                 }
-    
+
+                WCHAR aChars[ScreenColumns];
+                MultiByteToWideChar( 437, 0, ac, ScreenColumns, aChars, ScreenColumns );
+
+                // CP 437 doesn't handle characters 0 to 31
+
+                for ( size_t x = 0; x < ScreenColumns; x++ )
+                    if (  aChars[ x ] < 32 )
+                        aChars[ x ] = awcLowDOSChars[ aChars[ x ] ];
+
                 #if false
                     //tracer.Trace( "    row %02u: '%.80s'\n", y, aChars );
                     tracer.Trace( "    row %02u: '", y );
@@ -987,7 +1111,7 @@ bool UpdateDisplay()
                 COORD pos = { 0, (SHORT) y };
                 SetConsoleCursorPosition( g_hConsoleOutput, pos );
     
-                BOOL ok = WriteConsoleA( g_hConsoleOutput, aChars, ScreenColumns, 0, 0 );
+                BOOL ok = WriteConsoleW( g_hConsoleOutput, aChars, ScreenColumns, 0, 0 );
                 if ( !ok )
                     tracer.Trace( "writeconsolea failed with error %d\n", GetLastError() );
     
@@ -2313,7 +2437,7 @@ void HandleAppExit()
         if ( -1 == index )
             break;
 
-        tracer.Trace( "  freeing RAM an app leaked, segment %04x para length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
+        tracer.Trace( "  freeing RAM an app leaked, segment %04x (MCB+1) para length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
         FreeMemory( g_allocEntries[ index ].segment );
     } while( true );
 } //HandleAppExit
@@ -4186,6 +4310,9 @@ void handle_int_21( uint8_t c )
             else
                 maxParas = g_allocEntries[ entry + 1 ].segment - g_allocEntries[ entry ].segment;
 
+            if ( 0 != maxParas )
+                maxParas--;        // reserve space for the MCB
+
             tracer.Trace( "  maximum reallocation paragraphs: %04x, requested size %04x\n", maxParas, cpu.get_bx() );
 
             if ( cpu.get_bx() > maxParas )
@@ -4198,8 +4325,10 @@ void handle_int_21( uint8_t c )
             else
             {
                 cpu.set_carry( false );
-                tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length, cpu.get_bx() );
-                g_allocEntries[ entry ].para_length = cpu.get_bx();
+                tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length - 1, cpu.get_bx() );
+                g_allocEntries[ entry ].para_length = 1 + cpu.get_bx(); // para_length includes the MCB
+                update_mcb_length( cpu.get_es() - 1, cpu.get_bx() );
+                reset_mcb_tags();
                 trace_all_allocations();
             }
 
@@ -4451,8 +4580,8 @@ void handle_int_21( uint8_t c )
             // return: es:bx points to DOS list of lists
             // This arcane set of values+pointers are not emulated. return pointers to 0
 
-            cpu.set_es( 0x50 );
-            cpu.set_bx( 0x10 );
+            cpu.set_es( SegmentListOfLists );
+            cpu.set_bx( OffsetListOfLists );
             return;
         }
         case 0x55:
