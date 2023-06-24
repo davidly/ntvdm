@@ -19,9 +19,10 @@
 //    Microsoft 8086 Object Linker Version 3.01 (C) Copyright Microsoft Corp 1983, 1984, 1985
 //    Microsoft C v1, v2, and v3
 //    Turbo C 2.0
-//    QuickC 1.0
+//    QuickC 1.0 and 2.x. ilink.exe in 2.x doesn't work yet because it relies on undocumented MCB behavior.
 //    Quick Pascal 1.0
 //    Lotus 1-2-3 v1.0a
+//    Word for DOS 6.0. Set view/preferences/cursor control/speed = 0 or there are phantom key repeats
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
 // Windows to OS/2 to NT to Mac to Linux, and mostly skipped DOS programming. Hence this fills a gap
 // in my knowledge.
@@ -1051,6 +1052,25 @@ void traceDisplayBuffers()
     }
 } //traceDisplayBuffers
 
+void traceDisplayBufferAsHex()
+{
+    tracer.Trace( "cga memory buffer %d\n" );
+    uint8_t * pbuf = GetVideoMem();
+    for ( uint16_t y = 0; y < ScreenRows; y++ )
+    {
+        uint32_t yoffset = y * ScreenColumns * 2;
+        tracer.Trace( "    row %02u: '", y );
+        for ( uint16_t x = 0; x < ScreenColumns; x++ )
+        {
+            uint32_t offset = yoffset + x * 2;
+            tracer.Trace( "%c=%02x", printable( pbuf[ offset ] ), pbuf[ offset ] );
+        }
+        tracer.Trace( "'\n" );
+    }
+} //traceDisplayBufferAsHex
+
+// Unicode equivalents of DOS characters < 32. Codepage 437 doesn't automatically make these work in v2 of console.
+
 static WCHAR awcLowDOSChars[ 32 ] =
 { 
     0,      0x263a, 0x2638, 0x2665, 0x2666, 0x2663, 0x2600, 0x2022, 0x25d8, 0x25cb, 0x25d9, 0x2642, 0x2640, 0x266a, 0x266b, 0x263c,
@@ -1075,7 +1095,7 @@ bool UpdateDisplay()
                           csbi.srWindow.Left, csbi.srWindow.Top, csbi.srWindow.Right, csbi.srWindow.Bottom );
         #endif
 
-        for ( uint16_t y = 0; y < ScreenRows; y++ )
+        for ( uint32_t y = 0; y < ScreenRows; y++ )
         {
             uint32_t yoffset = y * ScreenColumns * 2;
 
@@ -1091,27 +1111,29 @@ bool UpdateDisplay()
                     aAttribs[ x ] = pbuf[ 1 + offset ]; 
                 }
 
-                WCHAR aChars[ScreenColumns];
-                MultiByteToWideChar( 437, 0, ac, ScreenColumns, aChars, ScreenColumns );
+                WCHAR awcLine[ScreenColumns];
+                MultiByteToWideChar( 437, 0, ac, ScreenColumns, awcLine, ScreenColumns );
 
-                // CP 437 doesn't handle characters 0 to 31
+                // CP 437 doesn't handle characters 0 to 31 or 0x7f correctly. 
 
                 for ( size_t x = 0; x < ScreenColumns; x++ )
-                    if (  aChars[ x ] < 32 )
-                        aChars[ x ] = awcLowDOSChars[ aChars[ x ] ];
+                    if (  awcLine[ x ] < 32 )
+                        awcLine[ x ] = awcLowDOSChars[ awcLine[ x ] ];
+                    else if ( awcLine[ x ] == 0x7f )
+                        awcLine[ x ] = 0x2302;
 
                 #if false
-                    //tracer.Trace( "    row %02u: '%.80s'\n", y, aChars );
+                    //tracer.Trace( "    row %02u: '%.80s'\n", y, ac );
                     tracer.Trace( "    row %02u: '", y );
-                    for ( uint32_t c = 0; c < 80; c++ )
-                        tracer.Trace( "%c", printable( aChars[ c ] ) );
+                    for ( size_t c = 0; c < 80; c++ )
+                        tracer.Trace( "%c", printable( ac[ c ] ) );
                     tracer.Trace( "'\n" );
                 #endif
     
                 COORD pos = { 0, (SHORT) y };
                 SetConsoleCursorPosition( g_hConsoleOutput, pos );
     
-                BOOL ok = WriteConsoleW( g_hConsoleOutput, aChars, ScreenColumns, 0, 0 );
+                BOOL ok = WriteConsoleW( g_hConsoleOutput, awcLine, ScreenColumns, 0, 0 );
                 if ( !ok )
                     tracer.Trace( "writeconsolea failed with error %d\n", GetLastError() );
     
@@ -1122,6 +1144,7 @@ bool UpdateDisplay()
             }
         }
 
+        //traceDisplayBufferAsHex();
         //traceDisplayBuffers();
         //cpu.trace_instructions( true );
         UpdateWindowsCursorPosition();
@@ -1147,7 +1170,7 @@ void ClearDisplay()
     assert( g_use80x25 );
     uint8_t * pbuf = GetVideoMem();
 
-    for ( uint16_t y = 0; y < ScreenRows; y++ )
+    for ( size_t y = 0; y < ScreenRows; y++ )
         memcpy( pbuf + ( y * 2 * ScreenColumns ), blankLine, sizeof( blankLine ) );
 } //ClearDisplay
 
@@ -1250,6 +1273,7 @@ const IntInfo interrupt_list[] =
     { 0x16, 0x02, "keyboard - get shift status" },
     { 0x16, 0x05, "keyboard - store keystroke in keyboard buffer" },
     { 0x16, 0x11, "get enhanced keystroke" },
+    { 0x17, 0x02, "check printer status" },
     { 0x1a, 0x00, "read real time clock" },
     { 0x1a, 0x02, "get real-time clock time" },
     { 0x21, 0x00, "exit app" },
@@ -1662,7 +1686,6 @@ void i8086_hard_exit( const char * pcerror, uint8_t arg )
 uint8_t i8086_invoke_in_al( uint16_t port )
 {
     static uint8_t port40 = 0;
-
     //tracer.Trace( "invoke_in_al port %#x\n", port );
 
     if ( 0x3da == port )
@@ -1709,7 +1732,7 @@ uint8_t i8086_invoke_in_al( uint16_t port )
     {
     }
 
-    //tracer.Trace( "invoke_in_al, port %02x returning 0\n", port );
+    tracer.Trace( "invoke_in_al, port %02x returning 0\n", port );
     return 0;
 } //i8086_invoke_in_al
 
@@ -1770,14 +1793,14 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
             strcpy( pff->file_name, "TOOLONG.ZZZ" );
     }
 
-    pff->file_size = ( fd.nFileSizeLow );
+    pff->file_size = fd.nFileSizeLow;
 
     // these bits are the same
     pff->file_attributes = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
                                                      FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
 
     FileTimeToDos( fd.ftLastWriteTime, pff->file_time, pff->file_date );
-    tracer.Trace( "  search found '%s', size %u\n", pff->file_name, pff->file_size );
+    tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
 } //ProcessFoundFile
 
 void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
@@ -2276,6 +2299,7 @@ void handle_int_16( uint8_t c )
     switch( c )
     {
         case 0:
+        case 0x10:
         {
             // get character. ascii into al, scancode into ah
 
@@ -4060,6 +4084,8 @@ void handle_int_21( uint8_t c )
                                            FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) ) );
                     tracer.Trace( "  read get file attributes: cx %04x\n", cpu.get_cx() );
                 }
+                else
+                    cpu.set_ax( GetLastError() ); // most errors map OK (file not found, path not found, etc.)
             }
             else
             {
@@ -4141,6 +4167,20 @@ void handle_int_21( uint8_t c )
                 {
                     // set device information (ignore)
     
+                    break;
+                }
+                case 8:
+                {
+                    // check if block device is removable.
+                    // input: bl = drive number. 0 == default, 1 == a, ...
+                    // cf clear on success or set on failure
+                    // ax = 0 removable, 1 fixed
+                    // ax = error on error
+
+                    tracer.Trace( "  check if drive (1=a...) %d is removable\n", cpu.bl() );
+
+                    cpu.set_carry( false );
+                    cpu.set_ax( 1 );
                     break;
                 }
                 default:
@@ -4839,6 +4879,12 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         handle_int_16( c );
         return;
     }
+    else if ( 0x17 == interrupt_num )
+    {
+        if ( 2 == c )           // get printer status
+            cpu.set_ah( 0 );
+        return;
+    }
     else if ( 0x1a == interrupt_num )
     {
         if ( 0 == c )
@@ -4937,7 +4983,8 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
         if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
-            UpdateDisplay();
+            if ( g_use80x25 )
+                UpdateDisplay();
             SleepAndScheduleInterruptCheck();
         }
 
@@ -5692,8 +5739,9 @@ int main( int argc, char ** argv )
 
     // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
     // turbo pascal v3 doesn't give a good indication that it wants 80x25.
+    // word for DOS 6.0 is the same -- hard code it
 
-    if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) || ends_with( g_acApp, "turbo.com" ) )
+    if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) || ends_with( g_acApp, "turbo.com" ) || ends_with( g_acApp, "word.exe" ) )
     {
         if ( !g_forceConsole )
             force80x25 = true;
