@@ -253,13 +253,15 @@ uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_dis
 #pragma pack( push, 1 )
 struct DosFindFile
 {
-    uint8_t undocumented[ 0x15 ];  // no attempt to mock this because I haven't found apps that use it
+    uint8_t undocumentedA[ 0xc ];  // no attempt to mock this because I haven't found apps that use it
+    uint8_t search_attributes;     // at offset 0x0c
+    uint8_t undocumentedB[ 0x8  ]; // no attempt to mock this because I haven't found apps that use it
 
-    uint8_t file_attributes;
-    uint16_t file_time;
-    uint16_t file_date;
-    uint32_t file_size;
-    char file_name[ DOS_FILENAME_SIZE ];          // 8.3, blanks stripped, null-terminated
+    uint8_t file_attributes;       // at offset 0x15
+    uint16_t file_time;            //           0x16
+    uint16_t file_date;            //           0x18
+    uint32_t file_size;            //           0x1a
+    char file_name[ DOS_FILENAME_SIZE ];     // 0x1e      8.3, blanks stripped, null-terminated
 };
 #pragma pack(pop)
 
@@ -339,7 +341,7 @@ uint8_t get_current_drive()
     // 0 == A...
 
     GetCurrentDirectoryA( sizeof( cwd ), cwd );
-    return toupper( cwd[0] ) - 'A' ;
+    return toupper( cwd[0] ) - 'A';
 } //get_current_drive
 
 static int compare_int_entries( const void * a, const void * b )
@@ -1063,7 +1065,7 @@ void traceDisplayBufferAsHex()
         for ( uint16_t x = 0; x < ScreenColumns; x++ )
         {
             uint32_t offset = yoffset + x * 2;
-            tracer.Trace( "%c=%02x", printable( pbuf[ offset ] ), pbuf[ offset ] );
+            tracer.Trace( "%c=%02x ", printable( pbuf[ offset ] ), pbuf[ offset ] );
         }
         tracer.Trace( "'\n" );
     }
@@ -1108,6 +1110,8 @@ bool UpdateDisplay()
                 {
                     uint32_t offset = yoffset + x * 2;
                     ac[ x ] = pbuf[ offset ];
+                    if ( 0 == ac[ x ] )
+                        ac[ x ] = ' '; // brief alternately writes 0 then ':' for the clock
                     aAttribs[ x ] = pbuf[ 1 + offset ]; 
                 }
 
@@ -1117,10 +1121,12 @@ bool UpdateDisplay()
                 // CP 437 doesn't handle characters 0 to 31 or 0x7f correctly. 
 
                 for ( size_t x = 0; x < ScreenColumns; x++ )
+                {
                     if (  awcLine[ x ] < 32 )
                         awcLine[ x ] = awcLowDOSChars[ awcLine[ x ] ];
-                    else if ( awcLine[ x ] == 0x7f )
+                    else if ( 0x7f == awcLine[ x ] )
                         awcLine[ x ] = 0x2302;
+                }
 
                 #if false
                     //tracer.Trace( "    row %02u: '%.80s'\n", y, ac );
@@ -1273,6 +1279,7 @@ const IntInfo interrupt_list[] =
     { 0x16, 0x02, "keyboard - get shift status" },
     { 0x16, 0x05, "keyboard - store keystroke in keyboard buffer" },
     { 0x16, 0x11, "get enhanced keystroke" },
+    { 0x16, 0x55, "microsoft TSR internal (al ff/00 word, fe qbasic)" },
     { 0x17, 0x02, "check printer status" },
     { 0x1a, 0x00, "read real time clock" },
     { 0x1a, 0x02, "get real-time clock time" },
@@ -1777,8 +1784,20 @@ void FileTimeToDos( FILETIME & ftSystem, uint16_t & dos_time, uint16_t & dos_dat
     dos_date |= ( ( st.wYear - 1980 ) << 9 );
 } //FileTimeToDos
 
-void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
+bool ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
 {
+    // these bits are the same on Windows and DOS
+
+    uint8_t matching_attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM ) );
+
+    // return normal files always and any of the 3 special classes if their bit is set in search_attributes
+
+    if ( ( 0 != matching_attr ) && ( 0 == ( matching_attr & pff->search_attributes ) ) )
+    {
+        tracer.Trace( "  file '%s' attr %#x doesn't match the attribute filter %#x\n", fd.cFileName, fd.dwFileAttributes, pff->search_attributes );
+        return false;
+    }
+
     tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
     if ( 0 != fd.cAlternateFileName[ 0 ] )
         strcpy( pff->file_name, fd.cAlternateFileName );
@@ -1790,17 +1809,17 @@ void ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
 
         DWORD result = GetShortPathNameA( fd.cFileName, pff->file_name, _countof( pff->file_name ) );
         if ( result > _countof( pff->file_name ) )
-            strcpy( pff->file_name, "TOOLONG.ZZZ" );
+            return false; // files with long names are just invisible to DOS apps
     }
 
+    strupr( pff->file_name );
     pff->file_size = fd.nFileSizeLow;
-
-    // these bits are the same
-    pff->file_attributes = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
-                                                     FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
-
+    uint8_t attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
+                                             FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
+    pff->file_attributes = attr;
     FileTimeToDos( fd.ftLastWriteTime, pff->file_time, pff->file_date );
     tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
+    return true;
 } //ProcessFoundFile
 
 void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
@@ -1819,6 +1838,7 @@ void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
         if ( result > _countof( acResult ) )
             strcpy( acResult, "TOOLONG.ZZZ" );
     }
+    strupr( acResult );
 
     // now write the file into an FCB at the transfer address
 
@@ -2401,6 +2421,11 @@ void handle_int_16( uint8_t c )
 
             return;
         }
+        case 0x55:
+        {
+            // microsoft internal TSRs al = fe for qbasic and al = 0/ff for word
+            return;
+        }
         default: 
             tracer.Trace( "unhandled int16 command %02x\n", c );
     }
@@ -2465,6 +2490,36 @@ void HandleAppExit()
         FreeMemory( g_allocEntries[ index ].segment );
     } while( true );
 } //HandleAppExit
+
+uint8_t HighestDrivePresent()
+{
+    DWORD dwDriveMask = GetLogicalDrives();
+
+    // a = 0 ... z = 25
+
+    for ( DWORD b = 0; b < 32; b++ )
+    {
+        DWORD bit = 0x80000000 >> b;
+        if ( bit & dwDriveMask )
+            return ( 32 - b - 1 );
+    }
+
+    return 0;
+} //HighestDrivePresent
+
+void star_to_question( char * pstr, int len )
+{
+    for ( int i = 0; i < len; i++ )
+    {
+        if ( '*' == pstr[ i ] )
+        {
+            for ( int j = i; j < len; j++ )
+                pstr[ j ] = '?';
+
+            break;
+        }
+    }
+} //star_to_question
 
 void handle_int_21( uint8_t c )
 {
@@ -2726,8 +2781,15 @@ void handle_int_21( uint8_t c )
             // select disk. dl = new default drive 0=a, 1=b...
             // on return: al = # of logical drives
 
-            tracer.Trace( "new default drive: '%c'\n", 'A' + cpu.dl() );
-            cpu.set_al( 1 );
+            cpu.set_al( HighestDrivePresent() );
+            tracer.Trace( "  new default drive: '%c'. highest drive present: %d\n", 'A' + cpu.dl(), cpu.al() );
+
+            char acDir[ 3 ];
+            acDir[0] = cpu.dl() + 'A';
+            acDir[1] = ':';
+            acDir[2] = 0;
+            BOOL ok = SetCurrentDirectoryA( acDir );
+            tracer.Trace( "  result of SetCurrentDirectory to '%s': %d\n", acDir, ok );
 
             return;
         }
@@ -3323,8 +3385,11 @@ void handle_int_21( uint8_t c )
             //           0xff: drive specifier invalid
             //      ds:si:  first byte after parsed string
             //      es:di:  buffer filled with unopened fcb
-    
+
             char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_si() );
+            if ( 0 != pfile[ 0 ] && ':' == pfile[ 1 ] )
+                pfile += 2; // get past optional X:
+
             char * pfile_original = pfile;
             tracer.Trace( "  parse filename '%s'\n", pfile );
             tracer.TraceBinaryData( (uint8_t *) pfile, 64, 4 );
@@ -3346,38 +3411,40 @@ void handle_int_21( uint8_t c )
 
             if ( 0 != ( input_al & 1 ) )
             {
-                // scan blanks and tabs
+                // skip leading separators
 
-                while ( 9 == *pfile )
-                    pfile++;
-
-                while ( strchr( ":<|>+=;, ", *pfile ) )
+                while ( strchr( ":<|>+=;, \t", *pfile ) )
                     pfile++;
             }
 
             tracer.Trace( "  pfile after scan: %p\n", pfile );
-
             char * pf = pfile;
-    
-            for ( int i = 0; i < _countof( pfcb->name ) && *pf && isFilenameChar( *pf ); i++ )
-                pfcb->name[ i ] = *pf++;
-            if ( '.' == *pf )
-                pf++;
-            for ( int i = 0; i < _countof( pfcb->ext ) && *pf && isFilenameChar( *pf ); i++ )
-                pfcb->ext[ i ] = *pf++;
 
-            tracer.Trace( "  after copying filename, on char '%c', pf %p\n", *pf, pf );
+            if ( *pfile )
+            {
+        
+                for ( int i = 0; i < _countof( pfcb->name ) && *pf && isFilenameChar( *pf ); i++ )
+                    pfcb->name[ i ] = toupper( *pf++ );
+                if ( '.' == *pf )
+                    pf++;
+                for ( int i = 0; i < _countof( pfcb->ext ) && *pf && isFilenameChar( *pf ); i++ )
+                    pfcb->ext[ i ] = toupper( *pf++ );
     
-            if ( strchr( pfile, '*' ) || strchr( pfile, '?' ) )
-                cpu.set_al( 1 );
-            else
-                cpu.set_al( 0 );
+                tracer.Trace( "  after copying filename, on char '%c', pf %p\n", *pf, pf );
+        
+                if ( strchr( pfile, '*' ) || strchr( pfile, '?' ) )
+                    cpu.set_al( 1 );
+                else
+                    cpu.set_al( 0 );
+    
+                star_to_question( pfcb->name, 8 );
+                star_to_question( pfcb->ext, 3 );
+            }
     
             cpu.set_si( cpu.get_si() + (uint16_t) ( pf - pfile_original ) );
 
             pfcb->TraceFirst16();
-
-            tracer.Trace( "  returning al %#x\n", cpu.al() );
+            tracer.Trace( "  returning al %#x, si %04x\n", cpu.al(), cpu.get_si() );
     
             return;
         }
@@ -4177,7 +4244,7 @@ void handle_int_21( uint8_t c )
                     // ax = 0 removable, 1 fixed
                     // ax = error on error
 
-                    tracer.Trace( "  check if drive (1=a...) %d is removable\n", cpu.bl() );
+                    tracer.Trace( "  check if drive (1=a...) %d is removable (it's not)\n", cpu.bl() );
 
                     cpu.set_carry( false );
                     cpu.set_ax( 1 );
@@ -4262,10 +4329,11 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true );
             if ( GetCurrentDirectoryA( sizeof( cwd ), cwd ) )
             {
-                char * paststart = cwd + 3;
+                char * paststart = cwd + 3; // result does not contain drive or initial backslash 'x:\'
                 if ( strlen( paststart ) <= 63 )
                 {
                     strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), paststart );
+                    tracer.Trace( "  returning current directory '%s'\n", paststart );
                     cpu.set_carry( false );
                 }
             }
@@ -4522,7 +4590,7 @@ void handle_int_21( uint8_t c )
         case 0x4e:
         {
             // find first asciiz
-            // in: cx = attribute used during search: 7..0 unused, archive, subdir, volume, system, hidden, read-only
+            // in: cx = attribute used during search: 7..0 unused, unused, archive, directory, volume, system, hidden, read-only
             //     ds:dx pointer to null-terminated ascii string including wildcards
             // out: CF: true on error, false on success
             //      ax: error code if CF is true.
@@ -4531,7 +4599,9 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             char * psearch_string = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  Find First Asciiz for pattern '%s'\n", psearch_string );
+            pff->search_attributes = cpu.get_cx() & 0x1e; // only directory, system, volume, and hidden are honored
+            assert( 0x15 == offsetof( DosFindFile, file_attributes ) );
+            tracer.Trace( "  Find First Asciiz for pattern '%s' attributes %#x\n", psearch_string, pff->search_attributes );
 
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
@@ -4543,8 +4613,26 @@ void handle_int_21( uint8_t c )
             g_hFindFirst = FindFirstFileA( psearch_string, &fd );
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
-                ProcessFoundFile( pff, fd );
-                cpu.set_carry( false );
+                do
+                {
+                    bool ok = ProcessFoundFile( pff, fd );
+                    if ( ok )
+                    {
+                        cpu.set_carry( false );
+                        break;
+                    }
+
+                    BOOL found = FindNextFileA( g_hFindFirst, &fd );
+                    if ( !found )
+                    {
+                        memset( pff, 0, sizeof( DosFindFile ) );
+                        cpu.set_ax( 0x12 ); // no more files
+                        tracer.Trace( "  WARNING: find first file found no matching files, error %d\n", GetLastError() );
+                        FindClose( g_hFindFirst );
+                        g_hFindFirst = INVALID_HANDLE_VALUE;
+                        break;
+                    }
+                } while( true );
             }
             else
             {
@@ -4564,21 +4652,29 @@ void handle_int_21( uint8_t c )
     
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
-                WIN32_FIND_DATAA fd = {0};
-                BOOL found = FindNextFileA( g_hFindFirst, &fd );
-                if ( found )
+                do
                 {
-                    ProcessFoundFile( pff, fd );
-                    cpu.set_carry( false );
-                }
-                else
-                {
-                    memset( pff, 0, sizeof( DosFindFile ) );
-                    cpu.set_ax( 0x12 ); // no more files
-                    tracer.Trace( "  WARNING: find next file found no more, error %d\n", GetLastError() );
-                    FindClose( g_hFindFirst );
-                    g_hFindFirst = INVALID_HANDLE_VALUE;
-                }
+                    WIN32_FIND_DATAA fd = {0};
+                    BOOL found = FindNextFileA( g_hFindFirst, &fd );
+                    if ( found )
+                    {
+                        bool ok = ProcessFoundFile( pff, fd );
+                        if ( ok )
+                        {
+                            cpu.set_carry( false );
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        memset( pff, 0, sizeof( DosFindFile ) );
+                        cpu.set_ax( 0x12 ); // no more files
+                        tracer.Trace( "  WARNING: find next file found no more, error %d\n", GetLastError() );
+                        FindClose( g_hFindFirst );
+                        g_hFindFirst = INVALID_HANDLE_VALUE;
+                        break;
+                    }
+                } while( true );
             }
             else
             {
