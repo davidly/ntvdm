@@ -2,7 +2,13 @@
 NT Virtual DOS Machine. Not the real one, but this one runs on 64-bit Windows (x64 and ARM64)
 
 This code emulates the i8086 and DOS well enough to run some command-line and text-mode apps. I wrote it
-so I could test my BA BASIC compiler (in the TTT repo). I've tested it with:
+so I could test my BA BASIC compiler (in the TTT repo). 
+
+There are many better DOS emulators available, starting with DOSBOX. This one works great as a
+way to run DOS command-line apps like compilers/assemblers/linkers/etc. from a Windows CMD
+window or batch file without having to spin up a separate window or UI.
+
+I've tested it with:
 
     Turbo Pascal 1.00A and apps it creates
     Turbo Pascal 3.02A and apps it creates
