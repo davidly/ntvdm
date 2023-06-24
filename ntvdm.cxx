@@ -1040,13 +1040,13 @@ void traceDisplayBuffers()
     {
         tracer.Trace( "cga memory buffer %d\n", i );
         uint8_t * pbuf = GetMem( ScreenBufferSegment, 0x1000 * i );
-        for ( uint16_t y = 0; y < ScreenRows; y++ )
+        for ( size_t y = 0; y < ScreenRows; y++ )
         {
-            uint32_t yoffset = y * ScreenColumns * 2;
+            size_t yoffset = y * ScreenColumns * 2;
             tracer.Trace( "    row %02u: '", y );
-            for ( uint16_t x = 0; x < ScreenColumns; x++ )
+            for ( size_t x = 0; x < ScreenColumns; x++ )
             {
-                uint32_t offset = yoffset + x * 2;
+                size_t offset = yoffset + x * 2;
                 tracer.Trace( "%c", printable( pbuf[ offset ] ) );
             }
             tracer.Trace( "'\n" );
@@ -1058,13 +1058,13 @@ void traceDisplayBufferAsHex()
 {
     tracer.Trace( "cga memory buffer %d\n" );
     uint8_t * pbuf = GetVideoMem();
-    for ( uint16_t y = 0; y < ScreenRows; y++ )
+    for ( size_t y = 0; y < ScreenRows; y++ )
     {
-        uint32_t yoffset = y * ScreenColumns * 2;
+        size_t yoffset = y * ScreenColumns * 2;
         tracer.Trace( "    row %02u: '", y );
-        for ( uint16_t x = 0; x < ScreenColumns; x++ )
+        for ( size_t x = 0; x < ScreenColumns; x++ )
         {
-            uint32_t offset = yoffset + x * 2;
+            size_t offset = yoffset + x * 2;
             tracer.Trace( "%c=%02x ", printable( pbuf[ offset ] ), pbuf[ offset ] );
         }
         tracer.Trace( "'\n" );
@@ -1108,7 +1108,7 @@ bool UpdateDisplay()
                 char ac[ScreenColumns];
                 for ( size_t x = 0; x < ScreenColumns; x++ )
                 {
-                    uint32_t offset = yoffset + x * 2;
+                    size_t offset = yoffset + x * 2;
                     ac[ x ] = pbuf[ offset ];
                     if ( 0 == ac[ x ] )
                         ac[ x ] = ' '; // brief alternately writes 0 then ':' for the clock
@@ -1725,9 +1725,12 @@ uint8_t i8086_invoke_in_al( uint16_t port )
     }
     else if ( 0x60 ==  port ) // keyboard data
     {
+        tracer.Trace( "invoke_al_in port 60 keyboard data\n" );
         uint8_t asciiChar, scancode;
         if ( peek_keyboard( asciiChar, scancode ) )
         {
+            // lie and say keyup so apps like Word 6.0 don't auto-repeat until the next keydown
+            scancode |= 0x80;
             //tracer.Trace( "invoke_in_al, port %02x peeked a character and is returning %02x\n", port, scancode );
             return scancode;
         }
@@ -1812,7 +1815,7 @@ bool ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
             return false; // files with long names are just invisible to DOS apps
     }
 
-    strupr( pff->file_name );
+    _strupr( pff->file_name );
     pff->file_size = fd.nFileSizeLow;
     uint8_t attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
                                              FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
@@ -1838,11 +1841,13 @@ void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
         if ( result > _countof( acResult ) )
             strcpy( acResult, "TOOLONG.ZZZ" );
     }
-    strupr( acResult );
+
+    _strupr( acResult );
 
     // now write the file into an FCB at the transfer address
 
     DOSFCB *pfcb = (DOSFCB *) GetDiskTransferAddress();
+    pfcb->drive = 0;
     for ( int i = 0; i < _countof( pfcb->name ); i++ )
         pfcb->name[ i ] = ' ';
     for ( int i = 0; i < _countof( pfcb->ext ); i++ )
@@ -2501,7 +2506,7 @@ uint8_t HighestDrivePresent()
     {
         DWORD bit = 0x80000000 >> b;
         if ( bit & dwDriveMask )
-            return ( 32 - b - 1 );
+            return (uint8_t) ( 32 - b - 1 );
     }
 
     return 0;
@@ -2861,6 +2866,7 @@ void handle_int_21( uint8_t c )
         {
             // search first using FCB.
             // DS:DX points to FCB
+            // if the first byte of the FCB (the drive) is 0xff it's an extended FCB. I haven't found an app that does this so it's not implemented.
             // returns AL = 0 if file found, FF if not found
             //    if found, DTA is used as an FCB ready for an open or delete
 
@@ -4152,7 +4158,7 @@ void handle_int_21( uint8_t c )
                     tracer.Trace( "  read get file attributes: cx %04x\n", cpu.get_cx() );
                 }
                 else
-                    cpu.set_ax( GetLastError() ); // most errors map OK (file not found, path not found, etc.)
+                    cpu.set_ax( (uint16_t) GetLastError() ); // most errors map OK (file not found, path not found, etc.)
             }
             else
             {
@@ -5857,7 +5863,7 @@ int main( int argc, char ** argv )
     // Note that kbhit() makes the same call interally to the same cross-process API. It's no faster.
 
     CSimpleThread peekKbdThread( PeekKeyboardThreadProc );
-    uint64_t total_cycles = 0; // this will be inacurate if I8086_TRACK_CYCLES isn't defined
+    uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
     high_resolution_clock::time_point tStart = high_resolution_clock::now();
 
@@ -5961,7 +5967,7 @@ int main( int argc, char ** argv )
         for ( size_t i = 0; i < cEntries; i++ )
         {
             IntCalled & ic = g_InterruptsCalled[ i ];
-            const char * pintstr = get_interrupt_string( ic.i, ic.c, ah_used );
+            const char * pintstr = get_interrupt_string( ic.i, (uint8_t) ic.c, ah_used );
             if ( ah_used )
                 tracer.Trace( "   %02x     %02x  %10d    %s\n", ic.i, ic.c, ic.calls, pintstr );
             else
