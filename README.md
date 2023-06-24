@@ -42,7 +42,7 @@ I've tested it with:
     
 This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
 
-i8086 emulation performance is similar to other C/C++ emulators; about 5% faster than DOSBOX for the
+i8086 emulation performance is similar to other C/C++ emulators; about 30% faster than DOSBOX for the
 tic-tac-toe benchmark written in 8086 assembler.
 
 I validated that ntvdm works on Arm64 with both native and x64 binaries.
