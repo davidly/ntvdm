@@ -18,11 +18,13 @@
 //    BC.exe: Microsoft Basic compiler 7.10 (part of Quick Basic 7.1)
 //    Microsoft 8086 Object Linker Version 3.01 (C) Copyright Microsoft Corp 1983, 1984, 1985
 //    Microsoft C v1, v2, and v3
-//    Turbo C 2.0
-//    QuickC 1.0 and 2.x. ilink.exe in 2.x doesn't work yet because it relies on undocumented MCB behavior.
+//    Turbo C 1.0 and 2.0
+//    QuickC 1.0 and 2.x. ilink.exe in 2.x doesn't work because it relies on undocumented MCB behavior.
 //    Quick Pascal 1.0
 //    Lotus 1-2-3 v1.0a
-//    Word for DOS 6.0. Set view/preferences/cursor control/speed = 0 or there are phantom key repeats
+//    Word for DOS 6.0.
+//    Multiplan v2. Setup for later versions fail, but they fail in dosbox too.
+//
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
 // Windows to OS/2 to NT to Mac to Linux, and mostly skipped DOS programming. Hence this fills a gap
 // in my knowledge.
@@ -38,8 +40,8 @@
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
 //     0x00400 -- 0x0057f   bios data
 //     0x00580 -- 0x005ff   "list of lists" is 0x5b0 and extends in both directions
-//     0x00600 -- 0x00bff   assembly code for various interrupt calls that can't be accomplished in C
-//     0x00c00 -- 0x00fff   interrupt routines (here, not in BIOS space because it fits)
+//     0x00600 -- 0x00bff   assembly code for interrupt routines that can't be accomplished in C
+//     0x00c00 -- 0x00fff   C code for interrupt routines (here, not in BIOS space because it fits)
 //     0x01000 -- 0xb7fff   apps are loaded here. On real hardware you can only go to 0x9ffff.
 //     0xb8000 -- 0xeffff   reserved for hardware (CGA in particular)
 //     0xf0000 -- 0xfbfff   system monitor (0 for now)
@@ -335,6 +337,25 @@ static void trace_all_open_files()
                       fe.fp, fe.handle, fe.writeable, fe.seg_process, fe.refcount, fe.path );
     }
 } //trace_all_open_files
+
+static bool tc_build_file_open()
+{
+    // check if it looks like Turbo C is building something so we won't sleep in dos idle loop, which it calls
+    // all the time regardless of whether it's building something.
+
+    static const char * build_ext[] = { ".obj", ".c", ".h", ".exe", ".lib", };
+    size_t cEntries = g_fileEntries.size();
+    for ( size_t i = 0; i < cEntries; i++ )
+    {
+        FileEntry & fe = g_fileEntries[ i ];
+
+        for ( size_t e = 0; e < _countof( build_ext ); e++ )
+          if ( ends_with( fe.path, build_ext[ e ] ) )
+              return true;
+    }
+
+    return false;
+} //tc_build_file_open
 
 uint8_t get_current_drive()
 {
@@ -5156,14 +5177,16 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     else if ( 0x28 == interrupt_num )
     {
         // dos idle loop / scheduler
-        // Some apps like Turbo C 2.0 call this repeatedly while busy compiling.
+        // Some apps like Turbo C v1 and v2 call this repeatedly while busy compiling.
         // Other apps like Turbo Pascal 5.5 call this in a tight loop while idling.
         // So it's not obvious whether to Sleep here to reduce host system CPU usage.
+        // For TC, only sleep if it's not obvious that it's building something.
 
-        if ( ends_with( g_acApp, "TC.EXE" ) )
+        if ( ends_with( g_acApp, "TC.EXE" ) && tc_build_file_open() )
             g_int16_1_loop = false;
         else
             SleepAndScheduleInterruptCheck();
+
         return;
     }
     else if ( 0x2a == interrupt_num )
@@ -5862,7 +5885,7 @@ int main( int argc, char ** argv )
     // One exception is tick tock interrupt 0x1c, which just does an iret for performance.
     // Another is keyboard interrupt 9.
     // Interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
-    // Other interrupts use far ret 2 (not iret) so as to not trash the flags used as return codes.
+    // Other interrupts use far ret 2 (not iret) so as to not trash the flags (Z and C) used as return codes.
     // Functions are all allocated 5 bytes each.
 
     uint32_t * pVectors = (uint32_t *) GetMem( 0, 0 );
@@ -5891,7 +5914,7 @@ int main( int argc, char ** argv )
         {
             routine[ 0 ] = i8086_opcode_interrupt;
             routine[ 1 ] = (uint8_t) intx;
-            routine[ 2 ] = 0xca; // retf 2 instead of iret so Carry flag isn't restored
+            routine[ 2 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored
             routine[ 3 ] = 2;
             routine[ 4 ] = 0;
         }
@@ -5984,7 +6007,8 @@ int main( int argc, char ** argv )
 
         if ( cpu.get_interrupt() && !cpu.get_trap() )
         {
-            // if the keyboard peek thread has detected a keystroke, process it with an int 9
+            // if the keyboard peek thread has detected a keystroke, process it with an int 9.
+            // don't plumb through port 60 since apps work without that.
     
             if ( !g_KbdIntWaitingForRead && g_KbdPeekAvailable )
             {
