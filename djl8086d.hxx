@@ -261,7 +261,7 @@ class CDisassemble8086
             DecodeInstruction( pcode );
             bool handled = true;
 
-            //tracer.TraceQuiet( "{reg %#02x, rm %#02x, isword %d, b12 %04xh}", _reg, _rm, _isword, _b12 );
+            //tracer.TraceQuiet( "{reg %#02x, rm %#02x, isword %d, b12 %04xh, mod %#02x}", _reg, _rm, _isword, _b12, _mod );
         
             switch ( _b0 )
             {
@@ -332,8 +332,8 @@ class CDisassemble8086
                 case 0xaf: _da( "scasw" ); break;
                 case 0xc2: _da( "ret    %04xh", _b12 ); _bc = 3; _pcode = 0; break;
                 case 0xc3: _da( "ret" ); _pcode = 0; break;
-                case 0xc4: _da( "les    %s, [%04xh]", reg_strings[ 8 | _reg ], _b23 ); getrmAsWord(); _bc++; break;
-                case 0xc5: _da( "lds    %s, [%04xh]", reg_strings[ 8 | _reg ], _b23 ); getrmAsWord(); _bc++; break;
+                case 0xc4: _da( "les    %s, %s", reg_strings[ 8 | _reg ], getrmAsWord() ); _bc++; break;
+                case 0xc5: _da( "lds    %s, %s", reg_strings[ 8 | _reg ], getrmAsWord() ); _bc++; break;
                 case 0xc6: _da( "mov    %s", opargs( false ) ); _bc++; break;
                 case 0xc7: _da( "mov    %s", opargs( false ) ); _bc++; break;
                 case 0xca: _da( "retf   %04xh", _b12 ); _bc = 3; _pcode = 0; break;
