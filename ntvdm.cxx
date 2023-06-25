@@ -24,6 +24,7 @@
 //    Lotus 1-2-3 v1.0a
 //    Word for DOS 6.0.
 //    Multiplan v2. Setup for later versions fail, but they fail in dosbox too.
+//    Microsoft Works v3.0.
 //
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
 // Windows to OS/2 to NT to Mac to Linux, and mostly skipped DOS programming. Hence this fills a gap
@@ -215,6 +216,9 @@ const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt r
 const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
 const uint16_t SegmentListOfLists = 0x50;
 const uint16_t OffsetListOfLists = 0xb0;
+#if 0
+const uint16_t OffsetSystemFileTable = 0xf0;
+#endif
 
 CDJLTrace tracer;
 
@@ -1334,6 +1338,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x17, "rename file using FCB" },
     { 0x21, 0x19, "get default drive" },
     { 0x21, 0x1a, "set disk transfer address" },
+    { 0x21, 0x1c, "get allocation information for specific drive" },
     { 0x21, 0x21, "random read using FCB" },
     { 0x21, 0x22, "random write using FCB" },
     { 0x21, 0x23, "get file size using FCB" },
@@ -1351,7 +1356,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x34, "get address of DOS critical flag" },
     { 0x21, 0x35, "get interrupt vector" },
     { 0x21, 0x36, "get disk space" },
-    { 0x21, 0x37, "get query switchchar" },
+    { 0x21, 0x37, "get/set switchchar + device availability" },
     { 0x21, 0x38, "get/set country dependent information" },
     { 0x21, 0x39, "create directory" },
     { 0x21, 0x3a, "remove directory" },
@@ -1384,6 +1389,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x57, "get/set file date and time using handle" },
     { 0x21, 0x58, "get/set memory allocation strategy" },
     { 0x21, 0x59, "get extended error code" },
+    { 0x21, 0x5f, "get redirection list entry" },
     { 0x21, 0x62, "get psp address" },
     { 0x21, 0x63, "get lead byte table" },
     { 0x21, 0x68, "fflush - commit file" },
@@ -1731,6 +1737,14 @@ uint8_t i8086_invoke_in_al( uint16_t port )
         static uint8_t cga_status = 9;
         cga_status ^= 9;
         return cga_status;
+    }
+    else if ( 0x3ba == port )
+    {
+        // toggle this or apps will spin waiting for the I/O port to work.
+
+        static uint8_t monochrome_status = 0x80;
+        monochrome_status ^= 0x80;
+        return monochrome_status;
     }
     else if ( 0x3d5 == port )
     {
@@ -2301,6 +2315,15 @@ void handle_int_10( uint8_t c )
 
             if ( 0x10 == cpu.bl() )
             {
+                // wordperfect uses this to see how much RAM is installed
+                tracer.Trace( "app: '%s'\n", g_acApp );
+
+                if ( ends_with( g_acApp, "wp.com" ) )
+                {
+                    cpu.set_bx( 0xa );
+                    return;
+                }
+
                 // Quick C 2.01 thinks it's an EGA card at 80x43 if 0 is returned. I can't explain it.
                 // This doesn't break Quick C 1.
                 // Not setting bx to 0 breaks apps like QBX 7.1
@@ -3257,6 +3280,44 @@ void handle_int_21( uint8_t c )
     
             return;
         }
+        case 0x1c:
+        {
+            // get allocation information for a specific drive
+            // input: dl: drive. 00 == default, 1 == a ...
+            // output: al: sectors per cluster or ff in invalid drive
+            //         cx: bytes per sector
+            //         dx: total number of clusters
+            //         ds:bx: points to media id byte (f8 = hard disk)
+            // make up something reasonable -- 8mb
+
+            uint8_t drive = cpu.dl();
+
+            if ( drive > 26 )
+                drive = 0;
+
+            if ( 0 == drive )
+                drive = get_current_drive();
+            else
+                drive--;
+
+            DWORD dwDriveMask = GetLogicalDrives(); // a = 0 ... z = 25
+
+            if ( dwDriveMask & ( 1 << drive ) )
+            {
+                cpu.set_al( 8 );
+                cpu.set_cx( 512 );
+                cpu.set_dx( 2048 );
+                tracer.Trace( "  reporting 8mb on drive %d (%c)\n", drive, drive + 'A' );
+            }
+            else
+            {
+                tracer.Trace( "  reporting drive %d (%c) is invalid\n", drive, drive + 'A' );
+                cpu.set_al( 0xff );
+            }
+
+    
+            return;
+        }
         case 0x21:
         {
             // random read using FCBs.
@@ -3363,20 +3424,12 @@ void handle_int_21( uint8_t c )
         {
             // Create PSP. on return: DX = segment address of new PSP
             // online documentation is conflicting about whether DX on entry points to the new PSP or if
-            // this function should allocate the PSP.
+            // this function should allocate the PSP, but apps do the former.
             // The current PSP should be copied on top of the new PSP.
-            // The only app I know of that uses this is debug.com from MS-DOS 2.2. It allocates and passes a segment in DX in debug.asm
+            // The only apps I know of that use this are debug.com from MS-DOS 2.2 and Turbo Pascal 5.5
 
-            #if false
-                uint16_t pspParagraphs = round_up_to( sizeof( DOSPSP ), 16 ) / 16;
-                uint16_t largest_block = 0;
-                uint16_t seg = AllocateMemory( pspParagraphs, largest_block );
-            #else
-                uint16_t seg = cpu.get_dx();
-            #endif
-
+            uint16_t seg = cpu.get_dx();
             memcpy( GetMem( seg, 0 ), GetMem( g_currentPSP, 0 ), sizeof( DOSPSP ) );
-            cpu.set_dx( seg  );
             return;
         }
         case 0x27:
@@ -3540,7 +3593,6 @@ void handle_int_21( uint8_t c )
 
             tracer.Trace( "  pfile after scan: %p\n", pfile );
             char * pf = pfile;
-
             if ( *pfile )
             {
         
@@ -3710,9 +3762,14 @@ void handle_int_21( uint8_t c )
         }
         case 0x37:
         {
-            // query switchchar. Undocumented but legal call in DOS 2.x
-    
-            cpu.set_dl( '/' );
+            // get/set switchchar. Undocumented but legal call in DOS 2.x. This is the character used for switches (arguments).
+            // a popular alternative is '-'.
+            // al: 0 = get, 1 = set, 2 = device availability (should /dev precede device names?)
+
+            tracer.Trace( "  get/set switchchar. al is %02x\n", cpu.al() );
+
+            if ( 0 == cpu.al() )
+                cpu.set_dl( '/' );
             return;
         }
         case 0x38:
@@ -4919,8 +4976,9 @@ void handle_int_21( uint8_t c )
                 }
                 else if ( 1 == cpu.al() )
                 {
-                    // set not implemented...
-                    cpu.set_ax( 0x57 );
+                    // set is not implemented; pretend it worked just fine. Works 2.0 install needs this
+
+                    cpu.set_carry( false );
                 }
                 else
                 {
@@ -4969,6 +5027,15 @@ void handle_int_21( uint8_t c )
             cpu.set_bh( 1 ); // class. out of resources
             cpu.set_bl( 5 ); // suggestion action code. immediate abort.
             cpu.set_ch( 1 ); // suggestion action code. unknown
+            return;
+        }
+        case 0x5f:
+        {
+            // network
+            // input: al: 02 -- get redirection list entry
+
+            cpu.set_carry( true ); // not supported
+            cpu.set_ax( 0x32 ); // network request not supported
             return;
         }
         case 0x62:
@@ -5879,6 +5946,17 @@ int main( int argc, char ** argv )
     * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
     * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
     * (uint8_t *) ( GetMem( 0xffff, 0xe ) ) = 0xff;       // original pc
+
+#if 0
+    // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table
+    // make that pointer point to an empty system file table
+
+    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetListOfLists + 4 ) ) = OffsetSystemFileTable;
+    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetListOfLists + 6 ) ) = SegmentListOfLists;
+    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetSystemFileTable ) ) = 0xffff;
+    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetSystemFileTable + 2 ) ) = 0xffff;
+    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetSystemFileTable + 4 ) ) = 0x30; // lots of files available
+#endif
 
     // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
     // routines starting at InterruptRoutineSegment. The routines are almost all the same -- fake opcode, interrupt #, retf 2
