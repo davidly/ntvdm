@@ -972,6 +972,14 @@ struct DOSFCB
         tracer.Trace( "    recSize:     %u\n", this->recSize );
     }
 };
+
+struct DOSEXFCB
+{
+    uint8_t extendedFlag; // 0xff to indicate it's an extended FCB
+    uint8_t reserved[ 5 ];
+    uint8_t attr;
+    DOSFCB fcb;
+};
 #pragma pack(pop)
 
 const char * GetCurrentAppPath()
@@ -1825,8 +1833,20 @@ bool ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
     return true;
 } //ProcessFoundFile
 
-void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
+bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
 {
+    // note: extended FCB code isn't well-tested. Multiplan setup.exe is the only app I know that uses it and it fails for other reasons
+    // non-extended FCBs will have attr = 0
+
+    attr &= ~ ( 8 ); // remove the volume label bit if set
+    uint8_t matching_attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM ) );
+
+    if ( ( matching_attr && ( 0 == attr ) ) || ( ( 0 != attr) && ( 0 == ( attr & matching_attr ) ) ) )
+    {
+        tracer.Trace( "  file '%s' attr %#x doesn't match the attribute filter %#x\n", fd.cFileName, fd.dwFileAttributes, attr );
+        return false;
+    }
+
     tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
     char acResult[ DOS_FILENAME_SIZE ];
     if ( 0 != fd.cAlternateFileName[ 0 ] )
@@ -1839,14 +1859,26 @@ void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
 
         DWORD result = GetShortPathNameA( fd.cFileName, acResult, _countof( acResult ) );
         if ( result > _countof( acResult ) )
-            strcpy( acResult, "TOOLONG.ZZZ" );
+            return false; // files with long names are just invisible to DOS apps
     }
 
     _strupr( acResult );
 
     // now write the file into an FCB at the transfer address
 
-    DOSFCB *pfcb = (DOSFCB *) GetDiskTransferAddress();
+    DOSFCB *pfcb = 0;
+    if ( exFCB )
+    {
+        DOSEXFCB * pexfcb = (DOSEXFCB *) GetDiskTransferAddress();
+        pexfcb->extendedFlag = 0xff;
+        pexfcb->attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
+                                                 FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
+        memset( pexfcb->reserved, 0, sizeof( pexfcb->reserved ) );
+        pfcb = & (pexfcb->fcb);
+    }
+    else
+        pfcb = (DOSFCB *) GetDiskTransferAddress();
+
     pfcb->drive = 0;
     for ( int i = 0; i < _countof( pfcb->name ); i++ )
         pfcb->name[ i ] = ' ';
@@ -1862,7 +1894,12 @@ void ProcessFoundFileFCB( WIN32_FIND_DATAA & fd )
             pfcb->ext[i] = pdot[ i ];
     }
 
+    pfcb->fileSize = fd.nFileSizeLow;
+    uint16_t file_time;
+    FileTimeToDos( fd.ftLastWriteTime, file_time, pfcb->date );
+
     pfcb->TraceFirst16();
+    return true;
 } //ProcessFoundFileFCB
 
 void PerhapsFlipTo80x25()
@@ -2611,6 +2648,7 @@ void handle_int_21( uint8_t c )
             if ( 0xff == cpu.dl() )
             {
                 // input. don't block if nothing is available
+                // Multiplan (v2) is the only app I've found that uses this function for input.
 
                 uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
                 uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
@@ -2627,6 +2665,8 @@ void handle_int_21( uint8_t c )
                         mid_scancode_read = false;
                         cpu.set_al( pbiosdata[ * ( phead + 1 ) ] );
                         (*phead) += 2;
+                        if ( *phead >= 0x3e )
+                            *phead = 0x1e;
                     }
                     else
                     {
@@ -2635,11 +2675,18 @@ void handle_int_21( uint8_t c )
                         if ( 0 == *phead )
                             mid_scancode_read = true;
                         else
+                        {
                             (*phead) += 2;
+                            if ( *phead >= 0x3e )
+                                *phead = 0x1e;
+                        }
                     }
                 }
                 else
+                {
                     cpu.set_zero( true );
+                    SleepAndScheduleInterruptCheck(); // Multiplan v2 has a busy loop with this interrupt waiting for input
+                }
             }
             else
             {
@@ -2866,7 +2913,7 @@ void handle_int_21( uint8_t c )
         {
             // search first using FCB.
             // DS:DX points to FCB
-            // if the first byte of the FCB (the drive) is 0xff it's an extended FCB. I haven't found an app that does this so it's not implemented.
+            // if the first byte of the FCB (the drive) is 0xff it's an extended FCB.
             // returns AL = 0 if file found, FF if not found
             //    if found, DTA is used as an FCB ready for an open or delete
 
@@ -2876,7 +2923,17 @@ void handle_int_21( uint8_t c )
                 g_hFindFirst = INVALID_HANDLE_VALUE;
             }
 
+            bool extendedFCB = false;
             DOSFCB *pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            uint8_t attr = 0;
+            if ( 0xff == pfcb->drive )
+            {
+                extendedFCB = true;
+                DOSEXFCB * pexfcb = (DOSEXFCB *) pfcb;
+                attr = pexfcb->attr;
+                pfcb = & (pexfcb->fcb);
+            }
+
             pfcb->TraceFirst16();
             char search_string[ 20 ];
             bool ok = GetDOSFilename( *pfcb, search_string );
@@ -2887,8 +2944,25 @@ void handle_int_21( uint8_t c )
                 g_hFindFirst = FindFirstFileA( search_string, &fd );
                 if ( INVALID_HANDLE_VALUE != g_hFindFirst )
                 {
-                    ProcessFoundFileFCB( fd );
-                    cpu.set_al( 0 );
+                    do
+                    {
+                        bool ok = ProcessFoundFileFCB( fd, attr, extendedFCB );
+                        if ( ok )
+                        {
+                            cpu.set_al( 0 );
+                            break;
+                        }
+
+                        BOOL found = FindNextFileA( g_hFindFirst, &fd );
+                        if ( !found )
+                        {
+                            cpu.set_al( 0xff );
+                            tracer.Trace( "  WARNING: search next using FCB (in search first function) found no more, error %d\n", GetLastError() );
+                            FindClose( g_hFindFirst );
+                            g_hFindFirst = INVALID_HANDLE_VALUE;
+                            break;
+                        }
+                    } while( true );
                 }
                 else
                 {
@@ -2915,20 +2989,40 @@ void handle_int_21( uint8_t c )
                 cpu.set_al( 0xff );
             else
             {
+                DOSFCB *pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+                uint8_t attr = 0;
+                bool extendedFCB = false;
+                if ( 0xff == pfcb->drive )
+                {
+                    extendedFCB = true;
+                    DOSEXFCB * pexfcb = (DOSEXFCB *) pfcb;
+                    attr = pexfcb->attr;
+                    pfcb = & (pexfcb->fcb);
+                }
+
                 WIN32_FIND_DATAA fd = {0};
-                BOOL found = FindNextFileA( g_hFindFirst, &fd );
-                if ( found )
+
+                do
                 {
-                    ProcessFoundFileFCB( fd );
-                    cpu.set_al( 0 );
-                }
-                else
-                {
-                    cpu.set_al( 0xff );
-                    tracer.Trace( "  WARNING: search next using FCB found no more, error %d\n", GetLastError() );
-                    FindClose( g_hFindFirst );
-                    g_hFindFirst = INVALID_HANDLE_VALUE;
-                }
+                    BOOL found = FindNextFileA( g_hFindFirst, &fd );
+                    if ( found )
+                    {
+                        bool ok = ProcessFoundFileFCB( fd, attr, extendedFCB );
+                        if ( ok )
+                        {
+                            cpu.set_al( 0 );
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        cpu.set_al( 0xff );
+                        tracer.Trace( "  WARNING: search next using FCB found no more, error %d\n", GetLastError() );
+                        FindClose( g_hFindFirst );
+                        g_hFindFirst = INVALID_HANDLE_VALUE;
+                        break;
+                    }
+                } while( true );
             }
     
             return;
@@ -3727,7 +3821,7 @@ void handle_int_21( uint8_t c )
             {
                 bool readOnly = ( 0 == openmode );
 
-                if ( !_stricmp( path, "CON" ) )
+                if ( !_stricmp( path, "CON" ) || !_stricmp( path, "\\DEV\\CON" ) )
                 {
                     cpu.set_ax( readOnly ? 0 : 1 );
                     cpu.set_carry( false );
