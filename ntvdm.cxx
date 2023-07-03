@@ -298,6 +298,11 @@ static void usage( char const * perr )
     printf( "                     /z:3000  2 efficiency cores on an i7-1280P\n" );
     printf( "                     /z:11    2 random good cores on a 5950x\n" );
     printf( " [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command\n" );
+
+#ifndef NDEBUG
+    printf( "(debug build)\n" );
+#endif
+
     printf( "  examples:\n" );
     printf( "      %s -c -t app.com foo bar\n", g_thisApp );
     printf( "      %s turbo.com\n", g_thisApp );
@@ -3776,13 +3781,25 @@ void handle_int_21( uint8_t c )
         {
             // get/set country dependent information.
 
-            cpu.set_carry( false );
-            cpu.set_bx( 1 ); // USA
-            uint8_t * pinfo = GetMem( cpu.get_ds(), cpu.get_dx() );
-            memset( pinfo, 0, 0x20 );
-            pinfo[ 2 ] = '$';
-            pinfo[ 4 ] = ',';
-            pinfo[ 6 ] = '.';
+            if ( 0 == cpu.al() )
+            {
+                cpu.set_carry( false );
+                cpu.set_bx( 1 ); // USA
+                uint8_t * pinfo = GetMem( cpu.get_ds(), cpu.get_dx() );
+                memset( pinfo, 0, 0x20 );
+                pinfo[ 2 ] = '$';
+                pinfo[ 7 ] = ',';
+                pinfo[ 9 ] = '.';
+                pinfo[ 0xb ] = '/';
+                pinfo[ 0xd ] = ':';
+                pinfo[ 0x16 ] = ':';
+            }
+            else
+            {
+                cpu.set_carry( true );
+                cpu.set_ax( 0x0c ); // access code invalid
+            }
+
             return;
         }
         case 0x39:
@@ -5881,9 +5898,9 @@ int main( int argc, char ** argv )
                 pcAPP = parg;
             else if ( strlen( acAppArgs ) + 3 + strlen( parg ) < _countof( acAppArgs ) )
             {
-                if ( 0 != acAppArgs[0] )
-                    strcat( acAppArgs, " " );
+                // DOS puts a space before the first argument and between arguments
 
+                strcat( acAppArgs, " " );
                 strcat( acAppArgs, parg );
             }
         }

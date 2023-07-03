@@ -33,12 +33,14 @@ begin:
     ; int 16
     jz wait_for_kbd
 
+    cli
     add word ptr es: [kbd_head], 2               ; consume the character and scancode
     cmp word ptr es: [kbd_head], kbd_beyond      ; has the head moved beyond the buffer?
     jl all_done
     mov word ptr es: [kbd_head], kbd_start       ; if so, restore it to the start
 
   all_done:
+    sti
     pop es
     retf
 

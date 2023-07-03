@@ -266,15 +266,16 @@ int MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; tty
 #endif
 
                 if ( score > value )
+                {
                     value = score;
 
 #if ABPrune
-                if ( value > alpha )
-                    alpha = value;
-
-                if ( alpha >= beta )
-                    return value;
+                    if ( value >= beta )
+                        return value;
+                    if ( value > alpha )
+                        alpha = value;
 #endif
+                }
             }
             else
             {
@@ -284,15 +285,16 @@ int MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; tty
 #endif
 
                 if ( score < value )
+                {
                     value = score;
 
 #if ABPrune
-                if ( value < beta )
-                    beta = value;
-
-                if ( beta <= alpha )
-                    return value;
+                    if ( value <= alpha )
+                        return value;
+                    if ( value < beta )
+                        beta = value;
 #endif
+                }
             }
         }
     }
