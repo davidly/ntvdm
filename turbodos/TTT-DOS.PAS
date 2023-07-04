@@ -19,6 +19,7 @@ const
 
 type
   boardType = array[ 0..8 ] of integer;
+  CommandString = string[127];
 
 var
   evaluated: integer;
@@ -159,12 +160,37 @@ begin
   board[move] := pieceBlank;
 end;
 
+function Trim( intext : CommandString ): CommandString;
+var FirstPos, LastPos: integer;
+begin
+  FirstPos := 1;
+  while ( FirstPos <= Length( intext ) ) and ( intext[FirstPos] = #32 ) do
+    FirstPos := FirstPos + 1;
+
+  LastPos := Length( intext );
+  while ( LastPos >= 1 ) and ( intext[LastPos] = #32 ) do
+    LastPos := LastPos - 1;
+
+  Trim := Copy( intext, FirstPos, LastPos - FirstPos + 1 );
+end;
+
 var
   i, loops, errpos: integer;
+  strArg : CommandString;
+  cmdTail : CommandString absolute Cseg : $80;
 begin
   loops := Iterations;
 
-  { not available on TP v1 if 0 <> Length( ParamStr( 1 ) ) then Val( ParamStr( 1 ), loops, errpos ); }
+  { not available on TP v1
+  if 0 <> Length( ParamStr( 1 ) ) then Val( ParamStr( 1 ), loops, errpos );
+  }
+
+  if Length( cmdTail ) > 0 then
+  begin
+    { trim the space at the start that's always there }
+    strArg := Trim( cmdTail );
+    Val( strArg, loops, errpos );
+  end;
 
   for i := 0 to 8 do
     board[i] := pieceBlank;
@@ -185,3 +211,4 @@ begin
   WriteLn( 'moves evaluated: ', evaluated );
   WriteLn( 'iterations: ', loops );
 end.
+
