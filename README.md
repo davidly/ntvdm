@@ -10,16 +10,14 @@ window or batch file without having to spin up a separate window or UI.
 
 I've tested it with:
 
-    Turbo Pascal 1.00A and apps it creates
-    Turbo Pascal 3.02A and apps it creates
-    Turbo Pascal 5.5 (including the debugger) and apps it creates
+    Turbo Pascal 1.00A, 3.02A, 5.5, and 7.0. The apps including debugging and apps they create.
     Masm V1.10
     Link V2.00 and apps it creates
     Debug.com for MS-DOS 2.0. Breakpoints and single-stepping work.
     QuickBasic (qbx.exe) 7.1 interpreter and apps the compiler creates
     QBasic (qbasic.exe) 1.1 interpreter
     WordStar Professional Release 4 for DOS
-    GWBasic in both command-line and full-screen text mode
+    GWBasic in both teletype and full-screen text mode
     Brief 3.1. -k must be passed on the Brief command line to enable "compatible" keyboard handling
     ExeHr.exe: Microsoft (R) EXE File Header Utility  Version 2.01  
     BC.exe: Microsoft Basic compiler 7.10, part of Quick Basic.
@@ -29,18 +27,19 @@ I've tested it with:
     Microsoft C Compiler V1.04 & Microsoft Object Linker V1.10 (C) Copyright 1981 by Microsoft Inc.
     Microsoft C Compiler V2.03 & Microsoft 8086 Object Linker Version 2.40  (C) Copyright Microsoft Corp 1983
     Microsoft C Compiler Version 3.00 (C) Copyright Microsoft Corp 1984 1985  
-    Aztec (CG65 v3.2c 10-2-89) cross-compiler for 6502. cg65 compiler, as65 assembler, lb65 librarian, ln65 linker 
+    Aztec (CG65 v3.2c 10-2-89) cross-compiler for 6502. cg65 compiler, as65 assembler, lb65 librarian, ln65 linker
     Turbo Basic 1.1 app and apps the compiler creates.
-    Turbo C 2.0 app and apps the compiler creates. Debug breakpoints and single-stepping work.
+    Turbo C 1.0 and 2.0 and apps they create. Debug breakpoints and single-stepping work.
     Turbo Assembler Version 3.2
     Turbo Link Version 2.0
     Microsoft Quick C 1.0. Tested & works. Compiling, editing, breakpoints, single-stepping, etc.
     Lotus 1-2-3 Release 1A
-    Quick Pascal 1.0
-    QuickC v2.01 and v2.51 work provided incremental linking is disabled. ilink.exe reads memory control blocks, which don't exist.
+    Microsoft Quick Pascal 1.0
+    Microsoft QuickC v2.01 and v2.51 work provided incremental linking is disabled. ilink.exe reads memory control blocks, which don't exist.
     Microsoft Word 6.0 for DOS. Set view / preferences / cursor control / speed to 0 to avoid key repeats.
+    Microsoft Works 3.0.
     
-This code implements no graphics, sound, mouse, or anything else not needed for simple command-line apps.
+This code implements no graphics, sound, mouse, or anything else not needed for simple text-mode apps.
 
 i8086 emulation performance is similar to other C/C++ emulators; about 30% faster than DOSBOX for the
 tic-tac-toe benchmark written in 8086 assembler.
