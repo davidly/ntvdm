@@ -10,6 +10,7 @@ const
   scoreLose = 4;
   scoreMax = 9;
   scoreMin = 2;
+  scoreInvalid = 0;
 
   pieceBlank = 0;
   pieceX = 1;
@@ -87,10 +88,9 @@ end;
 function minmax( alpha: integer; beta: integer; depth: integer ): integer;
 var
   p, value, pieceMove, score : integer;
-  done: boolean;
 begin
   evaluated := evaluated + 1;
-  value := 0;
+  value := scoreInvalid;
   if depth >= 4 then
   begin
     p := lookForWinner;
@@ -105,9 +105,9 @@ begin
       value := scoreTie;
   end;
 
-  if value = 0 then
+  if value = scoreInvalid then
   begin
-    if ( 0 <> ( depth AND 1 ) ) then
+    if Odd( depth ) then
     begin
       value := scoreMin;
       pieceMove := pieceX;
@@ -118,7 +118,6 @@ begin
       pieceMove := pieceO;
     end;
 
-    done := false;
     p := 0;
     repeat
       if board[ p ] = pieceBlank then
@@ -127,24 +126,27 @@ begin
         score := minmax( alpha, beta, depth + 1 );
         board[ p ] := pieceBlank;
 
-        if ( 0 <> ( depth and 1 ) ) then
+        if Odd( depth ) then
         begin
-          if ( score > value ) then value := score;
-          if ( value > alpha ) then alpha := value;
-          if ( alpha >= beta ) or ( value = scoreWin ) then
-            done := true;
+          if ( score > value ) then
+          begin
+            value := score;
+            if ( value = scoreWin ) or ( value >= beta ) then p := 10
+            else if ( value > alpha ) then alpha := value;
+          end;
         end
         else
         begin
-          if ( score < value ) then value := score;
-          if ( value < beta ) then beta := value;
-          if ( beta <= alpha ) or ( value = scoreLose ) then
-            done := true;
+          if ( score < value ) then
+          begin
+            value := score;
+            if ( value = scoreLose ) or ( value <= alpha ) then p := 10
+            else if ( value < beta ) then beta := value;
+          end;
         end;
       end;
       p := p + 1;
-      if p > 8 then done := true;
-    until done;
+    until p > 8;
   end;
 
   minmax := value;
