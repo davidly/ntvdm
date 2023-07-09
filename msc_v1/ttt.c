@@ -304,7 +304,7 @@ int MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; tty
 
 int FindSolution( position ) ttype position;
 {
-    ttype i;
+    int i;
 
     for ( i = 0; i < 9; i++ )
         g_board[ i ] = PieceBlank;
