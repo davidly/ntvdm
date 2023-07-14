@@ -273,6 +273,8 @@ struct DosFindFile
 
 static void usage( char const * perr )
 {
+    g_consoleConfig.RestoreConsole( false );
+
     if ( perr )
         printf( "error: %s\n", perr );
 
@@ -304,7 +306,7 @@ static void usage( char const * perr )
     printf( "      %s s:\\github\\MS-DOS\\v2.0\\bin\\masm small,,,small\n", g_thisApp );
     printf( "      %s s:\\github\\MS-DOS\\v2.0\\bin\\link small,,,small\n", g_thisApp );
     printf( "      %s -t b -k myfile.asm\n", g_thisApp );
-    printf( "  built for %s %s on %s, by %s on %s\n", target_platform(), build_type(), __TIMESTAMP__, compiler_used(), build_platform() );
+    printf( "  %s\n", build_string() );
     exit( 1 );
 } //usage
 
@@ -1722,6 +1724,8 @@ void i8086_hard_exit( const char * pcerror, uint8_t arg )
 
     tracer.Trace( pcerror, arg );
     printf( pcerror, arg );
+    tracer.Trace( "  %s\n", build_string() );
+    printf( "  %s\n", build_string() );
 
     exit( 1 );
 } //i8086_hard_exit

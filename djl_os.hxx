@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdio.h>
 #include <time.h>
 
 #ifdef _MSC_VER
@@ -140,6 +141,8 @@ inline const char * target_platform()
         return "amd64";
     #elif defined( _M_ARM64 )     // msft on Windows
         return "arm64";
+    #elif defined( _MSC_VER )     // msft on Windows 32-bit
+        return "x86";
     #endif
 
     return "(other)";
@@ -156,10 +159,13 @@ inline const char * build_type()
 
 inline const char * compiler_used()
 {
+    static char acver[ 100 ];
+
     #if defined( __GNUC__ )
         return "g++";
     #elif defined( _MSC_VER )
-        return "msft C++";
+        sprintf( acver, "msft C++ ver %u", _MSC_VER );
+        return acver;
     #elif defined( __clang__ )
         return "clang";
     #endif
@@ -180,4 +186,10 @@ inline const char * build_platform()
     return "unknown";
 } //build_platform
 
+inline const char * build_string()
+{
+    static char bs[ 100 ];
+    sprintf( bs, "built for %s %s on %s by %s on %s\n", target_platform(), build_type(), __TIMESTAMP__, compiler_used(), build_platform() );
+    return bs;
+} //build_string
 
