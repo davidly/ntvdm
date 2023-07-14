@@ -49,7 +49,8 @@ bool i8086::external_interrupt( uint8_t interrupt_num )
 
 void i8086::trace_state()
 {
-//    tracer.Trace( "chk " ); tracer.TraceBinaryData( memory + flatten( 0x63da, 0x0c5e ), 2, 0 );
+//    tracer.Trace( "es: [di+8] 309c: [8] " ); tracer.TraceBinaryData( memory + flatten( 0x309c, 8 ), 2, 0 );
+//    tracer.Trace( "bp-2 1f13:ad04-2 " ); tracer.TraceBinaryData( memory + flatten( 0x1f13, 0xad04 - 2 ), 2, 0 );
 //    tracer.Trace( "x594 + 24: " ); tracer.TraceBinaryData( memory + flatten( 0x3c9b, 0x594 + 24 ), 4, 0 );
 //    tracer.TraceBinaryData( memory + flatten( 0, 4 * 0x1c ), 4, 0 );
 
@@ -115,8 +116,6 @@ void i8086::update_rep_sidi8()
 uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 {
     // com == ones-complement
-    uint8_t l_nibble = lhs & 0xf;
-    uint8_t r_nibble = rhs & 0xf;
     uint8_t com_rhs = ~rhs;
     uint8_t borrow_int = borrow ? 0 : 1;
     uint16_t res16 =  (uint16_t) lhs + (uint16_t) com_rhs + (uint16_t) borrow_int;
@@ -126,6 +125,8 @@ uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 
     // if not ( ( one of lhs and com_x are negative ) and ( one of lhs and result are negative ) )
     fOverflow = ! ( ( lhs ^ com_rhs ) & 0x80 ) && ( ( lhs ^ res8 ) & 0x80 );
+    uint8_t l_nibble = lhs & 0xf;
+    uint8_t r_nibble = rhs & 0xf;
     fAuxCarry = ( 0 != ( ( l_nibble - r_nibble - ( borrow ? 1 : 0 ) ) & ~0xf ) );
     return res8;
 } //op_sub8
@@ -133,8 +134,6 @@ uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
 {
     // com == ones-complement
-    uint8_t l_nibble = lhs & 0xf;
-    uint8_t r_nibble = rhs & 0xf;
     uint16_t com_rhs = ~rhs;
     uint16_t borrow_int = borrow ? 0 : 1;
     uint32_t res32 =  (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) borrow_int;
@@ -142,6 +141,8 @@ uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
     fCarry = ( 0 == ( res32 & 0x10000 ) );
     set_PSZ16( res16 );
     fOverflow = ( ! ( ( lhs ^ com_rhs ) & 0x8000 ) ) && ( ( lhs ^ res16 ) & 0x8000 );
+    uint8_t l_nibble = lhs & 0xf;
+    uint8_t r_nibble = rhs & 0xf;
     fAuxCarry = ( 0 != ( ( l_nibble - r_nibble - ( borrow ? 1 : 0 ) ) & ~0xf ) );
     return res16;
 } //op_sub16
@@ -303,7 +304,8 @@ void i8086::op_rol16( uint16_t * pval, uint8_t shift )
         fCarry = highBit;
     }
 
-//    if ( 1 == shift )
+    // Overflow only defined for 1-bit shifts, but actual hardware and emulators do this
+    //if ( 1 == shift )
         fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ fCarry );
 
     *pval = val;
@@ -326,11 +328,11 @@ void i8086::op_ror16( uint16_t * pval, uint8_t shift )
         fCarry = lowBit;
     }
 
-    // Overflow only defined for 1-bit shifts
-//    if ( 1 == shift )
+    // Overflow only defined for 1-bit shifts, but actual hardware and emulators do this
+    //if ( 1 == shift )
         fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ ( 0 != ( val & 0x4000 ) ) );
-//    else
-//        fOverflow = true;
+    //else
+    //    fOverflow = true;
 
     *pval = val;
 } //ror16
@@ -669,7 +671,7 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
     }
 } //op_rotate16
 
-void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
+not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
 {
     if ( g_State & stateTraceInstructions )
         tracer.Trace( "op_interrupt num %#x, length %d\n", interrupt_num, instruction_length );
@@ -688,35 +690,122 @@ void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
     cs = vectorItem[ 1 ];
 } //op_interrupt
 
+not_inlined void i8086::op_daa()
+{
+    uint8_t old_al = al();
+    bool oldCarry = fCarry;
+    fCarry = false;
+
+    if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
+    {
+        fCarry = oldCarry || ( al() > 9 );
+        set_al( al() + 6 );
+        fAuxCarry = true;
+    }
+    else
+        fAuxCarry = false;
+
+    if ( ( old_al > 0x99 ) || oldCarry )
+    {
+        set_al( al() + 0x60 );
+        fCarry = true;
+    }
+    else
+        fCarry = false;
+
+    set_PSZ8( al() );
+} //op_daa
+
+not_inlined void i8086::op_das()
+{
+    uint8_t old_al = al();
+    bool oldCarry = fCarry;
+    fCarry = false;
+    if ( ( ( al() & 0xf ) > 9 ) || ( fAuxCarry ) )
+    {
+        fCarry = ( oldCarry || ( al() < 6 ) );
+        set_al( al() - 6 );
+        fAuxCarry = true;
+    }
+    else
+        fAuxCarry = false;
+
+    if ( ( old_al > 0x99 ) || ( oldCarry ) )
+    {
+        set_al( al() - 0x60 );
+        fCarry = true;
+    }
+    set_PSZ8( al() );
+} //op_das
+
+not_inlined void i8086::op_aas()
+{
+    if ( ( ( al() & 0x0f ) > 0 ) || fAuxCarry )
+    {
+        ax = ax - 6;
+        set_ah( ah() - 1 );
+        fAuxCarry = 1;
+        fCarry = 1;
+        set_al( al() & 0x0f );
+    }
+    else
+    {
+        fAuxCarry = false;
+        fCarry = false;
+        set_al( al() & 0x0f );
+    }
+} //op_aas
+
+not_inlined void i8086::op_aaa()
+{
+    if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
+    {
+        ax = ax + 0x106;
+        fAuxCarry = true;
+        fCarry = true;
+    }
+    else
+    {
+        fAuxCarry = false;
+        fCarry = false;
+    }
+
+    set_al( al() & 0x0f );
+} //op_aaa
+
+not_inlined bool i8086::handle_state()
+{
+    if ( g_State & stateEndEmulation )
+    {
+        g_State &= ~stateEndEmulation;
+        return true;
+    }
+
+    if ( ( g_State & stateExitEmulateEarly ) &&
+         ( 0xff == prefix_segment_override ) &&    // wait until there is no prefix to exit
+         ( 0xff == prefix_repeat_opcode ) )
+    {
+        g_State &= ~stateExitEmulateEarly;
+        return true;
+    }
+
+    if ( g_State & stateTraceInstructions )
+        trace_state();
+    return false;
+} //handle_state
+
 uint64_t i8086::emulate( uint64_t maxcycles )
 {
     uint64_t cycles = 0;
     do 
     {
-        prefix_segment_override = 0xff;                    // .66% of runtime
+        prefix_segment_override = 0xff;                    // .66% of runtime though both are updated at once
         prefix_repeat_opcode = 0xff;
 
 _after_prefix:
         if ( 0 != g_State )                                // 2.8% of runtime
-        {
-            if ( g_State & stateEndEmulation )
-            {
-                g_State &= ~stateEndEmulation;
+            if ( handle_state() )
                 break;
-            }
-
-            if ( ( g_State & stateExitEmulateEarly ) &&
-                 ( 0xff == prefix_segment_override ) &&    // wait until there is no prefix to exit
-                 ( 0xff == prefix_repeat_opcode ) )
-            {
-                //tracer.Trace( "exiting emulate() early\n" );
-                g_State &= ~stateExitEmulateEarly;
-                break;
-            }
-
-            if ( g_State & stateTraceInstructions )
-                trace_state();
-        }
 
         assert( 0 != cs || 0 != ip );                      // almost certainly an app bug.
         decode_instruction( memptr( flat_ip() ) );         // 29 % of runtime
@@ -726,8 +815,6 @@ _after_prefix:
         #else
             cycles += 18; // average for the mips.com benchmark
         #endif
-
-        bool handled = true;
 
         switch( _b0 )                                      // 21.2% of runtime setting up for jumptable
         {
@@ -749,98 +836,19 @@ _after_prefix:
             case 0x24: { _bc++; set_al( op_and8( al(), _b1 ) ); break; } // and al, immed8
             case 0x25: { _bc += 2; ax = op_and16( ax, b12() ); break; } // and ax, immed16
             case 0x26: { prefix_segment_override = 0; ip++; goto _after_prefix; } // es segment override
-            case 0x27: // daa
-            {
-                uint8_t old_al = al();
-                bool oldCarry = fCarry;
-                fCarry = false;
-
-                if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
-                {
-                    fCarry = oldCarry || ( al() > 9 );
-                    set_al( al() + 6 );
-                    fAuxCarry = true;
-                }
-                else
-                    fAuxCarry = false;
-
-                if ( ( old_al > 0x99 ) || oldCarry )
-                {
-                    set_al( al() + 0x60 );
-                    fCarry = true;
-                }
-                else
-                    fCarry = false;
-
-                set_PSZ8( al() );
-                break;
-            }
+            case 0x27: { op_daa(); break; } // daa
             case 0x2c: { _bc++; set_al( op_sub8( al(), _b1 ) ); break; } // sub al, immed8
             case 0x2d: { _bc += 2; ax = op_sub16( ax, b12() ); break; } // sub ax, immed16
             case 0x2e: { prefix_segment_override = 1; ip++; goto _after_prefix; } // cs segment override
-            case 0x2f: // das
-            {
-                uint8_t old_al = al();
-                bool oldCarry = fCarry;
-                fCarry = false;
-                if ( ( ( al() & 0xf ) > 9 ) || ( fAuxCarry ) )
-                {
-                    fCarry = ( oldCarry || ( al() < 6 ) );
-                    set_al( al() - 6 );
-                    fAuxCarry = true;
-                }
-                else
-                    fAuxCarry = false;
-
-                if ( ( old_al > 0x99 ) || ( oldCarry ) )
-                {
-                    set_al( al() - 0x60 );
-                    fCarry = true;
-                }
-                set_PSZ8( al() );
-                break;
-            }
+            case 0x2f: { op_das(); break; } // das
             case 0x34: { _bc++; set_al( op_xor8( al(), _b1 ) ); break; } // xor al, immed8
             case 0x35: { _bc += 2; ax = op_xor16( ax, b12() ); break; } // xor ax, immed16
             case 0x36: { prefix_segment_override = 2; ip++; goto _after_prefix; } // ss segment override
-            case 0x37: // aaa. ascii adjust after addition
-            {
-                if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
-                {
-                    ax = ax + 0x106;
-                    fAuxCarry = true;
-                    fCarry = true;
-                }
-                else
-                {
-                    fAuxCarry = false;
-                    fCarry = false;
-                }
-
-                set_al( al() & 0x0f );
-                break;
-            }
+            case 0x37: { op_aaa(); break; } // aaa. ascii adjust after addition
             case 0x3c: { _bc++; op_sub8( al(), _b1 ); break; } // cmp al, i8
             case 0x3d: { _bc += 2; op_sub16( ax, b12() ); break; } // cmp ax, i16
             case 0x3e: { prefix_segment_override = 3; ip++; goto _after_prefix; } // ds segment override
-            case 0x3f: // aas. ascii adjust al after subtraction
-            {
-                if ( ( ( al() & 0x0f ) > 0 ) || fAuxCarry )
-                {
-                    ax = ax - 6;
-                    set_ah( ah() - 1 );
-                    fAuxCarry = 1;
-                    fCarry = 1;
-                    set_al( al() & 0x0f );
-                }
-                else
-                {
-                    fAuxCarry = false;
-                    fCarry = false;
-                    set_al( al() & 0x0f );
-                }
-                break;
-            }
+            case 0x3f: { op_aas(); break; } // aas. ascii adjust al after subtraction
             case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt
             {
                 _bc++;
@@ -1621,10 +1629,7 @@ _after_prefix:
                     }
                 }
                 else
-                {
-                    printf( "_reg math not implemented: %d\n", _reg );
                     assert( false );
-                }
 
                 break;
             }
@@ -1708,160 +1713,152 @@ _after_prefix:
                 break;
             }
             default:
-                handled = false;
-        }
-
-        if ( !handled )
-        {
-            handled = true;
-
-            if ( _b0 >= 0x40 && _b0 <= 0x47 ) // inc ax..di
             {
-                uint16_t *pval = get_preg16( _b0 - 0x40 );
-                *pval = op_inc16( *pval );
-            }
-            else if ( _b0 >= 0x48 && _b0 <= 0x4f ) // dec ax..di
-            {
-                uint16_t *pval = get_preg16( _b0 - 0x40 );
-                *pval = op_dec16( *pval );
-            }
-            else if ( _b0 >= 0x50 && _b0 <= 0x5f ) // push / pop
-            {
-                uint16_t * preg = get_preg16( _b0 & 7 );
-                if ( _b0 <= 0x57 )
-                    push( *preg );
-                else 
-                    *preg = pop();
-            }
-            else if ( _b0 >= 0x70 && _b0 <= 0x7f ) // jcc
-            {
-                _bc = 2;
-                uint8_t jmp = _b0 & 0xf;
-                bool takejmp = false;
-
-                switch( jmp )
+                if ( _b0 >= 0x40 && _b0 <= 0x47 ) // inc ax..di
                 {
-                    case 0:  takejmp = fOverflow; break;                         // jo
-                    case 1:  takejmp = !fOverflow; break;                        // jno
-                    case 2:  takejmp = fCarry; break;                            // jb / jnae / jc
-                    case 3:  takejmp = !fCarry; break;                           // jnb / jae / jnc
-                    case 4:  takejmp = fZero; break;                             // je / jz
-                    case 5:  takejmp = !fZero; break;                            // jne / jnz
-                    case 6:  takejmp = fCarry || fZero; break;                   // jbe / jna
-                    case 7:  takejmp = !fCarry && !fZero; break;                 // jnbe / ja
-                    case 8:  takejmp = fSign; break;                             // js
-                    case 9:  takejmp = !fSign; break;                            // jns
-                    case 10: takejmp = fParityEven; break;                       // jp / jpe
-                    case 11: takejmp = !fParityEven; break;                      // jnp / jpo
-                    case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge
-                    case 13: takejmp = ( fSign == fOverflow ); break;            // jnl / jge
-                    case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng
-                    case 15: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg
+                    uint16_t *pval = get_preg16( _b0 - 0x40 );
+                    *pval = op_inc16( *pval );
                 }
-
-                if ( takejmp )
+                else if ( _b0 >= 0x48 && _b0 <= 0x4f ) // dec ax..di
                 {
-                    ip += ( 2 + (int) (int8_t) _b1 );
-                    AddCycles( cycles, 12 );
-                    goto _trap_check;
+                    uint16_t *pval = get_preg16( _b0 - 0x40 );
+                    *pval = op_dec16( *pval );
                 }
-            }
-            else if ( _b0 >= 0xb0 && _b0 <= 0xbf ) // mov r, immed
-            {
-                if ( _b0 <= 0xb7 )
+                else if ( _b0 >= 0x50 && _b0 <= 0x5f ) // push / pop
                 {
-                    * get_preg8( _b0 & 7 ) = _b1;
+                    uint16_t * preg = get_preg16( _b0 & 7 );
+                    if ( _b0 <= 0x57 )
+                        push( *preg );
+                    else 
+                        *preg = pop();
+                }
+                else if ( _b0 >= 0x70 && _b0 <= 0x7f ) // jcc
+                {
                     _bc = 2;
+                    uint8_t jmp = _b0 & 0xf;
+                    bool takejmp = false;
+    
+                    switch( jmp )
+                    {
+                        case 0:  takejmp = fOverflow; break;                         // jo
+                        case 1:  takejmp = !fOverflow; break;                        // jno
+                        case 2:  takejmp = fCarry; break;                            // jb / jnae / jc
+                        case 3:  takejmp = !fCarry; break;                           // jnb / jae / jnc
+                        case 4:  takejmp = fZero; break;                             // je / jz
+                        case 5:  takejmp = !fZero; break;                            // jne / jnz
+                        case 6:  takejmp = fCarry || fZero; break;                   // jbe / jna
+                        case 7:  takejmp = !fCarry && !fZero; break;                 // jnbe / ja
+                        case 8:  takejmp = fSign; break;                             // js
+                        case 9:  takejmp = !fSign; break;                            // jns
+                        case 10: takejmp = fParityEven; break;                       // jp / jpe
+                        case 11: takejmp = !fParityEven; break;                      // jnp / jpo
+                        case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge
+                        case 13: takejmp = ( fSign == fOverflow ); break;            // jnl / jge
+                        case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng
+                        case 15: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg
+                    }
+    
+                    if ( takejmp )
+                    {
+                        ip += ( 2 + (int) (int8_t) _b1 );
+                        AddCycles( cycles, 12 );
+                        goto _trap_check;
+                    }
+                }
+                else if ( _b0 >= 0xb0 && _b0 <= 0xbf ) // mov r, immed
+                {
+                    if ( _b0 <= 0xb7 )
+                    {
+                        * get_preg8( _b0 & 7 ) = _b1;
+                        _bc = 2;
+                    }
+                    else
+                    {
+                        * get_preg16( 8 + ( _b0 & 7 ) ) = b12();
+                        _bc = 3;
+                    }
+                }
+                else if ( _b0 >= 0x91 && _b0 <= 0x97 ) // xchg ax, cx/dx/bx/sp/bp/si/di  0x90 is nop
+                {
+                    uint16_t * preg = get_preg16( _b0 & 7 );
+                    swap( ax, * preg );
+                }
+                else if ( _b0 >= 0xd8 && _b0 <= 0xde ) // esc (8087 instructions)
+                {
+                    _bc++;
+                    void * p = get_rm_ptr( _rm, cycles );
+                    // ignore p -- just consume the correct number of opcodes
                 }
                 else
                 {
-                    * get_preg16( 8 + ( _b0 & 7 ) ) = b12();
-                    _bc = 3;
-                }
-            }
-            else if ( _b0 >= 0x91 && _b0 <= 0x97 ) // xchg ax, cx/dx/bx/sp/bp/si/di  0x90 is nop
-            {
-                uint16_t * preg = get_preg16( _b0 & 7 );
-                swap( ax, * preg );
-            }
-            else if ( _b0 >= 0xd8 && _b0 <= 0xde ) // esc (8087 instructions)
-            {
-                _bc++;
-                void * p = get_rm_ptr( _rm, cycles );
-                // ignore p -- just consume the correct number of opcodes
-            }
-            else
-                handled = false;
-        }
-
-        if ( !handled )
-        {
-            uint8_t top6 = _b0 & 0xfc;
-            _bc = 2;
-
-            switch( top6 )
-            {
-                case 0x00: // add
-                case 0x08: // or
-                case 0x10: // adc
-                case 0x18: // sbb
-                case 0x20: // and
-                case 0x28: // sub
-                case 0x30: // xor
-                case 0x38: // cmp
-                {
-                    AddMemCycles( cycles, 10 );
-                    uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
-                    if ( _isword )
-                        do_math16( bits5to3, (uint16_t *) pdst, src );
-                    else
-                        do_math8( bits5to3, (uint8_t *) pdst, (uint8_t) src );
-                    break;
-                }
-                case 0x80: // math
-                {
-                    uint8_t math = _reg; // the _reg field is the math operator, not a register
-                    _bc++;
-
-                    bool directAddress = ( 0 == _mod && 6 == _rm );
-                    int immoffset = 2;
-                    if ( 1 == _mod )
-                        immoffset += 1;
-                    else if ( 2 == _mod || directAddress )
-                        immoffset += 2;
-
-                    AddCycles( cycles, directAddress ? 13 : 6 );
-
-                    if ( _isword )
+                    uint8_t top6 = _b0 & 0xfc;
+                    _bc = 2;
+        
+                    switch( top6 )
                     {
-                        uint16_t rhs;
-                        if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
-                            rhs = (int8_t) _pcode[ immoffset ]; // cast for sign extension from byte to word
-                        else
+                        case 0x00: // add
+                        case 0x08: // or
+                        case 0x10: // adc
+                        case 0x18: // sbb
+                        case 0x20: // and
+                        case 0x28: // sub
+                        case 0x30: // xor
+                        case 0x38: // cmp
                         {
-                            _bc++;
-                            rhs = (uint16_t) _pcode[ immoffset ] + ( (uint16_t) ( _pcode[ 1 + immoffset ] ) << 8 );
+                            AddMemCycles( cycles, 10 );
+                            uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
+                            uint16_t src;
+                            void * pdst = get_op_args( true, src, cycles );
+                            if ( _isword )
+                                do_math16( bits5to3, (uint16_t *) pdst, src );
+                            else
+                                do_math8( bits5to3, (uint8_t *) pdst, (uint8_t) src );
+                            break;
                         }
-
-                        do_math16( math, get_rm16_ptr( cycles ), rhs );
+                        case 0x80: // math
+                        {
+                            uint8_t math = _reg; // the _reg field is the math operator, not a register
+                            _bc++;
+        
+                            bool directAddress = ( 0 == _mod && 6 == _rm );
+                            int immoffset = 2;
+                            if ( 1 == _mod )
+                                immoffset += 1;
+                            else if ( 2 == _mod || directAddress )
+                                immoffset += 2;
+        
+                            AddCycles( cycles, directAddress ? 13 : 6 );
+        
+                            if ( _isword )
+                            {
+                                uint16_t rhs;
+                                if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
+                                    rhs = (int8_t) _pcode[ immoffset ]; // cast for sign extension from byte to word
+                                else
+                                {
+                                    _bc++;
+                                    rhs = (uint16_t) _pcode[ immoffset ] + ( (uint16_t) ( _pcode[ 1 + immoffset ] ) << 8 );
+                                }
+        
+                                do_math16( math, get_rm16_ptr( cycles ), rhs );
+                            }
+                            else
+                            {
+                                uint8_t rhs = _pcode[ immoffset ];
+                                do_math8( math, get_rm8_ptr( cycles ), rhs );
+                            }
+                            break;
+                        }
+                        default:
+                            i8086_hard_exit( "unhandled instruction %02x\n", _b0 );
                     }
-                    else
-                    {
-                        uint8_t rhs = _pcode[ immoffset ];
-                        do_math8( math, get_rm8_ptr( cycles ), rhs );
-                    }
-                    break;
                 }
-                default:
-                    i8086_hard_exit( "unhandled instruction %02x\n", _b0 );
             }
         }
-
+  
         ip += _bc;                                         // 4.4% of runtime
 
-_trap_check:  // jump here from the switch instead of 'break' if ip was set by the instruction (jmp, call, ret, etc.)
+_trap_check:  // jump here from the switch instead of 'break' if ip was set by the instruction (jmp, call, iret, ret, etc.)
         if ( fTrap )                                       // 2.9% of runtime. ouch
             op_interrupt( 1, 0 );
     } while ( cycles < maxcycles );                        // .91% of runtime

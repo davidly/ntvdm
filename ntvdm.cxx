@@ -298,17 +298,13 @@ static void usage( char const * perr )
     printf( "                     /z:3000  2 efficiency cores on an i7-1280P\n" );
     printf( "                     /z:11    2 random good cores on a 5950x\n" );
     printf( " [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command\n" );
-
-#ifndef NDEBUG
-    printf( "(debug build)\n" );
-#endif
-
     printf( "  examples:\n" );
     printf( "      %s -c -t app.com foo bar\n", g_thisApp );
     printf( "      %s turbo.com\n", g_thisApp );
     printf( "      %s s:\\github\\MS-DOS\\v2.0\\bin\\masm small,,,small\n", g_thisApp );
     printf( "      %s s:\\github\\MS-DOS\\v2.0\\bin\\link small,,,small\n", g_thisApp );
     printf( "      %s -t b -k myfile.asm\n", g_thisApp );
+    printf( "  built for %s %s on %s, by %s on %s\n", target_platform(), build_type(), __TIMESTAMP__, compiler_used(), build_platform() );
     exit( 1 );
 } //usage
 
@@ -5318,7 +5314,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     uint8_t len = (uint8_t) strlen( acAppArgs );
     psp->countCommandTail = len;
     strcpy( (char *) psp->commandTail, acAppArgs );
-    psp->commandTail[ len + 1 ] = 0x0d;
+    psp->commandTail[ len ] = 0x0d;       // DOS has 0x0d at the end of the command tail, not a null
     psp->segEnvironment = segEnvironment;
 
     psp->Trace();
@@ -5335,14 +5331,14 @@ bool IsBinaryCOM( const char * app )
         tracer.Trace( "  checking if '%s' is actually a .exe\n", app );
         FILE * fp = fopen( app, "rb" );
         if ( !fp )
-            return false;
+            return true;
 
         char ac[2];
         bool ok = ( 0 != fread( ac, _countof( ac ), 1, fp ) );
         fclose( fp );
 
         if ( !ok )
-            return false;
+            return true;
 
         isCOM = ! ( 'M' == ac[0] && 'Z' == ac[1] );
     }
@@ -5380,8 +5376,6 @@ uint16_t LoadOverlay( const char * app, uint16_t segCode, uint16_t segRelocation
     }
     else // EXE
     {
-        // Apps own all free memory by default. They can realloc this to free space for other allocations
-
         FILE * fp = fopen( app, "rb" );
         if ( 0 == fp )
         {

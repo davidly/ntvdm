@@ -212,6 +212,28 @@ struct i8086
         return prmb;
     } //get_rm8_ptr
 
+    uint8_t * memptr( uint32_t address ) { return memory + address; }
+
+    uint32_t flatten( uint16_t seg, uint16_t offset )
+    {
+        #ifdef NDEBUG
+            return ( ( (uint32_t) seg ) << 4 ) + offset;
+        #else
+            uint32_t flat = ( ( (uint32_t) seg ) << 4 ) + offset;
+            //if ( flat < 0x600 )
+            //    tracer.Trace( "referencing low-memory %#x\n", flat );
+            if ( flat < 0xa00 )
+                tracer.Trace( "referencing lowish-memory %#x\n", flat );
+            if ( flat >= 0xb8000 && flat < 0xb8fa0 )
+                tracer.Trace( "referencing cga-memory page 0 %#x row %d column %d\n", flat, (flat - 0xb8000) / 160, ( (flat - 0xb8000) % 160 ) / 2 );
+            //if ( flat >= 0xb8fa0 && flat < 0xbbe80 )
+            //    tracer.Trace( "referencing cga-memory page 1 %#x\n", flat );
+            if ( flat >= 0xbbe80 )
+                tracer.Trace( "referencing high-memory %#x\n", flat );
+            return flat;
+        #endif
+    } //flatten
+
     uint16_t get_displacement( uint8_t rm, uint64_t & cycles )
     {
         assert( rm <= 7 );
@@ -236,7 +258,7 @@ struct i8086
             return * seg_reg( prefix_segment_override );
         }
 
-        if ( 2 == rm || 3 == rm || 6 == rm ) // bp defaults to ss. see the function directly above for more.
+        if ( 2 == rm || 3 == rm || 6 == rm ) // bp defaults to ss. see get_displacement() 2/3/6 use bp
             return ss;
 
         return ds;
@@ -381,16 +403,6 @@ struct i8086
         return acflags;
     } //render_flags
 
-    uint8_t * memptr( uint32_t address ) { return memory + address; }
-    uint32_t flatten( uint16_t seg, uint16_t offset )
-    {
-        uint32_t flat = ( ( (uint32_t) seg ) << 4 ) + offset;
-        //if ( flat < 0x600 )
-        //    tracer.Trace( "referencing low-memory %#x\n", flat );
-        //if ( flat >= 0xb8000 && flat < 0xeffff )
-        //    tracer.Trace( "referencing cga-memory %#x\n", flat );
-        return flat;
-    }
     uint32_t flat_ip() { return flatten( cs, ip ); }
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
     uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) ( memory + flatten( seg, offset ) ); }
@@ -430,6 +442,7 @@ struct i8086
                       _mod, _reg, _rm, _isword, toreg(), prefix_segment_override );
     }
 
+    bool handle_state();
     void do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs );
     void do_math16( uint8_t math, uint16_t * psrc, uint16_t rhs );
     uint8_t op_sub8( uint8_t lhs, uint8_t rhs, bool borrow = false );
@@ -477,6 +490,10 @@ struct i8086
     void op_interrupt( uint8_t interrupt_num, uint8_t instruction_length );
     void op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount );
     void op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount );
+    void op_daa();
+    void op_das();
+    void op_aas();
+    void op_aaa();
 
     #ifdef I8086_TRACK_CYCLES
         void AddCycles( uint64_t & cycles, uint8_t amount ) { cycles += amount; }

@@ -208,7 +208,7 @@ char LookForWinner()
 
 long g_Moves = 0;
 
-int MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; ttype move;
+ttype MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; ttype move;
 {
     ttype value, p, score;
     char pieceMove;

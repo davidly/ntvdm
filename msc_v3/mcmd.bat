@@ -9,7 +9,7 @@ if %ERRORLEVEL% NEQ 0 goto alldone
 
 rem wow this is a hack, but it works
 ren command.exe command.com
-ntvdm -t command
+rem ntvdm -t command
 
 :alldone
 
