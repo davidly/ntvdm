@@ -113,7 +113,7 @@ void i8086::update_rep_sidi8()
     update_index8( di );
 } //update_rep_sidi8
 
-uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
+force_inlined uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 {
     // com == ones-complement
     uint8_t com_rhs = ~rhs;
@@ -131,7 +131,7 @@ uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
     return res8;
 } //op_sub8
 
-uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
+force_inlined uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
 {
     // com == ones-complement
     uint16_t com_rhs = ~rhs;
@@ -147,7 +147,7 @@ uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
     return res16;
 } //op_sub16
 
-uint16_t i8086::op_add16( uint16_t lhs, uint16_t rhs, bool carry )
+force_inlined uint16_t i8086::op_add16( uint16_t lhs, uint16_t rhs, bool carry )
 {
     uint32_t carry_int = carry ? 1 : 0;
     uint32_t r32 = (uint32_t) lhs + (uint32_t) rhs + carry_int;
@@ -159,7 +159,7 @@ uint16_t i8086::op_add16( uint16_t lhs, uint16_t rhs, bool carry )
     return r16;
 } //op_add16
 
-uint8_t i8086::op_add8( uint8_t lhs, uint8_t rhs, bool carry )
+force_inlined uint8_t i8086::op_add8( uint8_t lhs, uint8_t rhs, bool carry )
 {
     uint16_t carry_int = carry ? 1 : 0;
     uint16_t r16 = (uint16_t) lhs + (uint16_t) rhs + carry_int;
@@ -219,7 +219,7 @@ uint8_t i8086::op_xor8( uint8_t lhs, uint8_t rhs )
     return lhs;
 } //op_xor8
 
-void i8086::do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs )
+force_inlined void i8086::do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs )
 {
     assert( math <= 7 );
     switch ( math )
@@ -235,7 +235,7 @@ void i8086::do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs )
     }
 } //do_math8
 
-void i8086::do_math16( uint8_t math, uint16_t * psrc, uint16_t rhs )
+force_inlined void i8086::do_math16( uint8_t math, uint16_t * psrc, uint16_t rhs )
 {
     assert( math <= 7 );
     switch( math )

@@ -18,6 +18,7 @@
     #include <intrin.h>
 
     #define not_inlined __declspec(noinline)
+    #define force_inlined __forceinline
 
     inline void sleep_ms( uint64_t ms ) { SleepEx( (DWORD) ms, FALSE ); }
 
@@ -45,7 +46,8 @@
     #include <unistd.h>
     #include <ctype.h>
 
-    #define not_inlined
+    #define not_inlined noinline
+    #define force_inlined inline
 
     inline void bump_thread_priority() {}
 
