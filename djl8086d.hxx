@@ -64,7 +64,7 @@ class CDisassemble8086
         const char * i_opMath[8];  // test/not/neg/mul/div
         const char * i_opMix[8];   // inc/dec/call/jmp
         
-        const char * getrm( uint8_t rm_to_use, int immediateOffset = 0 )
+        const char * getrm( uint8_t rm_to_use )
         {
             //tracer.TraceQuiet( "{rm_to_use %#x, isword %d, mod %#x}", rm_to_use, _isword, _mod );
             static char acOut[80];
@@ -80,7 +80,7 @@ class CDisassemble8086
             {
                 if ( 0x6 == rm_to_use )
                 {
-                    _daa( "[%04xh]", (uint32_t) _pcode[ 2 + immediateOffset ] + ( (uint32_t) _pcode[ 3 + immediateOffset ] << 8 ) );
+                    _daa( "[%04xh]", _b23 );
                     _bc += 2;
                 }
                 else
@@ -94,7 +94,7 @@ class CDisassemble8086
             }
             else if ( 2 == _mod )
             {
-                _daa( "[%s+%04xh]", rm_strings[ rm_to_use ], _pcode[2] + ( (uint32_t) _pcode[3] << 8 ) );
+                _daa( "[%s+%04xh]", rm_strings[ rm_to_use ], _b23 );
                 _bc += 2;
             }
         
