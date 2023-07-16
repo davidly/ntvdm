@@ -80,7 +80,7 @@ uint16_t round_up_to( uint16_t x, uint16_t multiple )
 
 // machine code for various interrupts. generated with mint.bat. 
 uint64_t int16_0_code[] = { 
-0x01b4c08e0040b806, 0x1a068326fa741669, 0x3e001a3e83260200, 0x1e001a06c726077c, 0x0000000000cb0700, 
+0x01b4c08e0040b806, 0x068326fafa741669, 0x001a3e832602001a, 0x001a06c726077c3e, 0x000000cb07fb001e, 
 }; 
 uint64_t int21_8_code[] = { 
 0x00cb08b416cd00b4, 
@@ -602,6 +602,7 @@ void reset_mcb_tags()
 {
     // 1) update header with M for non-last and Z for last entries
     // 2) update paras to point to the next MCB, even if that means lying about the actually allocated size
+    // 3) ... unless it's the last (Z) MCB, in which case update paras to reflect reality
 
     for ( size_t i = 0; i < g_allocEntries.size(); i++ )
     {
@@ -609,7 +610,10 @@ void reset_mcb_tags()
         DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( da.segment - 1, 0 );
         
         if ( i == ( g_allocEntries.size() - 1 ) )
+        {
             pmcb->header = 'Z';
+            pmcb->paras = da.para_length - 1; // mcb has user-known-size DosAllocation has actual size
+        }
         else
         {
             pmcb->header = 'M';
@@ -790,13 +794,15 @@ bool FreeMemory( uint16_t segment )
         // Turbo Pascal v5.5 exits a process never create except via int21 0x55, which frees that PSP,
         // which isn't allocated, and the environment blocked it contains (0).
 
-        tracer.Trace( "  ERROR: memory corruption possible; can't find freed segment\n" );
+        tracer.Trace( "  ERROR: memory corruption possible; can't find freed segment %04x\n", segment );
         return false;
     }
 
+    tracer.Trace( "  freeing memory with segment %04x entry %d\n", segment, entry );
     g_allocEntries.erase( g_allocEntries.begin() + entry );
     reset_mcb_tags();
 
+    trace_all_allocations();
     return true;
 } //FreeMemory
 
@@ -4611,10 +4617,11 @@ void handle_int_21( uint8_t c )
             if ( entry == ( cEntries - 1 ) )
                 maxParas = SegmentHardware - g_allocEntries[ entry ].segment;
             else
+            {
                 maxParas = g_allocEntries[ entry + 1 ].segment - g_allocEntries[ entry ].segment;
-
-            if ( 0 != maxParas )
-                maxParas--;        // reserve space for the MCB
+                if ( 0 != maxParas )
+                    maxParas--;        // reserve space for the MCB
+            }
 
             tracer.Trace( "  maximum reallocation paragraphs: %04x, requested size %04x\n", maxParas, cpu.get_bx() );
 
