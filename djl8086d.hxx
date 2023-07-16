@@ -66,9 +66,8 @@ class CDisassemble8086
         
         const char * getrm( uint8_t rm_to_use, int immediateOffset = 0 )
         {
-            static char acOut[80];
-
             //tracer.TraceQuiet( "{rm_to_use %#x, isword %d, mod %#x}", rm_to_use, _isword, _mod );
+            static char acOut[80];
 
             if ( 3 == _mod )
                 return reg_strings[ rm_to_use | ( _isword ? 8 : 0 ) ];
@@ -135,17 +134,11 @@ class CDisassemble8086
                 bool directAddress = ( 0 == _mod && 6 == _rm );
                 bool secondArgReg = ( 3 == _mod );
                 if ( firstArgReg )
-                {
-                    strcpy( ac, reg_strings[ _reg ] );
-                    strcat( ac, ", " );
-                    strcat( ac, getrm( _rm ) );
-                }
+                    sprintf( ac, "%s, %s", reg_strings[ _reg ], getrm( _rm ) );
                 else
                 {
                     sprintf( ac, "%s, ", getrm( secondArgReg ? _reg : _rm ) );
     
-                    // output any immediate data
-            
                     if ( !secondArgReg )
                     {
                         // destination is a memory address, so this must be an immediate
@@ -174,11 +167,7 @@ class CDisassemble8086
                 }
             }
             else
-            {
-                strcpy( ac, getrm( _rm ) );
-                strcat( ac, ", " );
-                strcat( ac, reg_strings[ _reg ] );
-            }
+                sprintf( ac, "%s, %s", getrm( _rm ), reg_strings[ _reg ] );
         
             return ac;
         } //opargs
@@ -259,7 +248,6 @@ class CDisassemble8086
             static char acOut[ 80 ];
             strcpy( acOut, "NYI" );
             DecodeInstruction( pcode );
-            bool handled = true;
 
             //tracer.TraceQuiet( "{reg %#02x, rm %#02x, isword %d, b12 %04xh, mod %#02x}", _reg, _rm, _isword, _b12, _mod );
         
@@ -372,142 +360,131 @@ class CDisassemble8086
                 case 0xfb: _da( "sti    ; (set interrupt flag)" ); break;
                 case 0xfc: _da( "cld    ; (clear direction flag)" ); break;
                 case 0xfd: _da( "std    ; (set direction flag)" ); break;
-                default: handled = false; break;
-            }
-        
-            if ( handled )
-                return acOut;
-        
-            if ( _b0 >= 0x40 && _b0 <= 0x4f )
-            {
-                _da( "%s    %s", ( _b0 <= 0x47 ) ? "inc" : "dec", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
-                return acOut;
-            }
-        
-            if ( _b0 >= 0x50 && _b0 <= 0x5f )
-            {
-                _da( "%s   %s", ( _b0 <= 0x57 ) ? "push" : "pop ", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
-                return acOut;
-            }
-
-            if ( _b0 >= 0x70 && _b0 <= 0x7f )
-            {
-                _bc = 2;
-                _da( "%s    %d", jmp_strings[ _b0 & 0xf ], (int) (char) _b1 );
-                _pcode = 0;
-                return acOut;
-            }
-        
-            if ( _b0 >= 0xb0 && _b0 <= 0xbf )
-            {
-                if ( _b0 <= 0xb7 )
+                default:
                 {
-                    _da( "mov    %s, %02xh", reg_strings[ _b0 & 0x7 ], _b1 );
-                    _bc = 2;
-                }
-                else
-                {
-                    _da( "mov    %s, %04xh", reg_strings[ 8 + ( _b0 & 0x7 ) ], _b12 );
-                    _bc = 3;
-                }
-                return acOut;
-            }
-        
-            if ( _b0 >= 0x91 && _b0 <= 0x97 )
-            {
-                _da( "xchg   ax, %s", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
-                return acOut;
-            }
-
-            if ( _b0 >= 0xd8 && _b0 <= 0xde ) // esc
-            {
-                _bc++;
-                _da( "esc    %s", getrm( _rm ) );
-                return acOut;
-            }
-        
-            uint8_t top6 = _b0 & 0xfc;
-            _bc = 2;
-        
-            switch( top6 )
-            {
-                case 0x00: _da( "add    %s", opargs( true ) ); break;
-                case 0x08: _da( "or     %s", opargs( true ) ); break;
-                case 0x10: _da( "adc    %s", opargs( true ) ); break;
-                case 0x18: _da( "sbb    %s", opargs( true ) ); break;
-                case 0x20: _da( "and    %s", opargs( true ) ); break;
-                case 0x28: _da( "sub    %s", opargs( true ) ); break;
-                case 0x30: _da( "xor    %s", opargs( true ) ); break;
-                case 0x38: _da( "cmp    %s", opargs( true ) ); break;
-                case 0x80: // bitwise/add/sub
-                {
-                    _da( "%s   ", opBits() );
-        
-                    bool directAddress = ( 0 == _mod && 6 == _rm );
-                    int immoffset = 2;
-                    if ( 1 == _mod )
-                        immoffset += 1;
-                    else if ( 2 == _mod || directAddress )
-                        immoffset += 2;
-
-                    if ( _isword )
+                    if ( _b0 >= 0x40 && _b0 <= 0x4f )
+                        _da( "%s    %s", ( _b0 <= 0x47 ) ? "inc" : "dec", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
+                    else if ( _b0 >= 0x50 && _b0 <= 0x5f )
+                        _da( "%s   %s", ( _b0 <= 0x57 ) ? "push" : "pop ", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
+                    else if ( _b0 >= 0x70 && _b0 <= 0x7f )
                     {
-                        _bc++;
-                        _daa( "%s, ", getrm( _rm ) );
-                        if ( 0x83 == _b0 ) // low bit is on, but it's an 8-bit immediate value
-                            _daa( "%02xh", pcode[ immoffset ] );
+                        _bc = 2;
+                        _da( "%s    %d", jmp_strings[ _b0 & 0xf ], (int) (char) _b1 );
+                        _pcode = 0;
+                    }
+                    else if ( _b0 >= 0xb0 && _b0 <= 0xbf )
+                    {
+                        if ( _b0 <= 0xb7 )
+                        {
+                            _da( "mov    %s, %02xh", reg_strings[ _b0 & 0x7 ], _b1 );
+                            _bc = 2;
+                        }
                         else
                         {
-                            _daa( "%04xh", ( (uint32_t) pcode[ immoffset ] + ( pcode[ 1 + immoffset ] << 8 ) ) );
-                            _bc ++;
+                            _da( "mov    %s, %04xh", reg_strings[ 8 + ( _b0 & 0x7 ) ], _b12 );
+                            _bc = 3;
                         }
+                    }
+                    else if ( _b0 >= 0x91 && _b0 <= 0x97 )
+                        _da( "xchg   ax, %s", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
+                    else if ( _b0 >= 0xd8 && _b0 <= 0xde ) // esc
+                    {
+                        _bc++;
+                        _da( "esc    %s", getrm( _rm ) );
                     }
                     else
                     {
-                        _bc += 1;
-                        _daa( "%s, ", getrmAsByte() );
-                        _daa( "%02xh", pcode[ immoffset ] );
-                    }
-                    break;
-                }
-                case 0x88: // mov
-                {
-                    bool firstArgReg = ( 0x8a == _b0 || 0x8b == _b0 );
-                    _da( "mov    %s", opargs( firstArgReg ) );
-                    break;
-                }
-                case 0xd0: // rotates
-                {
-                    _da( "%s    %s", i_opRot[ _reg ], getrm( _rm ) );
-                    _daa( ", %s", _toreg ? "cl" : "1" );
-                    break;
-                }
-                case 0xf4: // mul, imul, div (unsigned), and idiv (signed) have more implicit arguments
-                {
-                     if ( _reg >= 4 && _reg <= 7 ) // mul, imul, div, idiv
-                         _da( "%s   %s", i_opMath[ _reg ], getrm( _rm ) );
-                     else if ( 0 == _reg ) // test instructions f6 and f7
-                     {
-                         _da( "%s   %s, ", i_opMath[ _reg ], getrm( _rm ) );
-                         if ( _isword )
-                         {
-                             uint16_t rhs = pcode[ _bc++ ];
-                             rhs |= ( (uint16_t) ( pcode[ _bc++ ] ) << 8 );
-                             _daa( "%04xh", rhs );
-                         }
-                         else
-                             _daa( "%02xh", pcode[ _bc++ ] );
-                     }
-                     else
-                         _da( "%s   %s", i_opMath[ _reg ], getrm( _rm ) );
-                     break;
-                }
-                case 0xfc: _da( "%s   %s", i_opMix[ _reg ], getrm( _rm ) ); _pcode = 0; break;
-            }
+                        uint8_t top6 = _b0 & 0xfc;
+                        _bc = 2;
+                    
+                        switch( top6 )
+                        {
+                            case 0x00: _da( "add    %s", opargs( true ) ); break;
+                            case 0x08: _da( "or     %s", opargs( true ) ); break;
+                            case 0x10: _da( "adc    %s", opargs( true ) ); break;
+                            case 0x18: _da( "sbb    %s", opargs( true ) ); break;
+                            case 0x20: _da( "and    %s", opargs( true ) ); break;
+                            case 0x28: _da( "sub    %s", opargs( true ) ); break;
+                            case 0x30: _da( "xor    %s", opargs( true ) ); break;
+                            case 0x38: _da( "cmp    %s", opargs( true ) ); break;
+                            case 0x80: // bitwise/add/sub
+                            {
+                                _da( "%s   ", opBits() );
+                    
+                                bool directAddress = ( 0 == _mod && 6 == _rm );
+                                int immoffset = 2;
+                                if ( 1 == _mod )
+                                    immoffset += 1;
+                                else if ( 2 == _mod || directAddress )
+                                    immoffset += 2;
+            
+                                if ( _isword )
+                                {
+                                    _bc++;
+                                    _daa( "%s, ", getrm( _rm ) );
+                                    if ( 0x83 == _b0 ) // low bit is on, but it's an 8-bit immediate value
+                                        _daa( "%02xh", pcode[ immoffset ] );
+                                    else
+                                    {
+                                        _daa( "%04xh", ( (uint32_t) pcode[ immoffset ] + ( pcode[ 1 + immoffset ] << 8 ) ) );
+                                        _bc ++;
+                                    }
+                                }
+                                else
+                                {
+                                    _bc += 1;
+                                    _daa( "%s, ", getrmAsByte() ); // sign extend a byte to 2 bytes
+                                    _daa( "%02xh", pcode[ immoffset ] );
+                                }
+                                break;
+                            }
+                            case 0x88: // mov
+                            {
+                                bool firstArgReg = ( 0x8a == _b0 || 0x8b == _b0 );
+                                _da( "mov    %s", opargs( firstArgReg ) );
+                                break;
+                            }
+                            case 0xd0: // rotates
+                            {
+                                _da( "%s    %s", i_opRot[ _reg ], getrm( _rm ) );
+                                _daa( ", %s", _toreg ? "cl" : "1" );
+                                break;
+                            }
+                            case 0xf4: // mul, imul, div (unsigned), and idiv (signed) have more implicit arguments
+                            {
+                                 if ( _reg >= 4 && _reg <= 7 ) // mul, imul, div, idiv
+                                     _da( "%s   %s", i_opMath[ _reg ], getrm( _rm ) );
+                                 else if ( 0 == _reg ) // test instructions f6 and f7
+                                 {
+                                     _da( "%s   %s, ", i_opMath[ _reg ], getrm( _rm ) );
+                                     if ( _isword )
+                                     {
+                                         uint16_t rhs = pcode[ _bc++ ];
+                                         rhs |= ( (uint16_t) ( pcode[ _bc++ ] ) << 8 );
+                                         _daa( "%04xh", rhs );
+                                     }
+                                     else
+                                         _daa( "%02xh", pcode[ _bc++ ] );
+                                 }
+                                 else
+                                     _da( "%s   %s", i_opMath[ _reg ], getrm( _rm ) );
+                                 break;
+                            }
+                            case 0xfc:
+                            {
+                                _da( "%s   %s", i_opMix[ _reg ], getrm( _rm ) );
+                                if ( 2 == _reg || 3 == _reg || 4 == _reg || 5 == _reg ) // call or jmp
+                                    _pcode = 0;
+                                break;
+                            }
+                        } //switch( top6 )
+                    } //else
+                } //default
+            } //switch
 
             return acOut;
-        }
-};          
+        } //Disassemble
+}; //CDisassemble8086
 
 #undef _da
 #undef _daa
