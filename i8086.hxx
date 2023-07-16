@@ -184,6 +184,7 @@ struct i8086
     uint8_t * get_preg8( uint8_t reg ) { return (uint8_t *) reg_pointers[ reg ]; }
     uint16_t * get_preg16( uint8_t reg ) { return (uint16_t * ) reg_pointers[ 8 | reg ]; }
     void * get_preg( uint8_t reg ) { if ( _isword ) return get_preg16( reg ); return get_preg8( reg ); }
+    uint16_t get_reg_value( uint8_t reg ) { if ( _isword ) return * get_preg16( reg ); return * get_preg8( reg ); }
 
     uint16_t get_seg_value( uint16_t default_value, uint64_t & cycles )
     {
@@ -376,13 +377,12 @@ struct i8086
                 }
             }
             else
-                rhs = _isword ? ( * get_preg16( _rm ) ) : ( * get_preg8( _rm ) );
+                rhs = get_reg_value( _rm );
 
             return pdst;
         }
 
-        rhs = _isword ? ( * get_preg16( _reg ) ) : ( * get_preg8( _reg ) );
-
+        rhs = get_reg_value( _reg );
         return get_rm_ptr( _rm, cycles );
     } //get_op_args
     

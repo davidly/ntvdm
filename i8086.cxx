@@ -849,7 +849,7 @@ _after_prefix:
             case 0x3d: { _bc += 2; op_sub16( ax, b12() ); break; } // cmp ax, i16
             case 0x3e: { prefix_segment_override = 3; ip++; goto _after_prefix; } // ds segment override
             case 0x3f: { op_aas(); break; } // aas. ascii adjust al after subtraction
-            case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt
+            case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt. default interrupt routines execute this to get to C++ code
             {
                 _bc++;
                 uint16_t old_ip = ip;
@@ -1739,22 +1739,22 @@ _after_prefix:
                     bool takejmp = false;
     
                     switch( jmp )
-                    {
-                        case 0:  takejmp = fOverflow; break;                         // jo
-                        case 1:  takejmp = !fOverflow; break;                        // jno
-                        case 2:  takejmp = fCarry; break;                            // jb / jnae / jc
+                    {                                                                                         hints:
+                        case 0:  takejmp = fOverflow; break;                         // jo                    o = overflow
+                        case 1:  takejmp = !fOverflow; break;                        // jno                   n = not
+                        case 2:  takejmp = fCarry; break;                            // jb / jnae / jc        b = below, e = above or equal, c = carry
                         case 3:  takejmp = !fCarry; break;                           // jnb / jae / jnc
-                        case 4:  takejmp = fZero; break;                             // je / jz
+                        case 4:  takejmp = fZero; break;                             // je / jz               e = equal, z = zero
                         case 5:  takejmp = !fZero; break;                            // jne / jnz
-                        case 6:  takejmp = fCarry || fZero; break;                   // jbe / jna
+                        case 6:  takejmp = fCarry || fZero; break;                   // jbe / jna             be = below or equal, na = not above
                         case 7:  takejmp = !fCarry && !fZero; break;                 // jnbe / ja
-                        case 8:  takejmp = fSign; break;                             // js
+                        case 8:  takejmp = fSign; break;                             // js                    s = signed
                         case 9:  takejmp = !fSign; break;                            // jns
-                        case 10: takejmp = fParityEven; break;                       // jp / jpe
+                        case 10: takejmp = fParityEven; break;                       // jp / jpe              p / pe = parity even
                         case 11: takejmp = !fParityEven; break;                      // jnp / jpo
-                        case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge
+                        case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge             l = less than, nge = not greater than or equal to
                         case 13: takejmp = ( fSign == fOverflow ); break;            // jnl / jge
-                        case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng
+                        case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng             ng = not greather than
                         case 15: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg
                     }
     
@@ -1789,70 +1789,55 @@ _after_prefix:
                     void * p = get_rm_ptr( _rm, cycles );
                     // ignore p -- just consume the correct number of opcodes
                 }
-                else
+                else if ( 0 == ( 0xc4 & _b0 ) ) // add, or, adc, sbb, and, sub, xor, cmp
                 {
-                    uint8_t top6 = _b0 & 0xfc;
                     _bc = 2;
-        
-                    switch( top6 )
-                    {
-                        case 0x00: // add
-                        case 0x08: // or
-                        case 0x10: // adc
-                        case 0x18: // sbb
-                        case 0x20: // and
-                        case 0x28: // sub
-                        case 0x30: // xor
-                        case 0x38: // cmp
-                        {
-                            AddMemCycles( cycles, 10 );
-                            uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
-                            uint16_t src;
-                            void * pdst = get_op_args( true, src, cycles );
-                            if ( _isword )
-                                do_math16( bits5to3, (uint16_t *) pdst, src );
-                            else
-                                do_math8( bits5to3, (uint8_t *) pdst, (uint8_t) src );
-                            break;
-                        }
-                        case 0x80: // math
-                        {
-                            uint8_t math = _reg; // the _reg field is the math operator, not a register
-                            _bc++;
-        
-                            bool directAddress = ( 0 == _mod && 6 == _rm );
-                            int immoffset = 2;
-                            if ( 1 == _mod )
-                                immoffset += 1;
-                            else if ( 2 == _mod || directAddress )
-                                immoffset += 2;
-        
-                            AddCycles( cycles, directAddress ? 13 : 6 );
-        
-                            if ( _isword )
-                            {
-                                uint16_t rhs;
-                                if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
-                                    rhs = (int8_t) _pcode[ immoffset ]; // cast for sign extension from byte to word
-                                else
-                                {
-                                    _bc++;
-                                    rhs = (uint16_t) _pcode[ immoffset ] + ( (uint16_t) ( _pcode[ 1 + immoffset ] ) << 8 );
-                                }
-        
-                                do_math16( math, get_rm16_ptr( cycles ), rhs );
-                            }
-                            else
-                            {
-                                uint8_t rhs = _pcode[ immoffset ];
-                                do_math8( math, get_rm8_ptr( cycles ), rhs );
-                            }
-                            break;
-                        }
-                        default:
-                            i8086_hard_exit( "unhandled instruction %02x\n", _b0 );
-                    }
+                    AddMemCycles( cycles, 10 );
+                    uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
+                    uint16_t src;
+                    void * pdst = get_op_args( true, src, cycles );
+                    if ( _isword )
+                        do_math16( bits5to3, (uint16_t *) pdst, src );
+                    else
+                        do_math8( bits5to3, (uint8_t *) pdst, (uint8_t) src );
+                    break;
                 }
+                else if ( 0x80 == ( 0xfc & _b0 ) ) // math
+                {
+                    uint8_t math = _reg; // the _reg field is the math operator, not a register
+                    _bc = 3;
+        
+                    bool directAddress = ( 0 == _mod && 6 == _rm );
+                    int immoffset = 2;
+                    if ( 1 == _mod )
+                        immoffset += 1;
+                    else if ( 2 == _mod || directAddress )
+                        immoffset += 2;
+        
+                    AddCycles( cycles, directAddress ? 13 : 6 );
+        
+                    if ( _isword )
+                    {
+                        uint16_t rhs;
+                        if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
+                            rhs = (int8_t) _pcode[ immoffset ]; // cast for sign extension from byte to word
+                        else
+                        {
+                            _bc++;
+                            rhs = (uint16_t) _pcode[ immoffset ] + ( (uint16_t) ( _pcode[ 1 + immoffset ] ) << 8 );
+                        }
+        
+                        do_math16( math, get_rm16_ptr( cycles ), rhs );
+                    }
+                    else
+                    {
+                        uint8_t rhs = _pcode[ immoffset ];
+                        do_math8( math, get_rm8_ptr( cycles ), rhs );
+                    }
+                    break;
+                }
+                else
+                    i8086_hard_exit( "unhandled instruction %02x\n", _b0 );
             }
         }
   
