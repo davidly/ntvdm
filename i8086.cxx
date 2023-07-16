@@ -1712,7 +1712,7 @@ _after_prefix:
 
                 break;
             }
-            default:
+            default: // check for ranges of opcodes
             {
                 if ( _b0 >= 0x40 && _b0 <= 0x47 ) // inc ax..di
                 {
@@ -1739,22 +1739,22 @@ _after_prefix:
                     bool takejmp = false;
     
                     switch( jmp )
-                    {                                                                                         hints:
-                        case 0:  takejmp = fOverflow; break;                         // jo                    o = overflow
-                        case 1:  takejmp = !fOverflow; break;                        // jno                   n = not
-                        case 2:  takejmp = fCarry; break;                            // jb / jnae / jc        b = below, e = above or equal, c = carry
+                    {                                                                                     hints:
+                        case 0:  takejmp = fOverflow; break;                         // jo                o = overflow
+                        case 1:  takejmp = !fOverflow; break;                        // jno               n = not
+                        case 2:  takejmp = fCarry; break;                            // jb / jnae / jc    b = below, ae = above or equal, c = carry
                         case 3:  takejmp = !fCarry; break;                           // jnb / jae / jnc
-                        case 4:  takejmp = fZero; break;                             // je / jz               e = equal, z = zero
+                        case 4:  takejmp = fZero; break;                             // je / jz           e = equal, z = zero
                         case 5:  takejmp = !fZero; break;                            // jne / jnz
-                        case 6:  takejmp = fCarry || fZero; break;                   // jbe / jna             be = below or equal, na = not above
+                        case 6:  takejmp = fCarry || fZero; break;                   // jbe / jna         be = below or equal, na = not above
                         case 7:  takejmp = !fCarry && !fZero; break;                 // jnbe / ja
-                        case 8:  takejmp = fSign; break;                             // js                    s = signed
+                        case 8:  takejmp = fSign; break;                             // js                s = signed
                         case 9:  takejmp = !fSign; break;                            // jns
-                        case 10: takejmp = fParityEven; break;                       // jp / jpe              p / pe = parity even
-                        case 11: takejmp = !fParityEven; break;                      // jnp / jpo
-                        case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge             l = less than, nge = not greater than or equal to
+                        case 10: takejmp = fParityEven; break;                       // jp / jpe          p / pe = parity even
+                        case 11: takejmp = !fParityEven; break;                      // jnp / jpo         po = parity odd
+                        case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge         l = less than, nge = not greater than or equal
                         case 13: takejmp = ( fSign == fOverflow ); break;            // jnl / jge
-                        case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng             ng = not greather than
+                        case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng         le = less than or equal, ng = not greather than
                         case 15: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg
                     }
     
@@ -1800,7 +1800,6 @@ _after_prefix:
                         do_math16( bits5to3, (uint16_t *) pdst, src );
                     else
                         do_math8( bits5to3, (uint8_t *) pdst, (uint8_t) src );
-                    break;
                 }
                 else if ( 0x80 == ( 0xfc & _b0 ) ) // math
                 {
@@ -1834,10 +1833,9 @@ _after_prefix:
                         uint8_t rhs = _pcode[ immoffset ];
                         do_math8( math, get_rm8_ptr( cycles ), rhs );
                     }
-                    break;
                 }
                 else
-                    i8086_hard_exit( "unhandled instruction %02x\n", _b0 );
+                    i8086_hard_exit( "unhandled 8086 instruction %02x\n", _b0 );
             }
         }
   
