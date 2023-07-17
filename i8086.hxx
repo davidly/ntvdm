@@ -235,6 +235,11 @@ struct i8086
         #endif
     } //flatten
 
+    uint32_t flat_ip() { return flatten( cs, ip ); }
+    void * flat_address( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
+    uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return (uint8_t *) flat_address( seg, offset ); }
+    uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) flat_address( seg, offset ); }
+
     uint16_t get_displacement( uint8_t rm, uint64_t & cycles )
     {
         assert( rm <= 7 );
@@ -247,39 +252,43 @@ struct i8086
             case 4: AddCycles( cycles, 6 ); return si;
             case 5: AddCycles( cycles, 6 ); return di;
             case 6: AddCycles( cycles, 6 ); return bp;
-            default: AddCycles( cycles, 6 ); return bx;
+            case 7: AddCycles( cycles, 6 ); return bx;
         }
+
+        #if defined( __GNUC__ ) || defined( __clang__ )
+            return 0;
+        #else
+            __assume( false );
+        #endif
     } //get_displacement
 
     uint16_t get_displacement_seg( uint8_t rm, uint64_t & cycles )
     {
-        if ( 0xff != prefix_segment_override )
+        if ( 0xff == prefix_segment_override ) // if no segment override
         {
-            AddCycles( cycles, 2 );
-            return * seg_reg( prefix_segment_override );
+            if ( 2 == rm || 3 == rm || 6 == rm ) // bp defaults to ss. see get_displacement(): 2/3/6 use bp
+                return ss;
+
+            return ds;
         }
 
-        if ( 2 == rm || 3 == rm || 6 == rm ) // bp defaults to ss. see get_displacement() 2/3/6 use bp
-            return ss;
-
-        return ds;
-    } // get_displacement_seg
+        AddCycles( cycles, 2 );
+        return * seg_reg( prefix_segment_override );
+    } //get_displacement_seg
 
     void * get_rm_ptr( uint8_t rm_to_use, uint64_t & cycles )
     {
-        assert( _mod <= 4 );
+        assert( _mod <= 3 );
         if ( 3 == _mod )
-            return reg_pointers[ rm_to_use | ( _isword ? 8 : 0 ) ];
+            return reg_pointers[ _isword ? ( 8 | rm_to_use ) : rm_to_use ];
         
-        rm_to_use &= 0x7; // mask away the higher bit that may be set for register lookups
-
         if ( 1 == _mod )
         {
             _bc += 1;
             int offset = (int) (char) _pcode[ 2 ];
             uint16_t regval = get_displacement( rm_to_use, cycles );
             uint16_t segment = get_displacement_seg( rm_to_use, cycles );
-            return memory + flatten( segment, regval + offset );
+            return flat_address( segment, regval + offset );
         }
 
         if ( 2 == _mod )
@@ -289,32 +298,30 @@ struct i8086
             uint16_t offset = * (uint16_t *) ( _pcode + 2 );
             uint16_t regval = get_displacement( rm_to_use, cycles );
             uint16_t segment = get_displacement_seg( rm_to_use, cycles );
-            return memory + flatten( segment, regval + offset );
+            return flat_address( segment, regval + offset );
         }
 
-        if ( 0x6 == rm_to_use )  // 0 == mod. least frequent
+        if ( 6 == rm_to_use )  // 0 == mod. least frequent
         {
             _bc += 2;
             AddCycles( cycles, 5 );
-            return memory + flatten( get_seg_value( ds, cycles ), * (uint16_t *) ( _pcode + 2 ) );
+            return flat_address( get_seg_value( ds, cycles ), * (uint16_t *) ( _pcode + 2 ) );
         }
 
         uint16_t val = get_displacement( rm_to_use, cycles );
         uint16_t segment = get_displacement_seg( rm_to_use, cycles );
-        return memory + flatten( segment, val );
+        return flat_address( segment, val );
     } //get_rm_ptr
 
-    uint16_t get_rm_ea( uint8_t rm_to_use, uint64_t & cycles ) // effective address. used in 1 place.
+    uint16_t get_rm_ea( uint8_t rm_to_use, uint64_t & cycles ) // effective address. used strictly for lea
     {
-        assert( _mod <= 4 );
+        assert( _mod <= 3 );
         if ( 3 == _mod )
         {
-            void * pval = reg_pointers[ rm_to_use | ( _isword ? 8 : 0 ) ];
-            return _isword ? * (uint16_t *) pval : * (uint8_t *) pval;
+            void * pval = reg_pointers[  _isword ? ( 8 | rm_to_use ) : rm_to_use ];
+            return _isword ? ( * (uint16_t *) pval ) : ( * (uint8_t *) pval );
         }
         
-        rm_to_use &= 0x7; // mask away the higher bit that may be set for register lookups
-
         if ( 1 == _mod )
         {
             _bc += 1;
@@ -331,7 +338,7 @@ struct i8086
             return regval + offset;
         }
 
-        if ( 0x6 == rm_to_use )  // 0 == mod. least frequent
+        if ( 6 == rm_to_use )  // 0 == mod. least frequent
         {
             _bc += 2;
             return * (uint16_t *) ( _pcode + 2 );
@@ -342,47 +349,44 @@ struct i8086
 
     void * get_op_args( bool firstArgReg, uint16_t & rhs, uint64_t & cycles )
     {
-        if ( _isword )
-            _reg |= 0x8;
-
-        if ( toreg() )
+        if ( !toreg() )
         {
-            if ( firstArgReg )
-            {
-                void * pin = get_rm_ptr( _rm, cycles );
-                rhs = _isword ? ( * (uint16_t *) pin ) : ( * (uint8_t *) pin );
-                return get_preg( _reg );
-            }
-
-            bool secondArgReg = ( 3 == _mod );
-            void * pdst = get_rm_ptr( secondArgReg ? _reg : _rm, cycles );
-            if ( !secondArgReg )
-            {
-                bool directAddress = ( 0 == _mod && 6 == _rm );
-                int immoffset = 2;
-                if ( 1 == _mod )
-                    immoffset += 1;
-                else if ( 2 == _mod || directAddress )
-                    immoffset += 2;
-        
-                if ( _isword )
-                {
-                    rhs = * (uint16_t *) ( _pcode + immoffset );
-                    _bc += 2;
-                }
-                else
-                {
-                    rhs = _pcode[ immoffset ];
-                    _bc += 1;
-                }
-            }
-            else
-                rhs = get_reg_value( _rm );
-
-            return pdst;
+            rhs = get_reg_value( _reg );
+            return get_rm_ptr( _rm, cycles );
         }
 
-        rhs = get_reg_value( _reg );
+        if ( firstArgReg )
+        {
+            void * pin = get_rm_ptr( _rm, cycles );
+            rhs = _isword ? ( * (uint16_t *) pin ) : ( * (uint8_t *) pin );
+            return get_preg( _reg );
+        }
+
+        if ( 3 == _mod ) // second argument is a register
+        {
+            rhs = get_reg_value( _rm );
+            return get_rm_ptr( _reg, cycles );
+        }
+
+        int immoffset;
+        if ( 1 == _mod )
+            immoffset = 3;
+        else if ( 2 == _mod || ( 0 == _mod && 6 == _rm ) )
+            immoffset = 4;
+        else
+            immoffset = 2;
+        
+        if ( _isword )
+        {
+            rhs = * (uint16_t *) ( _pcode + immoffset );
+            _bc += 2;
+        }
+        else
+        {
+            rhs = _pcode[ immoffset ];
+            _bc += 1;
+        }
+
         return get_rm_ptr( _rm, cycles );
     } //get_op_args
     
@@ -403,9 +407,6 @@ struct i8086
         return acflags;
     } //render_flags
 
-    uint32_t flat_ip() { return flatten( cs, ip ); }
-    uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
-    uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) ( memory + flatten( seg, offset ) ); }
     uint16_t mword( uint16_t seg, uint16_t offset ) { return * ( (uint16_t *) & memory[ flatten( seg, offset ) ] ); }
     void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * (uint16_t *) & memory[ flatten( seg, offset ) ] = value; }
 
@@ -440,7 +441,7 @@ struct i8086
     {
         tracer.Trace( "  decoded as _mod %02x, reg %02x, _rm %02x, _isword %d, toreg %d, segment override %d\n",
                       _mod, _reg, _rm, _isword, toreg(), prefix_segment_override );
-    }
+    } //trace_decode
 
     bool handle_state();
     void do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs );
