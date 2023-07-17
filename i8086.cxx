@@ -1714,17 +1714,17 @@ _after_prefix:
             }
             default: // check for ranges of opcodes
             {
-                if ( _b0 >= 0x40 && _b0 <= 0x47 ) // inc ax..di
+                if ( _b0 <= 0x47 && _b0 >= 0x40 ) // inc ax..di
                 {
                     uint16_t *pval = get_preg16( _b0 - 0x40 );
                     *pval = op_inc16( *pval );
                 }
-                else if ( _b0 >= 0x48 && _b0 <= 0x4f ) // dec ax..di
+                else if ( _b0 <= 0x4f && _b0 >= 0x48 ) // dec ax..di
                 {
                     uint16_t *pval = get_preg16( _b0 - 0x40 );
                     *pval = op_dec16( *pval );
                 }
-                else if ( _b0 >= 0x50 && _b0 <= 0x5f ) // push / pop
+                else if ( _b0 <= 0x5f && _b0 >= 0x50 ) // push / pop
                 {
                     uint16_t * preg = get_preg16( _b0 & 7 );
                     if ( _b0 <= 0x57 )
@@ -1732,13 +1732,10 @@ _after_prefix:
                     else 
                         *preg = pop();
                 }
-                else if ( _b0 >= 0x70 && _b0 <= 0x7f ) // jcc
+                else if ( _b0 <= 0x7f && _b0 >= 0x70 ) // jcc
                 {
-                    _bc = 2;
-                    uint8_t jmp = _b0 & 0xf;
-                    bool takejmp = false;
-    
-                    switch( jmp )
+                    bool takejmp;
+                    switch( _b0 & 0xf )
                     {                                                                //                   hints:
                         case 0:  takejmp = fOverflow; break;                         // jo                o = overflow
                         case 1:  takejmp = !fOverflow; break;                        // jno               n = not
@@ -1764,8 +1761,15 @@ _after_prefix:
                         AddCycles( cycles, 12 );
                         goto _trap_check;
                     }
+                    else
+                        _bc = 2;
                 }
-                else if ( _b0 >= 0xb0 && _b0 <= 0xbf ) // mov r, immed
+                else if ( _b0 <= 0x97 && _b0 >= 0x91 ) // xchg ax, cx/dx/bx/sp/bp/si/di  0x90 is nop
+                {
+                    uint16_t * preg = get_preg16( _b0 & 7 );
+                    swap( ax, * preg );
+                }
+                else if ( _b0 <= 0xbf && _b0 >= 0xb0 ) // mov r, immed
                 {
                     if ( _b0 <= 0xb7 )
                     {
@@ -1774,16 +1778,11 @@ _after_prefix:
                     }
                     else
                     {
-                        * get_preg16( 8 + ( _b0 & 7 ) ) = b12();
+                        * get_preg16( _b0 & 7 ) = b12();
                         _bc = 3;
                     }
                 }
-                else if ( _b0 >= 0x91 && _b0 <= 0x97 ) // xchg ax, cx/dx/bx/sp/bp/si/di  0x90 is nop
-                {
-                    uint16_t * preg = get_preg16( _b0 & 7 );
-                    swap( ax, * preg );
-                }
-                else if ( _b0 >= 0xd8 && _b0 <= 0xde ) // esc (8087 instructions)
+                else if ( _b0 <= 0xde && _b0 >= 0xd8 ) // esc (8087 instructions)
                 {
                     _bc++;
                     void * p = get_rm_ptr( _rm, cycles );
@@ -1807,11 +1806,13 @@ _after_prefix:
                     _bc = 3;
         
                     bool directAddress = ( 0 == _mod && 6 == _rm );
-                    int immoffset = 2;
+                    int immoffset;
                     if ( 1 == _mod )
-                        immoffset += 1;
+                        immoffset = 3;
                     else if ( 2 == _mod || directAddress )
-                        immoffset += 2;
+                        immoffset = 4;
+                    else
+                        immoffset = 2;
         
                     AddCycles( cycles, directAddress ? 13 : 6 );
         
@@ -1823,7 +1824,7 @@ _after_prefix:
                         else
                         {
                             _bc++;
-                            rhs = (uint16_t) _pcode[ immoffset ] + ( (uint16_t) ( _pcode[ 1 + immoffset ] ) << 8 );
+                            rhs = * (uint16_t *) ( _pcode + immoffset );
                         }
         
                         do_math16( math, get_rm16_ptr( cycles ), rhs );
