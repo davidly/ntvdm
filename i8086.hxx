@@ -3,7 +3,7 @@
 // when this (undefined) opcode is executed, i8086_invoke_interrupt will be called
 const uint8_t i8086_opcode_interrupt = 0x69;
 
-extern uint8_t memory[ 1024 * 1024 ];
+extern uint8_t memory[ 1024 * 1024 ]; // includes > 640k for CGA and more
 
 // tracking cycles slows execution by >13%
 #define I8086_TRACK_CYCLES
@@ -114,7 +114,6 @@ struct i8086
     } //pop
 
   private:
-
     // the code assumes relative positions of all of these member variables. they can't easily be moved around.
 
     uint16_t ax, bx, cx, dx;
@@ -282,16 +281,17 @@ struct i8086
         if ( 3 == _mod )
             return reg_pointers[ _isword ? ( 8 | rm_to_use ) : rm_to_use ];
         
-        if ( 1 == _mod )
+        if ( 1 == _mod ) // 1-byte immediate offset
         {
             _bc += 1;
+            AddCycles( cycles, 4 );
             int offset = (int) (char) _pcode[ 2 ];
             uint16_t regval = get_displacement( rm_to_use, cycles );
             uint16_t segment = get_displacement_seg( rm_to_use, cycles );
             return flat_address( segment, regval + offset );
         }
 
-        if ( 2 == _mod )
+        if ( 2 == _mod ) // 2-byte immediate offset
         {
             _bc += 2;
             AddCycles( cycles, 5 );
@@ -301,14 +301,14 @@ struct i8086
             return flat_address( segment, regval + offset );
         }
 
-        if ( 6 == rm_to_use )  // 0 == mod. least frequent
+        if ( 6 == rm_to_use )  // 0 == mod. least frequent. immediate pointer to offset
         {
             _bc += 2;
             AddCycles( cycles, 5 );
             return flat_address( get_seg_value( ds, cycles ), * (uint16_t *) ( _pcode + 2 ) );
         }
 
-        uint16_t val = get_displacement( rm_to_use, cycles );
+        uint16_t val = get_displacement( rm_to_use, cycles ); // no offset; just the register value
         uint16_t segment = get_displacement_seg( rm_to_use, cycles );
         return flat_address( segment, val );
     } //get_rm_ptr
@@ -407,8 +407,8 @@ struct i8086
         return acflags;
     } //render_flags
 
-    uint16_t mword( uint16_t seg, uint16_t offset ) { return * ( (uint16_t *) & memory[ flatten( seg, offset ) ] ); }
-    void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * (uint16_t *) & memory[ flatten( seg, offset ) ] = value; }
+    uint16_t mword( uint16_t seg, uint16_t offset ) { return * flat_address16( seg, offset ); }
+    void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * flat_address16( seg, offset ) = value; }
 
     // state used for instruction decoding
 

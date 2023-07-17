@@ -1739,7 +1739,7 @@ _after_prefix:
                     bool takejmp = false;
     
                     switch( jmp )
-                    {                                                                                     hints:
+                    {                                                                //                   hints:
                         case 0:  takejmp = fOverflow; break;                         // jo                o = overflow
                         case 1:  takejmp = !fOverflow; break;                        // jno               n = not
                         case 2:  takejmp = fCarry; break;                            // jb / jnae / jc    b = below, ae = above or equal, c = carry

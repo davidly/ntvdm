@@ -766,7 +766,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
             largest_block--; // don't include the MCB
     
-            tracer.Trace( "  ERROR: unable to allocate memory. returning that %02x paragraphs are free\n", largest_block );
+            tracer.Trace( "  ERROR: unable to allocate %02x paragraphs. returning that %02x paragraphs are free\n", request_paragraphs, largest_block );
             return 0;
         }
     }
