@@ -221,7 +221,7 @@ struct i8086
     uint16_t * get_preg16( uint8_t reg ) { assert( reg <= 7 ); return reg16_pointers[ reg ]; }
     void * get_preg( uint8_t reg ) { assert( reg <= 7 ); if ( _isword ) return get_preg16( reg ); return get_preg8( reg ); }
     uint16_t get_reg_value( uint8_t reg ) { assert( reg <= 7 ); if ( _isword ) return * get_preg16( reg ); return * get_preg8( reg ); }
-    uint16_t get_reg_value8( uint8_t reg ) { assert( reg <= 7 ); assert( !_isword ); return * get_preg8( reg ); }
+    uint8_t get_reg_value8( uint8_t reg ) { assert( reg <= 7 ); assert( !_isword ); return * get_preg8( reg ); }
     uint16_t get_reg_value16( uint8_t reg ) { assert( reg <= 7 ); assert( _isword ); return * get_preg16( reg ); }
 
     uint16_t get_seg_value( uint16_t default_value, uint64_t & cycles )
