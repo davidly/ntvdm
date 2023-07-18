@@ -5623,7 +5623,6 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             cpu.set_sp( head.sp );
             cpu.set_ip( head.ip );
             cpu.set_ax( 0xffff ); // no drives in use
-    
             tracer.Trace( "  loaded %s CS: %04x, SS: %04x, DS: %04x, SP: %04x, IP: %04x\n", acApp,
                           cpu.get_cs(), cpu.get_ss(), cpu.get_ds(), cpu.get_sp(), cpu.get_ip() );
         }
@@ -5796,7 +5795,7 @@ static char * RenderNumberWithCommas( long long n, char * ac )
 
 uint32_t GetBiosDailyTimer()
 {
-    // the daily timer bios value should increment 18.206 times per second -- every 54.925 ms
+    // the daily timer bios value should increment 18.206 times per second -- every 54.9251 ms
 
 #if true
     // this method is more accurate and rolls less often, but maybe 15% slower
@@ -6119,8 +6118,8 @@ int main( int argc, char ** argv )
                 continue;
             }
 
-            // if interrupt 8 (timer) or 0x1c (tick tock) are hooked by an app and 55 milliseconds has elapsed, invoke
-            // int 8, which by default then invokes int 1c.
+            // if interrupt 8 (timer) or 0x1c (tick tock) are hooked by an app and 55 milliseconds have elapsed,
+            // invoke int 8, which by default then invokes int 1c.
     
             if ( timer_changed && ( InterruptHookedByApp( 0x1c ) || InterruptHookedByApp( 8 ) ) )
             {

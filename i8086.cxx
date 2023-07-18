@@ -31,10 +31,12 @@ static uint32_t g_State = 0;
 const uint32_t stateTraceInstructions = 1;
 const uint32_t stateEndEmulation = 2;
 const uint32_t stateExitEmulateEarly = 4;
+const uint32_t stateTrapSet = 8;
 
 void i8086::trace_instructions( bool t ) { if ( t ) g_State |= stateTraceInstructions; else g_State &= ~stateTraceInstructions; }
 void i8086::end_emulation() { g_State |= stateEndEmulation; }
 void i8086::exit_emulate_early() { g_State |= stateExitEmulateEarly; }
+static void trap_set() { g_State |= stateTrapSet; }
 
 bool i8086::external_interrupt( uint8_t interrupt_num )
 {
@@ -775,6 +777,8 @@ not_inlined void i8086::op_aaa()
 
 not_inlined bool i8086::handle_state()
 {
+    // all of this code exists to reduce what would be multiple checks per instruction loop to just one check
+
     if ( g_State & stateEndEmulation )
     {
         g_State &= ~stateEndEmulation;
@@ -791,18 +795,31 @@ not_inlined bool i8086::handle_state()
 
     if ( g_State & stateTraceInstructions )
         trace_state();
+
+    if ( g_State & stateTrapSet )
+    {
+        assert( fTrap );
+        tracer.Trace( "trapset is set. ignore trap %d, ftrap %d\n", fIgnoreTrap, fTrap );
+        if ( fIgnoreTrap )  // set just after the iret that enables fTrap or an int3; actually trap after the following instruction
+            fIgnoreTrap = false;
+        else
+        {
+            g_State &= ~stateTrapSet;
+            op_interrupt( 1, 0 );
+        }
+    }
     return false;
 } //handle_state
 
 uint64_t i8086::emulate( uint64_t maxcycles )
 {
     uint64_t cycles = 0;
-    do 
+    while ( cycles < maxcycles )                           // .91% of runtime
     {
         prefix_segment_override = 0xff;                    // .66% of runtime though both are updated at once
         prefix_repeat_opcode = 0xff;
 
-_after_prefix:
+_prefix_set:
         if ( 0 != g_State )                                // 2.8% of runtime
             if ( handle_state() )
                 break;
@@ -835,19 +852,19 @@ _after_prefix:
             case 0x1f: { ds = pop(); break; } // pop ds
             case 0x24: { _bc++; set_al( op_and8( al(), _b1 ) ); break; } // and al, immed8
             case 0x25: { _bc += 2; ax = op_and16( ax, b12() ); break; } // and ax, immed16
-            case 0x26: { prefix_segment_override = 0; ip++; goto _after_prefix; } // es segment override
+            case 0x26: { prefix_segment_override = 0; ip++; goto _prefix_set; } // es segment override
             case 0x27: { op_daa(); break; } // daa
             case 0x2c: { _bc++; set_al( op_sub8( al(), _b1 ) ); break; } // sub al, immed8
             case 0x2d: { _bc += 2; ax = op_sub16( ax, b12() ); break; } // sub ax, immed16
-            case 0x2e: { prefix_segment_override = 1; ip++; goto _after_prefix; } // cs segment override
+            case 0x2e: { prefix_segment_override = 1; ip++; goto _prefix_set; } // cs segment override
             case 0x2f: { op_das(); break; } // das
             case 0x34: { _bc++; set_al( op_xor8( al(), _b1 ) ); break; } // xor al, immed8
             case 0x35: { _bc += 2; ax = op_xor16( ax, b12() ); break; } // xor ax, immed16
-            case 0x36: { prefix_segment_override = 2; ip++; goto _after_prefix; } // ss segment override
+            case 0x36: { prefix_segment_override = 2; ip++; goto _prefix_set; } // ss segment override
             case 0x37: { op_aaa(); break; } // aaa. ascii adjust after addition
             case 0x3c: { _bc++; op_sub8( al(), _b1 ); break; } // cmp al, i8
             case 0x3d: { _bc += 2; op_sub16( ax, b12() ); break; } // cmp ax, i16
-            case 0x3e: { prefix_segment_override = 3; ip++; goto _after_prefix; } // ds segment override
+            case 0x3e: { prefix_segment_override = 3; ip++; goto _prefix_set; } // ds segment override
             case 0x3f: { op_aas(); break; } // aas. ascii adjust al after subtraction
             case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt. default interrupt routines execute this to get to C++ code
             {
@@ -861,7 +878,7 @@ _after_prefix:
                 // the ip/cs now point to the new app or old parent app.
                 
                  if ( old_ip != ip || old_cs != cs )
-                    goto _trap_check;
+                    continue;
 
                 break;
             }
@@ -869,9 +886,9 @@ _after_prefix:
             {
                 _bc++;
                 AddMemCycles( cycles, 8 );
-                uint16_t src;
-                uint8_t * pleft = (uint8_t *) get_op_args( toreg(), src, cycles );
-                op_and8( *pleft, (uint8_t) src );
+                uint8_t src;
+                uint8_t * pleft = get_op_args8( toreg(), src, cycles );
+                op_and8( *pleft, src );
                 break;
             }
             case 0x85: // test reg16/mem16, reg16
@@ -879,7 +896,7 @@ _after_prefix:
                 _bc++;
                 AddMemCycles( cycles, 8 );
                 uint16_t src;
-                uint16_t * pleft = (uint16_t *) get_op_args( toreg(), src, cycles );
+                uint16_t * pleft = get_op_args16( toreg(), src, cycles );
                 op_and16( *pleft, src );
                 break;
             }
@@ -887,7 +904,7 @@ _after_prefix:
             {
                 AddMemCycles( cycles, 21 );
                 uint8_t * pA = get_preg8( _reg );
-                uint8_t * pB = (uint8_t *) get_rm_ptr( _rm, cycles );
+                uint8_t * pB = get_rm_ptr8( _rm, cycles );
                 uint8_t tmp = *pB;
                 *pB = *pA;
                 *pA = tmp;
@@ -898,7 +915,7 @@ _after_prefix:
             {
                 AddMemCycles( cycles, 21 );
                 uint16_t * pA = get_preg16( _reg );
-                uint16_t * pB = (uint16_t *) get_rm_ptr( _rm, cycles );
+                uint16_t * pB = get_rm_ptr16( _rm, cycles );
                 uint16_t tmp = *pB;
                 *pB = *pA;
                 *pA = tmp;
@@ -909,9 +926,9 @@ _after_prefix:
             {
                 _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
-                uint16_t src;
-                void * pdst = get_op_args( toreg(), src, cycles );
-                * (uint8_t *) pdst = (uint8_t) src;
+                uint8_t src;
+                uint8_t * pdst = get_op_args8( toreg(), src, cycles );
+                * pdst = src;
                 break;
             }
             case 0x89: // mov reg16/mem16, reg16
@@ -919,29 +936,29 @@ _after_prefix:
                 _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
                 uint16_t src;
-                void * pdst = get_op_args( toreg(), src, cycles );
-                * (uint16_t *) pdst = src;
+                uint16_t * pdst = get_op_args16( toreg(), src, cycles );
+                * pdst = src;
                 break;
             }
             case 0x8a: // mov reg8, r/m8
             {
                 _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
-                * get_preg8( _reg ) = * (uint8_t *) get_rm_ptr( _rm, cycles );
+                * get_preg8( _reg ) = * get_rm_ptr8( _rm, cycles );
                 break;
             }
             case 0x8b: // mov reg16, r/m16
             {
                 _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
-                * get_preg16( _reg ) = * (uint16_t *) get_rm_ptr( _rm, cycles );
+                * get_preg16( _reg ) = * get_rm_ptr16( _rm, cycles );
                 break;
             } 
             case 0x8c: // mov r/m16, sreg
             {
                 _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
-                * get_rm16_ptr( cycles ) = * seg_reg( _reg );
+                * get_rm_ptr16_override( _rm, cycles ) = * seg_reg( _reg ); // 0x8c is even, but it's a word instruction not byte
                 break;
             }
             case 0x8d: { _bc++; * get_preg16( _reg ) = get_rm_ea( _rm, cycles ); break; } // lea reg16, mem16
@@ -950,13 +967,13 @@ _after_prefix:
                  _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
                  _isword = true; // the opcode indicates it's a byte instruction, but it's not
-                 * seg_reg( _reg ) = * (uint16_t *) get_rm_ptr( _rm, cycles );
+                 * seg_reg( _reg ) = * get_rm_ptr16( _rm, cycles );
                  break;
             }
             case 0x8f: // pop reg16/mem16
             {
                 AddMemCycles( cycles, 14 );
-                uint16_t * pdst = (uint16_t * ) get_rm_ptr( _rm, cycles );
+                uint16_t * pdst = get_rm_ptr16( _rm, cycles );
                 *pdst = pop();
                 _bc++;
                 break;
@@ -970,7 +987,7 @@ _after_prefix:
                 push( ip + 5 );
                 ip = b12();
                 cs = b34();
-                goto _trap_check;
+                continue;
             }
             case 0x9b: break; // wait for pending floating point exceptions
             case 0x9c: { materializeFlags(); push( flags ); break; } // pushf
@@ -1233,14 +1250,14 @@ _after_prefix:
                     op_scas16( cycles );
                 break;
             }
-            case 0xc2: { ip = pop(); sp += b12(); goto _trap_check; } // ret immed16 intrasegment
-            case 0xc3: { ip = pop(); goto _trap_check; } // ret intrasegment
+            case 0xc2: { ip = pop(); sp += b12(); continue; } // ret immed16 intrasegment
+            case 0xc3: { ip = pop(); continue; } // ret intrasegment
             case 0xc4: // les reg16, [mem16]
             {
                 _isword = true; // opcode is even, but it's a word.
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
-                uint16_t * pvalue = (uint16_t *) get_rm_ptr( _rm, cycles );
+                uint16_t * pvalue = get_rm_ptr16( _rm, cycles );
                 *preg = pvalue[ 0 ];
                 es = pvalue[ 1 ];
                 break;
@@ -1250,7 +1267,7 @@ _after_prefix:
                 _isword = true; // opcode is even, but it's a word.
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
-                uint16_t * pvalue = (uint16_t *) get_rm_ptr( _rm, cycles );
+                uint16_t * pvalue = get_rm_ptr16( _rm, cycles );
                 *preg = pvalue[ 0 ];
                 ds = pvalue[ 1 ];
                 break;
@@ -1258,7 +1275,7 @@ _after_prefix:
             case 0xc6: // mov mem8, immed8
             {
                 _bc++;
-                uint8_t * pdst = (uint8_t *) get_rm_ptr( _rm, cycles );
+                uint8_t * pdst = get_rm_ptr8( _rm, cycles );
                 *pdst = _pcode[ _bc ];
                 _bc++;
                 break;
@@ -1267,21 +1284,22 @@ _after_prefix:
             {
                 _bc++;
                 uint16_t src;
-                uint16_t * pdst = (uint16_t *) get_op_args( false, src, cycles );
+                uint16_t * pdst = get_op_args16( false, src, cycles );
                 *pdst = src;
                 break;
             }
-            case 0xca: { ip = pop(); cs = pop(); sp += b12(); goto _trap_check; } // retf immed16
-            case 0xcb: { ip = pop(); cs = pop(); goto _trap_check; } // retf
+            case 0xca: { ip = pop(); cs = pop(); sp += b12(); continue; } // retf immed16
+            case 0xcb: { ip = pop(); cs = pop(); continue; } // retf
             case 0xcc:  // int3
             {
                 op_interrupt( 3, 1 );
-                continue; // don't trap after an int3
+                fIgnoreTrap = true; // don't trap after an int3
+                continue;
             }
             case 0xcd: // int
             {
                 op_interrupt( _b1, 2 );
-                goto _trap_check;
+                continue;
             }
             case 0xce: // into
             {
@@ -1289,7 +1307,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 69 );
                     op_interrupt( 4, 1 ); // overflow
-                    goto _trap_check;
+                    continue;
                 }
 
                 break;
@@ -1304,16 +1322,23 @@ _after_prefix:
 
                 // don't trap if it's just now set until after the next instruction
 
-                if ( !previousTrap )
-                    continue;
+                if ( fTrap )
+                {
+                    trap_set();
+                    if ( !previousTrap )
+                    {
+                        tracer.Trace( "iret setting ignore trap\n" );
+                        fIgnoreTrap = true;
+                    }
+                }
 
-                goto _trap_check;
+                continue;
             }
             case 0xd0: // bit shift reg8/mem8, 1
             {
                 _bc++;
                 AddMemCycles( cycles, 13 );
-                uint8_t *pval = get_rm8_ptr( cycles );
+                uint8_t *pval = get_rm_ptr8( _rm, cycles );
                 op_rotate8( pval, _reg, 1 );
                 break;
             }
@@ -1321,7 +1346,7 @@ _after_prefix:
             {
                 _bc++;
                 AddMemCycles( cycles, 13 );
-                uint16_t *pval = get_rm16_ptr( cycles );
+                uint16_t *pval = get_rm_ptr16( _rm, cycles );
                 op_rotate16( pval, _reg, 1 );
                 break;
             }
@@ -1329,7 +1354,7 @@ _after_prefix:
             {
                 _bc++;
                 AddMemCycles( cycles, 12 );
-                uint8_t *pval = get_rm8_ptr( cycles );
+                uint8_t *pval = get_rm_ptr8( _rm, cycles );
                 uint8_t amount = cl() & 0x1f;
                 AddCycles( cycles, 4 * amount );
                 op_rotate8( pval, _reg, amount );
@@ -1339,7 +1364,7 @@ _after_prefix:
             {
                 _bc++;
                 AddMemCycles( cycles, 12 );
-                uint16_t *pval = get_rm16_ptr( cycles );
+                uint16_t *pval = get_rm_ptr16( _rm, cycles );
                 uint8_t amount = cl() & 0x1f;
                 AddCycles( cycles, 4 * amount );
                 op_rotate16( pval, _reg, amount );
@@ -1357,7 +1382,7 @@ _after_prefix:
                 else
                 {
                     op_interrupt( 0, _bc );
-                    goto _trap_check;
+                    continue;
                 }
                 break;
             }
@@ -1366,6 +1391,11 @@ _after_prefix:
                 set_al( ( al() + ( ah() * _b1 ) ) & 0xff );
                 set_ah( 0 );
                 _bc++;
+                break;
+            }
+            case 0xd6: // salc (undocumented. IP protection scheme?)
+            {
+                set_al( fCarry ? 0xff : 0 );
                 break;
             }
             case 0xd7: // xlat
@@ -1382,7 +1412,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 14 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
-                    goto _trap_check;
+                    continue;
                 }
                 break;
             }
@@ -1394,7 +1424,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
-                    goto _trap_check;
+                    continue;
                 }
                 break;
             }
@@ -1406,7 +1436,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
-                    goto _trap_check;
+                    continue;
                 }
                 break;
             }
@@ -1416,7 +1446,7 @@ _after_prefix:
                 {
                     AddCycles( cycles, 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
-                    goto _trap_check;
+                    continue;
                 }
                 _bc++;
                 break;
@@ -1430,18 +1460,18 @@ _after_prefix:
                 uint16_t return_address = ip + 3;
                 push( return_address );
                 ip = return_address + b12();
-                goto _trap_check;
+                continue;
             }
-            case 0xe9: { ip += ( 3 + (int16_t) b12() ); goto _trap_check; } // jmp near
-            case 0xea: { ip = b12(); cs = b34(); goto _trap_check; } // jmp far
-            case 0xeb: { ip += ( 2 + (int16_t) (int8_t) _b1 ); goto _trap_check; } // jmp short i8
+            case 0xe9: { ip += ( 3 + (int16_t) b12() ); continue; } // jmp near
+            case 0xea: { ip = b12(); cs = b34(); continue; } // jmp far
+            case 0xeb: { ip += ( 2 + (int16_t) (int8_t) _b1 ); continue; } // jmp short i8
             case 0xec: { set_al( i8086_invoke_in_al( dx ) ); break; } // in al, dx
             case 0xed: { ax = i8086_invoke_in_ax( dx ); break; } // in ax, dx
             case 0xee: { break; } // out al, dx
             case 0xef: { break; } // out ax, dx
             case 0xf0: { break; } // lock prefix. ignore since interrupts won't happen
             case 0xf2: // repne/repnz -- fall through to the f3 code
-            case 0xf3: { prefix_repeat_opcode = _b0; ip++; goto _after_prefix; } // rep/repe/repz
+            case 0xf3: { prefix_repeat_opcode = _b0; ip++; goto _prefix_set; } // rep/repe/repz
             case 0xf4: { i8086_invoke_halt(); goto _all_done; } // hlt
             case 0xf5: { fCarry = !fCarry; break; } //cmc
             case 0xf6: // test/UNUSED/not/neg/mul/imul/div/idiv r/m8
@@ -1451,26 +1481,26 @@ _after_prefix:
                 if ( 0 == _reg ) // test reg8/mem8, immed8
                 {
                     AddMemCycles( cycles, 8 );
-                    uint8_t lhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
+                    uint8_t lhs = * get_rm_ptr8( _rm, cycles );
                     uint8_t rhs = _pcode[ _bc++ ];
                     op_and8( lhs, rhs );
                 }
                 else if ( 2 == _reg ) // not reg8/mem8 -- no flags updated
                 {
                     AddMemCycles( cycles, 13 );
-                    uint8_t * pval = (uint8_t *) get_rm_ptr( _rm, cycles );
+                    uint8_t * pval = get_rm_ptr8( _rm, cycles );
                     *pval = ~ ( *pval );
                 }
                 else if ( 3 == _reg ) // neg reg8/mem8 (subtract from 0)
                 {
                     AddMemCycles( cycles, 13 );
-                    uint8_t * pval = (uint8_t *) get_rm_ptr( _rm, cycles );
+                    uint8_t * pval = get_rm_ptr8( _rm, cycles );
                     *pval = op_sub8( 0, *pval );
                 }
                 else if ( 4 == _reg ) // mul. ax = al * r/m8
                 {
                     AddCycles( cycles, 77 ); // assume worst-case
-                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
+                    uint8_t rhs = * get_rm_ptr8( _rm, cycles );
                     ax = (uint16_t) al() * (uint16_t) rhs;
                     fCarry = fOverflow = ( 0 != ah() );
                     //fAuxCarry = ( ax > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
@@ -1480,7 +1510,7 @@ _after_prefix:
                 else if ( 5 == _reg ) // imul. ax = al * r/m8
                 {
                     AddCycles( cycles, 98 ); // assume worst-case
-                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
+                    uint8_t rhs = * get_rm_ptr8( _rm, cycles );
                     uint32_t result = (int16_t) al() * (int16_t) rhs;
                     ax = result & 0xffff;
                     result &= 0xffff8000;
@@ -1491,7 +1521,7 @@ _after_prefix:
                 else if ( 6 == _reg ) // div m, r8 / src. al = result, ah = remainder
                 {
                     AddCycles( cycles, 90 ); // assume worst-case
-                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
+                    uint8_t rhs = * get_rm_ptr8( _rm, cycles );
                     if ( 0 != rhs )
                     {
                         uint16_t lhs = ax;
@@ -1507,13 +1537,13 @@ _after_prefix:
                     {
                         tracer.Trace( "divide by zero in div m, r8\n" );
                         op_interrupt( 0, _bc );
-                        goto _trap_check;
+                        continue;
                     }
                 }
                 else if ( 7 == _reg ) // idiv r/m8
                 {
                     AddCycles( cycles, 112 ); // assume worst-case
-                    uint8_t rhs = * (uint8_t *) get_rm_ptr( _rm, cycles );
+                    uint8_t rhs = * get_rm_ptr8( _rm, cycles );
                     if ( 0 != rhs )
                     {
                         int16_t lhs = ax;
@@ -1529,7 +1559,7 @@ _after_prefix:
                     {
                         tracer.Trace( "divide by zero in idiv r/m8\n" );
                         op_interrupt( 0, _bc );
-                        goto _trap_check;
+                        continue;
                     }
                 }
                 else
@@ -1544,7 +1574,7 @@ _after_prefix:
                 if ( 0 == _reg ) // test reg16/mem16, immed16
                 {
                     AddMemCycles( cycles, 8 );
-                    uint16_t lhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t lhs = * get_rm_ptr16( _rm, cycles );
                     uint16_t rhs = * (uint16_t *) ( _pcode + _bc );
                     _bc += 2;
                     op_and16( lhs, rhs );
@@ -1552,19 +1582,19 @@ _after_prefix:
                 else if ( 2 == _reg ) // not reg16/mem16 -- no flags updated
                 {
                     AddMemCycles( cycles, 13 );
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
                     *pval = ~ ( *pval );
                 }
                 else if ( 3 == _reg ) // neg reg16/mem16 (subtract from 0)
                 {
                     AddMemCycles( cycles, 13 );
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
                     *pval = op_sub16( 0, *pval );
                 }
                 else if ( 4 == _reg ) // mul. dx:ax = ax * src
                 {
                     AddCycles( cycles, 133 ); // assume worst-case
-                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t rhs = * get_rm_ptr16( _rm, cycles );
                     uint32_t result = (uint32_t) ax * (uint32_t) rhs;
                     dx = result >> 16;
                     ax = result & 0xffff;
@@ -1575,7 +1605,7 @@ _after_prefix:
                 else if ( 5 == _reg ) // imul. dx:ax = ax * src
                 {
                     AddCycles( cycles, 154 ); // assume worst-case
-                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t rhs = * get_rm_ptr16( _rm, cycles );
                     uint32_t result = (int32_t) ax * (int32_t) rhs;
                     dx = result >> 16;
                     ax = result & 0xffff;
@@ -1587,7 +1617,7 @@ _after_prefix:
                 else if ( 6 == _reg ) // div dx:ax / src. ax = result, dx = remainder
                 {
                     AddCycles( cycles, 162 ); // assume worst-case
-                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t rhs = * get_rm_ptr16( _rm, cycles );
                     if ( 0 != rhs )
                     {
                         uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
@@ -1603,13 +1633,13 @@ _after_prefix:
                     {
                         tracer.Trace( "divide by zero in div dx:ax / src\n" );
                         op_interrupt( 0, _bc );
-                        goto _trap_check;
+                        continue;
                     }
                 }
                 else if ( 7 == _reg ) // idiv dx:ax / src. ax = result, dx = remainder
                 {
                     AddCycles( cycles, 184 ); // assume worst-case
-                    uint16_t rhs = * (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t rhs = * get_rm_ptr16( _rm, cycles );
                     if ( 0 != rhs )
                     {
                         uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
@@ -1625,7 +1655,7 @@ _after_prefix:
                     {
                         tracer.Trace( "divide by zero in idiv dx:ax / src\n" );
                         op_interrupt( 0, _bc );
-                        goto _trap_check;
+                        continue;
                     }
                 }
                 else
@@ -1643,7 +1673,7 @@ _after_prefix:
             {
                 _bc++;
                 AddMemCycles( cycles, 12 );
-                uint8_t * pdst = (uint8_t *) get_rm_ptr( _rm, cycles );
+                uint8_t * pdst = get_rm_ptr8( _rm, cycles );
 
                 if ( 0 == _reg ) // inc
                     *pdst = op_inc8( *pdst );
@@ -1656,14 +1686,14 @@ _after_prefix:
                 if ( 0 == _reg ) // inc mem16
                 {
                     AddCycles( cycles, 21 );
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
                     *pval = op_inc16( *pval );
                     _bc++;
                 }
                 else if ( 1 == _reg ) // dec mem16
                 {
                     AddCycles( cycles, 21 );
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
                     *pval = op_dec16( *pval );
                     _bc++;
                 }
@@ -1671,41 +1701,41 @@ _after_prefix:
                 {
                     AddCycles( cycles, 18 );
                     AddMemCycles( cycles, 9 );
-                    uint16_t * pfunc = (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t * pfunc = get_rm_ptr16( _rm, cycles );
                     uint16_t return_address = ip + _bc + 1;
                     push( return_address );
                     ip = *pfunc;
-                    goto _trap_check;
+                    continue;
                 }
                 else if ( 3 == _reg ) // call mem16:16 (inter segment)
                 {
                     AddCycles( cycles, 35 );
-                    uint16_t * pdata = (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t * pdata = get_rm_ptr16( _rm, cycles );
                     push( cs );
                     push( ip + _bc + 1 );
                     ip = pdata[ 0 ];
                     cs = pdata[ 1 ];
-                    goto _trap_check;
+                    continue;
                 }
                 else if ( 4 == _reg ) // jmp reg16/mem16 (intra segment)
                 {
                     AddCycles( cycles, 13 );
                     AddMemCycles( cycles, 3 );
-                    ip = * (uint16_t *) get_rm_ptr( _rm, cycles );
-                    goto _trap_check;
+                    ip = * get_rm_ptr16( _rm, cycles );
+                    continue;
                 }
                 else if ( 5 == _reg ) // jmp mem16 (inter segment)
                 {
                     AddCycles( cycles, 16 );
-                    uint16_t * pdata = (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t * pdata = get_rm_ptr16( _rm, cycles );
                     ip = pdata[ 0 ];
                     cs = pdata[ 1 ];
-                    goto _trap_check;
+                    continue;
                 }
                 else if ( 6 == _reg ) // push mem16
                 {
                     AddCycles( cycles, 14 );
-                    uint16_t * pval = (uint16_t *) get_rm_ptr( _rm, cycles );
+                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
                     push( *pval );
                     _bc++;
                 }
@@ -1721,7 +1751,7 @@ _after_prefix:
                 }
                 else if ( _b0 <= 0x4f && _b0 >= 0x48 ) // dec ax..di
                 {
-                    uint16_t *pval = get_preg16( _b0 - 0x40 );
+                    uint16_t *pval = get_preg16( _b0 - 0x48 );
                     *pval = op_dec16( *pval );
                 }
                 else if ( _b0 <= 0x5f && _b0 >= 0x50 ) // push / pop
@@ -1759,7 +1789,7 @@ _after_prefix:
                     {
                         ip += ( 2 + (int) (int8_t) _b1 );
                         AddCycles( cycles, 12 );
-                        goto _trap_check;
+                        continue;
                     }
                     else
                         _bc = 2;
@@ -1785,7 +1815,10 @@ _after_prefix:
                 else if ( _b0 <= 0xde && _b0 >= 0xd8 ) // esc (8087 instructions)
                 {
                     _bc++;
-                    void * p = get_rm_ptr( _rm, cycles );
+                    if ( _isword )
+                        void * p = get_rm_ptr16( _rm, cycles );
+                    else
+                        void * p = get_rm_ptr8( _rm, cycles );
                     // ignore p -- just consume the correct number of opcodes
                 }
                 else if ( 0 == ( 0xc4 & _b0 ) ) // add, or, adc, sbb, and, sub, xor, cmp
@@ -1793,12 +1826,18 @@ _after_prefix:
                     _bc = 2;
                     AddMemCycles( cycles, 10 );
                     uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
-                    uint16_t src;
-                    void * pdst = get_op_args( true, src, cycles );
                     if ( _isword )
-                        do_math16( bits5to3, (uint16_t *) pdst, src );
+                    {
+                        uint16_t src;
+                        uint16_t * pdst = get_op_args16( true, src, cycles );
+                        do_math16( bits5to3, pdst, src );
+                    }
                     else
-                        do_math8( bits5to3, (uint8_t *) pdst, (uint8_t) src );
+                    {
+                        uint8_t src;
+                        uint8_t * pdst = get_op_args8( true, src, cycles );
+                        do_math8( bits5to3, pdst, src );
+                    }
                 }
                 else if ( 0x80 == ( 0xfc & _b0 ) ) // math
                 {
@@ -1827,25 +1866,21 @@ _after_prefix:
                             rhs = * (uint16_t *) ( _pcode + immoffset );
                         }
         
-                        do_math16( math, get_rm16_ptr( cycles ), rhs );
+                        do_math16( math, get_rm_ptr16( _rm, cycles ), rhs );
                     }
                     else
                     {
                         uint8_t rhs = _pcode[ immoffset ];
-                        do_math8( math, get_rm8_ptr( cycles ), rhs );
+                        do_math8( math, get_rm_ptr8( _rm, cycles ), rhs );
                     }
                 }
                 else
                     i8086_hard_exit( "unhandled 8086 instruction %02x\n", _b0 );
-            }
-        }
+            } //default
+        } //switch
   
         ip += _bc;                                         // 4.4% of runtime
-
-_trap_check:  // jump here from the switch instead of 'break' if ip was set by the instruction (jmp, call, iret, ret, etc.)
-        if ( fTrap )                                       // 2.9% of runtime. ouch
-            op_interrupt( 1, 0 );
-    } while ( cycles < maxcycles );                        // .91% of runtime
+    } //while
 
 _all_done:
     return cycles;

@@ -5,7 +5,7 @@ const uint8_t i8086_opcode_interrupt = 0x69;
 
 extern uint8_t memory[ 1024 * 1024 ]; // includes > 640k for CGA and more
 
-// tracking cycles slows execution by >13%
+// tracking cycles slows execution by >6%
 #define I8086_TRACK_CYCLES
 
 struct i8086
@@ -80,24 +80,25 @@ struct i8086
               prefix_segment_override( 0xff ), prefix_repeat_opcode( 0xff ),
               _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ), _isword( false ),
               fCarry( false ), fParityEven( false ), fAuxCarry( false ), fZero( false ), fSign( false ),
-              fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false )
+              fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false ), fIgnoreTrap( false )
     {
-        reg_pointers[ 0 ] = & ax;  // al
-        reg_pointers[ 1 ] = & cx;  // cl
-        reg_pointers[ 2 ] = & dx;  // dl
-        reg_pointers[ 3 ] = & bx;  // bl
-        reg_pointers[ 4 ] = 1 + (uint8_t *) & ax; // ah
-        reg_pointers[ 5 ] = 1 + (uint8_t *) & cx; // ch
-        reg_pointers[ 6 ] = 1 + (uint8_t *) & dx; // dh
-        reg_pointers[ 7 ] = 1 + (uint8_t *) & bx; // bh
-        reg_pointers[ 8 ] = & ax;
-        reg_pointers[ 9 ] = & cx;
-        reg_pointers[ 10 ] = & dx;
-        reg_pointers[ 11 ] = & bx;
-        reg_pointers[ 12 ] = & sp;
-        reg_pointers[ 13 ] = & bp;
-        reg_pointers[ 14 ] = & si;
-        reg_pointers[ 15 ] = & di;
+        reg8_pointers[ 0 ] = (uint8_t *) & ax;  // al
+        reg8_pointers[ 1 ] = (uint8_t *) & cx;  // cl
+        reg8_pointers[ 2 ] = (uint8_t *) & dx;  // dl
+        reg8_pointers[ 3 ] = (uint8_t *) & bx;  // bl
+        reg8_pointers[ 4 ] = 1 + (uint8_t *) & ax; // ah
+        reg8_pointers[ 5 ] = 1 + (uint8_t *) & cx; // ch
+        reg8_pointers[ 6 ] = 1 + (uint8_t *) & dx; // dh
+        reg8_pointers[ 7 ] = 1 + (uint8_t *) & bx; // bh
+
+        reg16_pointers[ 0 ] = & ax;
+        reg16_pointers[ 1 ] = & cx;
+        reg16_pointers[ 2 ] = & dx;
+        reg16_pointers[ 3 ] = & bx;
+        reg16_pointers[ 4 ] = & sp;
+        reg16_pointers[ 5 ] = & bp;
+        reg16_pointers[ 6 ] = & si;
+        reg16_pointers[ 7 ] = & di;
     } //i8086
 
     void push( uint16_t val )
@@ -114,7 +115,7 @@ struct i8086
     } //pop
 
   private:
-    // the code assumes relative positions of all of these member variables. they can't easily be moved around.
+    // the code assumes relative positions of most of these member variables. they can't easily be moved around.
 
     uint16_t ax, bx, cx, dx;
     uint16_t si, di, bp, sp, ip;
@@ -122,10 +123,46 @@ struct i8086
     uint16_t flags;
     uint8_t prefix_segment_override; // 0xff for none, 0..3 for es, cs, ss, ds
     uint8_t prefix_repeat_opcode;    // 0xff for none, f2 repne/repnz, f3 rep/repe/repz
-    void * reg_pointers[ 16 ];
 
     // bits   0,           2,         4,     6,     7,     8,          9,         10,        11
     bool fCarry, fParityEven, fAuxCarry, fZero, fSign, fTrap, fInterrupt, fDirection, fOverflow;
+    bool fIgnoreTrap;
+
+    // state used for instruction decoding. these start with underscore to differentiate them
+
+    uint8_t _bc;      // # of bytes consumed by currenly running instruction
+    uint8_t _b0;      // pcode[ 0 ] -- the first opcode
+    uint8_t _b1;      // pcode[ 1 ]
+    uint8_t _mod;     // bits 7:6 of _b1
+    uint8_t _reg;     // bits 5:3 of _b1. register (generally)
+    uint8_t _rm;      // bits 2:0 of _b1. register or memory
+    bool _isword;     // true if bit 0 of _b0 is 1. working with a word, not a byte
+    uint8_t * _pcode; // pointer to the first opcode currently executing
+
+    uint8_t * reg8_pointers[ 8 ];
+    uint16_t * reg16_pointers[ 8 ];
+
+    void decode_instruction( uint8_t * pcode )
+    {
+        _bc = 1;
+        _pcode = pcode;
+        _b0 = pcode[0];
+        _b1 = pcode[1];
+        _mod = ( _b1 >> 6 );
+        _reg = ( _b1 >> 3 ) & 7;
+        _rm = _b1 & 7;
+        _isword = ( _b0 & 1 );
+    } //decode_instruction
+
+    bool toreg() { return ( 2 == ( _b0 & 2 ) ); } // decode on the fly since it's rarely used
+    uint16_t b12() { return * (uint16_t *) ( _pcode + 1 ); } // bytes 1 and 2 from the start of the opcode
+    uint16_t b34() { return * (uint16_t *) ( _pcode + 3 ); } // bytes 3 and 4 from the start of the opcode
+
+    void trace_decode()
+    {
+        tracer.Trace( "  decoded as _mod %02x, reg %02x, _rm %02x, _isword %d, toreg %d, segment override %d\n",
+                      _mod, _reg, _rm, _isword, toreg(), prefix_segment_override );
+    } //trace_decode
 
     void materializeFlags()
     {
@@ -180,10 +217,12 @@ struct i8086
     void reset_carry_overflow() { fCarry = false; fOverflow = false; }
 
     uint16_t * seg_reg( uint8_t val ) { assert( val <= 3 ); return ( ( & es ) + val ); }
-    uint8_t * get_preg8( uint8_t reg ) { return (uint8_t *) reg_pointers[ reg ]; }
-    uint16_t * get_preg16( uint8_t reg ) { return (uint16_t * ) reg_pointers[ 8 | reg ]; }
-    void * get_preg( uint8_t reg ) { if ( _isword ) return get_preg16( reg ); return get_preg8( reg ); }
-    uint16_t get_reg_value( uint8_t reg ) { if ( _isword ) return * get_preg16( reg ); return * get_preg8( reg ); }
+    uint8_t * get_preg8( uint8_t reg ) { assert( reg <= 7 ); return reg8_pointers[ reg ]; }
+    uint16_t * get_preg16( uint8_t reg ) { assert( reg <= 7 ); return reg16_pointers[ reg ]; }
+    void * get_preg( uint8_t reg ) { assert( reg <= 7 ); if ( _isword ) return get_preg16( reg ); return get_preg8( reg ); }
+    uint16_t get_reg_value( uint8_t reg ) { assert( reg <= 7 ); if ( _isword ) return * get_preg16( reg ); return * get_preg8( reg ); }
+    uint16_t get_reg_value8( uint8_t reg ) { assert( reg <= 7 ); assert( !_isword ); return * get_preg8( reg ); }
+    uint16_t get_reg_value16( uint8_t reg ) { assert( reg <= 7 ); assert( _isword ); return * get_preg16( reg ); }
 
     uint16_t get_seg_value( uint16_t default_value, uint64_t & cycles )
     {
@@ -193,24 +232,6 @@ struct i8086
         AddCycles( cycles, 2 );
         return * seg_reg( prefix_segment_override );
     } //get_seg_value
-
-    uint16_t * get_rm16_ptr( uint64_t & cycles ) // overrides width in opcode when needed
-    {
-        bool old_isword = _isword;
-        _isword = true;
-        uint16_t * prmw = (uint16_t *) get_rm_ptr( _rm, cycles );
-        _isword = old_isword;
-        return prmw;
-    } //get_rm16_ptr
-
-    uint8_t * get_rm8_ptr( uint64_t & cycles ) // overrides width in opcode when needed
-    {
-        bool old_isword = _isword;
-        _isword = false;
-        uint8_t * prmb = (uint8_t *) get_rm_ptr( _rm, cycles );
-        _isword = old_isword;
-        return prmb;
-    } //get_rm8_ptr
 
     uint8_t * memptr( uint32_t address ) { return memory + address; }
 
@@ -238,6 +259,8 @@ struct i8086
     void * flat_address( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return (uint8_t *) flat_address( seg, offset ); }
     uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) flat_address( seg, offset ); }
+    uint16_t mword( uint16_t seg, uint16_t offset ) { return * flat_address16( seg, offset ); }
+    void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * flat_address16( seg, offset ) = value; }
 
     uint16_t get_displacement( uint8_t rm, uint64_t & cycles )
     {
@@ -275,12 +298,10 @@ struct i8086
         return * seg_reg( prefix_segment_override );
     } //get_displacement_seg
 
-    void * get_rm_ptr( uint8_t rm_to_use, uint64_t & cycles )
+    void * get_rm_ptr_common( uint8_t rm_to_use, uint64_t & cycles )
     {
-        assert( _mod <= 3 );
-        if ( 3 == _mod )
-            return reg_pointers[ _isword ? ( 8 | rm_to_use ) : rm_to_use ];
-        
+        assert( _mod <= 2 );
+
         if ( 1 == _mod ) // 1-byte immediate offset
         {
             _bc += 1;
@@ -311,16 +332,40 @@ struct i8086
         uint16_t val = get_displacement( rm_to_use, cycles ); // no offset; just the register value
         uint16_t segment = get_displacement_seg( rm_to_use, cycles );
         return flat_address( segment, val );
-    } //get_rm_ptr
+    } //get_rm_ptr_common
+
+    uint16_t * get_rm_ptr16( uint8_t rm_to_use, uint64_t & cycles )
+    {
+        assert( _isword );
+        if ( 3 == _mod )
+            return get_preg16( rm_to_use );
+        
+        return (uint16_t *) get_rm_ptr_common( rm_to_use, cycles );
+    } //get_rm_ptr16
+
+    uint16_t * get_rm_ptr16_override( uint8_t rm_to_use, uint64_t & cycles ) // used by instruction 0x8c, which indicates byte but is in fact word
+    {
+        assert( !_isword );
+        _isword = true;
+        uint16_t * prmw = get_rm_ptr16( rm_to_use, cycles );
+        _isword = false;
+        return prmw;
+    } //get_rm_ptr16_override
+
+    uint8_t * get_rm_ptr8( uint8_t rm_to_use, uint64_t & cycles )
+    {
+        assert( !_isword );
+        if ( 3 == _mod )
+            return get_preg8( rm_to_use );
+        
+        return (uint8_t *) get_rm_ptr_common( rm_to_use, cycles );
+    } //get_rm_ptr8
 
     uint16_t get_rm_ea( uint8_t rm_to_use, uint64_t & cycles ) // effective address. used strictly for lea
     {
         assert( _mod <= 3 );
         if ( 3 == _mod )
-        {
-            void * pval = reg_pointers[  _isword ? ( 8 | rm_to_use ) : rm_to_use ];
-            return _isword ? ( * (uint16_t *) pval ) : ( * (uint8_t *) pval );
-        }
+            return _isword ? * get_preg16( rm_to_use ) : * get_preg8( rm_to_use );
         
         if ( 1 == _mod )
         {
@@ -347,25 +392,26 @@ struct i8086
         return get_displacement( rm_to_use, cycles );
     } //get_rm_ea
 
-    void * get_op_args( bool firstArgReg, uint16_t & rhs, uint64_t & cycles )
+    uint16_t * get_op_args16( bool firstArgReg, uint16_t & rhs, uint64_t & cycles )
     {
+        assert( _isword );
+
         if ( !toreg() )
         {
-            rhs = get_reg_value( _reg );
-            return get_rm_ptr( _rm, cycles );
+            rhs = get_reg_value16( _reg );
+            return get_rm_ptr16( _rm, cycles );
         }
 
         if ( firstArgReg )
         {
-            void * pin = get_rm_ptr( _rm, cycles );
-            rhs = _isword ? ( * (uint16_t *) pin ) : ( * (uint8_t *) pin );
-            return get_preg( _reg );
+            rhs = * get_rm_ptr16( _rm, cycles );
+            return get_preg16( _reg );
         }
 
         if ( 3 == _mod ) // second argument is a register
         {
-            rhs = get_reg_value( _rm );
-            return get_rm_ptr( _reg, cycles );
+            rhs = get_reg_value16( _rm );
+            return get_rm_ptr16( _reg, cycles );
         }
 
         int immoffset;
@@ -376,19 +422,47 @@ struct i8086
         else
             immoffset = 2;
         
-        if ( _isword )
+        rhs = * (uint16_t *) ( _pcode + immoffset );
+        _bc += 2;
+
+        return get_rm_ptr16( _rm, cycles );
+    } //get_op_args16
+    
+    uint8_t * get_op_args8( bool firstArgReg, uint8_t & rhs, uint64_t & cycles )
+    {
+        assert( !_isword );
+
+        if ( !toreg() )
         {
-            rhs = * (uint16_t *) ( _pcode + immoffset );
-            _bc += 2;
-        }
-        else
-        {
-            rhs = _pcode[ immoffset ];
-            _bc += 1;
+            rhs = get_reg_value8( _reg );
+            return get_rm_ptr8( _rm, cycles );
         }
 
-        return get_rm_ptr( _rm, cycles );
-    } //get_op_args
+        if ( firstArgReg )
+        {
+            rhs = * get_rm_ptr8( _rm, cycles );
+            return get_preg8( _reg );
+        }
+
+        if ( 3 == _mod ) // second argument is a register
+        {
+            rhs = get_reg_value8( _rm );
+            return get_rm_ptr8( _reg, cycles );
+        }
+
+        int immoffset;
+        if ( 1 == _mod )
+            immoffset = 3;
+        else if ( 2 == _mod || ( 0 == _mod && 6 == _rm ) )
+            immoffset = 4;
+        else
+            immoffset = 2;
+        
+        rhs = _pcode[ immoffset ];
+        _bc += 1;
+
+        return get_rm_ptr8( _rm, cycles );
+    } //get_op_args8
     
     const char * render_flags() // show the subset actually used with any frequency
     {
@@ -406,42 +480,6 @@ struct i8086
         acflags[ next ] = 0;
         return acflags;
     } //render_flags
-
-    uint16_t mword( uint16_t seg, uint16_t offset ) { return * flat_address16( seg, offset ); }
-    void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * flat_address16( seg, offset ) = value; }
-
-    // state used for instruction decoding
-
-    uint8_t * _pcode; // pointer to the first opcode
-    uint8_t _bc;      // # of bytes consumed by currenly running instruction
-    uint8_t _b0;      // pcode[ 0 ] -- the first opcode
-    uint8_t _b1;      // pcode[ 1 ]
-    uint8_t _mod;     // bits 7:6 of _b1
-    uint8_t _reg;     // bits 5:3 of _b1
-    uint8_t _rm;      // bits 2:0 of _b1
-    bool _isword;     // true if bit 0 of _b0 is 1
-
-    void decode_instruction( uint8_t * pcode )
-    {
-        _bc = 1;
-        _pcode = pcode;
-        _b0 = pcode[0];
-        _isword = ( _b0 & 1 );
-        _b1 = pcode[1];
-        _mod = ( _b1 >> 6 );
-        _reg = ( _b1 >> 3 ) & 7;
-        _rm = _b1 & 7;
-    } //decode_instruction
-
-    bool toreg() { return ( 2 == ( _b0 & 2 ) ); } // decode on the fly since it's rarely used
-    uint16_t b12() { return * (uint16_t *) ( _pcode + 1 ); } // bytes 1 and 2 from the start of the opcode
-    uint16_t b34() { return * (uint16_t *) ( _pcode + 3 ); } // bytes 3 and 4 from the start of the opcode
-
-    void trace_decode()
-    {
-        tracer.Trace( "  decoded as _mod %02x, reg %02x, _rm %02x, _isword %d, toreg %d, segment override %d\n",
-                      _mod, _reg, _rm, _isword, toreg(), prefix_segment_override );
-    } //trace_decode
 
     bool handle_state();
     void do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs );
