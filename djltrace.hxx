@@ -140,7 +140,12 @@ class CDJLTrace
                 va_list args;
                 va_start( args, format );
                 if ( !quiet )
-                    fprintf( fp, "PID %6u -- ", getpid() );
+                    fprintf( fp, "PID %6u -- ",
+#ifdef _MSC_VER
+                             _getpid() );
+#else
+                             getpid() );
+#endif
                 vfprintf( fp, format, args );
                 va_end( args );
                 if ( flush )
@@ -175,7 +180,12 @@ class CDJLTrace
                 va_list args;
                 va_start( args, format );
                 if ( !quiet )
-                    fprintf( fp, "PID %6u -- ", getpid() );
+                    fprintf( fp, "PID %6u -- ",
+#ifdef _MSC_VER
+                             _getpid() );
+#else
+                             getpid() );
+#endif
                 vfprintf( fp, format, args );
                 va_end( args );
                 if ( flush )

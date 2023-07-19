@@ -10,7 +10,9 @@
 
 #ifdef _MSC_VER
 
-    #define UNICODE
+    #ifndef UNICODE
+        #define UNICODE
+    #endif
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
     #include <conio.h>
@@ -194,4 +196,12 @@ inline const char * build_string()
     sprintf( bs, "built for %s %s on %s by %s on %s\n", target_platform(), build_type(), __TIMESTAMP__, compiler_used(), build_platform() );
     return bs;
 } //build_string
+
+#if defined( __GNUC__ ) || defined( __clang__ )
+    #define assume_false return( 0 )   // clearly terrible, but this code will never execute. ever.
+    #define assume_false_return return // clearly terrible, but this code will never execute. ever.
+#else
+    #define assume_false __assume( false )
+    #define assume_false_return __assume( false )
+#endif
 
