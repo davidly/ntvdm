@@ -5910,7 +5910,7 @@ int main( int argc, char ** argv )
         }
     }
 
-    WCHAR logFile[ MAX_PATH ];
+    static WCHAR logFile[ MAX_PATH ];
     wsprintf( logFile, L"%S.log", g_thisApp );
     tracer.Enable( trace, logFile, true );
     tracer.SetQuiet( true );

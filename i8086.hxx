@@ -78,7 +78,7 @@ struct i8086
     i8086() : ax( 0 ), bx( 0 ), cx( 0 ), dx(0 ), si( 0 ), di( 0 ), bp( 0 ), sp( 0 ), ip( 0 ),
               es( 0 ), cs( 0 ), ss( 0 ), ds( 0 ), flags( 0 ),
               prefix_segment_override( 0xff ), prefix_repeat_opcode( 0xff ),
-              _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ), _isword( false ),
+              _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ),
               fCarry( false ), fParityEven( false ), fAuxCarry( false ), fZero( false ), fSign( false ),
               fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false ), fIgnoreTrap( false )
     {
@@ -130,13 +130,12 @@ struct i8086
 
     // state used for instruction decoding. these start with underscore to differentiate them
 
-    uint8_t _bc;      // # of bytes consumed by currenly running instruction
-    uint8_t _b0;      // pcode[ 0 ] -- the first opcode
+    uint8_t _bc;      // # of bytes consumed by the currently running instruction
+    uint8_t _b0;      // pcode[ 0 ] -- the first opcode of the currently running instruction
     uint8_t _b1;      // pcode[ 1 ]
-    uint8_t _mod;     // bits 7:6 of _b1
-    uint8_t _reg;     // bits 5:3 of _b1. register (generally)
     uint8_t _rm;      // bits 2:0 of _b1. register or memory
-    bool _isword;     // true if bit 0 of _b0 is 1. working with a word, not a byte
+    uint8_t _reg;     // bits 5:3 of _b1. register (generally, but also math in some cases)
+    uint8_t _mod;     // bits 7:6 of _b1
     uint8_t * _pcode; // pointer to the first opcode currently executing
 
     uint8_t * reg8_pointers[ 8 ];
@@ -146,22 +145,21 @@ struct i8086
     {
         _bc = 1;
         _pcode = pcode;
-        _b0 = pcode[0];
-        _b1 = pcode[1];
+        * (uint16_t *) & _b0 = * (uint16_t *) pcode;
+        _rm = ( _b1 & 7 );
+        _reg = ( ( _b1 >> 3 ) & 7 );
         _mod = ( _b1 >> 6 );
-        _reg = ( _b1 >> 3 ) & 7;
-        _rm = _b1 & 7;
-        _isword = ( _b0 & 1 );
     } //decode_instruction
 
-    bool toreg() { return ( 2 == ( _b0 & 2 ) ); } // decode on the fly since it's rarely used
+    bool isword() { return ( _b0 & 1 ); } // true if the instruction is dealing with a word, not a byte (there are several exceptions)
+    bool toreg() { return ( 0 != ( _b0 & 2 ) ); } // decode on the fly since it's rarely used
     uint16_t b12() { return * (uint16_t *) ( _pcode + 1 ); } // bytes 1 and 2 from the start of the opcode
     uint16_t b34() { return * (uint16_t *) ( _pcode + 3 ); } // bytes 3 and 4 from the start of the opcode
 
     void trace_decode()
     {
-        tracer.Trace( "  decoded as _mod %02x, reg %02x, _rm %02x, _isword %d, toreg %d, segment override %d\n",
-                      _mod, _reg, _rm, _isword, toreg(), prefix_segment_override );
+        tracer.Trace( "  decoded as _mod %02x, reg %02x, _rm %02x, isword %d, toreg %d, segment override %d\n",
+                      _mod, _reg, _rm, isword(), toreg(), prefix_segment_override );
     } //trace_decode
 
     void materializeFlags()
@@ -219,10 +217,8 @@ struct i8086
     uint16_t * seg_reg( uint8_t val ) { assert( val <= 3 ); return ( ( & es ) + val ); }
     uint8_t * get_preg8( uint8_t reg ) { assert( reg <= 7 ); return reg8_pointers[ reg ]; }
     uint16_t * get_preg16( uint8_t reg ) { assert( reg <= 7 ); return reg16_pointers[ reg ]; }
-    void * get_preg( uint8_t reg ) { assert( reg <= 7 ); if ( _isword ) return get_preg16( reg ); return get_preg8( reg ); }
-    uint16_t get_reg_value( uint8_t reg ) { assert( reg <= 7 ); if ( _isword ) return * get_preg16( reg ); return * get_preg8( reg ); }
-    uint8_t get_reg_value8( uint8_t reg ) { assert( reg <= 7 ); assert( !_isword ); return * get_preg8( reg ); }
-    uint16_t get_reg_value16( uint8_t reg ) { assert( reg <= 7 ); assert( _isword ); return * get_preg16( reg ); }
+    uint8_t get_reg_value8( uint8_t reg ) { assert( reg <= 7 ); assert( !isword() ); return * get_preg8( reg ); }
+    uint16_t get_reg_value16( uint8_t reg ) { assert( reg <= 7 ); assert( isword() ); return * get_preg16( reg ); }
 
     uint16_t get_seg_value( uint16_t default_value, uint64_t & cycles )
     {
@@ -255,6 +251,7 @@ struct i8086
         #endif
     } //flatten
 
+    void unhandled_instruction();
     uint32_t flat_ip() { return flatten( cs, ip ); }
     void * flat_address( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return (uint8_t *) flat_address( seg, offset ); }
@@ -277,11 +274,7 @@ struct i8086
             case 7: AddCycles( cycles, 6 ); return bx;
         }
 
-        #if defined( __GNUC__ ) || defined( __clang__ )
-            return 0;
-        #else
-            __assume( false );
-        #endif
+        assume_false;
     } //get_displacement
 
     uint16_t get_displacement_seg( uint8_t rm, uint64_t & cycles )
@@ -302,7 +295,7 @@ struct i8086
     {
         assert( _mod <= 2 );
 
-        if ( 1 == _mod ) // 1-byte immediate offset
+        if ( 1 == _mod ) // 1-byte immediate offset from register(s)
         {
             _bc += 1;
             AddCycles( cycles, 4 );
@@ -312,7 +305,7 @@ struct i8086
             return flat_address( segment, regval + offset );
         }
 
-        if ( 2 == _mod ) // 2-byte immediate offset
+        if ( 2 == _mod ) // 2-byte immediate offset from register(s)
         {
             _bc += 2;
             AddCycles( cycles, 5 );
@@ -336,25 +329,16 @@ struct i8086
 
     uint16_t * get_rm_ptr16( uint8_t rm_to_use, uint64_t & cycles )
     {
-        assert( _isword );
+        assert( isword() || ( 0x8c == _b0 ) || ( 0x8e == _b0 ) || ( 0xc4 == _b0 ) );
         if ( 3 == _mod )
             return get_preg16( rm_to_use );
         
         return (uint16_t *) get_rm_ptr_common( rm_to_use, cycles );
     } //get_rm_ptr16
 
-    uint16_t * get_rm_ptr16_override( uint8_t rm_to_use, uint64_t & cycles ) // used by instruction 0x8c, which indicates byte but is in fact word
-    {
-        assert( !_isword );
-        _isword = true;
-        uint16_t * prmw = get_rm_ptr16( rm_to_use, cycles );
-        _isword = false;
-        return prmw;
-    } //get_rm_ptr16_override
-
     uint8_t * get_rm_ptr8( uint8_t rm_to_use, uint64_t & cycles )
     {
-        assert( !_isword );
+        assert( !isword() );
         if ( 3 == _mod )
             return get_preg8( rm_to_use );
         
@@ -365,7 +349,7 @@ struct i8086
     {
         assert( _mod <= 3 );
         if ( 3 == _mod )
-            return _isword ? * get_preg16( rm_to_use ) : * get_preg8( rm_to_use );
+            return isword() ? * get_preg16( rm_to_use ) : * get_preg8( rm_to_use );
         
         if ( 1 == _mod )
         {
@@ -392,10 +376,18 @@ struct i8086
         return get_displacement( rm_to_use, cycles );
     } //get_rm_ea
 
+    uint8_t mod_to_imm_offset()
+    {
+        if ( 1 == _mod )
+            return 3;
+        else if ( 2 == _mod || ( 0 == _mod && 6 == _rm ) )
+            return 4;
+        return 2;
+    } //mod_to_imm_offset
+
     uint16_t * get_op_args16( bool firstArgReg, uint16_t & rhs, uint64_t & cycles )
     {
-        assert( _isword );
-
+        assert( isword() );
         if ( !toreg() )
         {
             rhs = get_reg_value16( _reg );
@@ -414,24 +406,14 @@ struct i8086
             return get_rm_ptr16( _reg, cycles );
         }
 
-        int immoffset;
-        if ( 1 == _mod )
-            immoffset = 3;
-        else if ( 2 == _mod || ( 0 == _mod && 6 == _rm ) )
-            immoffset = 4;
-        else
-            immoffset = 2;
-        
-        rhs = * (uint16_t *) ( _pcode + immoffset );
+        rhs = * (uint16_t *) ( _pcode + mod_to_imm_offset() );
         _bc += 2;
-
         return get_rm_ptr16( _rm, cycles );
     } //get_op_args16
     
     uint8_t * get_op_args8( bool firstArgReg, uint8_t & rhs, uint64_t & cycles )
     {
-        assert( !_isword );
-
+        assert( !isword() );
         if ( !toreg() )
         {
             rhs = get_reg_value8( _reg );
@@ -450,17 +432,8 @@ struct i8086
             return get_rm_ptr8( _reg, cycles );
         }
 
-        int immoffset;
-        if ( 1 == _mod )
-            immoffset = 3;
-        else if ( 2 == _mod || ( 0 == _mod && 6 == _rm ) )
-            immoffset = 4;
-        else
-            immoffset = 2;
-        
-        rhs = _pcode[ immoffset ];
+        rhs = _pcode[ mod_to_imm_offset() ];
         _bc += 1;
-
         return get_rm_ptr8( _rm, cycles );
     } //get_op_args8
     
@@ -533,6 +506,9 @@ struct i8086
     void op_das();
     void op_aas();
     void op_aaa();
+    bool op_f6( uint64_t & cycles );
+    bool op_f7( uint64_t & cycles );
+    bool op_ff( uint64_t & cycles );
 
     #ifdef I8086_TRACK_CYCLES
         void AddCycles( uint64_t & cycles, uint8_t amount ) { cycles += amount; }

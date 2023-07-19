@@ -49,6 +49,11 @@ bool i8086::external_interrupt( uint8_t interrupt_num )
     return false;
 } //external_interrupt
 
+void i8086::unhandled_instruction()
+{
+    i8086_hard_exit( "unhandled 8086 instruction %02x\n", _b0 );
+} //unhandled_instruction
+
 void i8086::trace_state()
 {
 //    tracer.Trace( "es: [di+8] 309c: [8] " ); tracer.TraceBinaryData( memory + flatten( 0x309c, 8 ), 2, 0 );
@@ -654,7 +659,7 @@ void i8086::op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount )
         case 4: op_sal8( pval, amount ); break;    // aka shr
         case 5: op_shr8( pval, amount ); break;
         case 7: op_sar8( pval, amount ); break;
-        default: { assert( false );  break; }      // 6 is illegal
+        // 6 is illegal
     }
 } //op_rotate8
 
@@ -669,7 +674,7 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
         case 4: op_sal16( pval, amount ); break;   // aka shl
         case 5: op_shr16( pval, amount ); break; 
         case 7: op_sar16( pval, amount ); break;
-        default: { assert( false ); break; }       // 6 is illegal
+        // 6 is illegal
     }
 } //op_rotate16
 
@@ -775,6 +780,243 @@ not_inlined void i8086::op_aaa()
     set_al( al() & 0x0f );
 } //op_aaa
 
+not_inlined bool i8086::op_f6( uint64_t & cycles )
+{
+    _bc++;
+
+    if ( 0 == _reg ) // test reg8/mem8, immed8
+    {
+        AddMemCycles( cycles, 8 );
+        uint8_t lhs = * get_rm_ptr8( _rm, cycles );
+        uint8_t rhs = _pcode[ _bc++ ];
+        op_and8( lhs, rhs );
+    }
+    else if ( 2 == _reg ) // not reg8/mem8 -- no flags updated
+    {
+        AddMemCycles( cycles, 13 );
+        uint8_t * pval = get_rm_ptr8( _rm, cycles );
+        *pval = ~ ( *pval );
+    }
+    else if ( 3 == _reg ) // neg reg8/mem8 (subtract from 0)
+    {
+        AddMemCycles( cycles, 13 );
+        uint8_t * pval = get_rm_ptr8( _rm, cycles );
+        *pval = op_sub8( 0, *pval );
+    }
+    else if ( 4 == _reg ) // mul. ax = al * r/m8
+    {
+        AddCycles( cycles, 77 ); // assume worst-case
+        uint8_t rhs = * get_rm_ptr8( _rm, cycles );
+        ax = (uint16_t) al() * (uint16_t) rhs;
+        fCarry = fOverflow = ( 0 != ah() );
+        //fAuxCarry = ( ax > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
+        set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
+        fSign = ( 0 != ( 0x80 & al() ) ); // documentation says these bits are undefined, but real hardware does this
+    }
+    else if ( 5 == _reg ) // imul. ax = al * r/m8
+    {
+        AddCycles( cycles, 98 ); // assume worst-case
+        uint8_t rhs = * get_rm_ptr8( _rm, cycles );
+        uint32_t result = (int16_t) al() * (int16_t) rhs;
+        ax = result & 0xffff;
+        result &= 0xffff8000;
+        fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
+        //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
+        set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
+    }
+    else if ( 6 == _reg ) // div m, r8 / src. al = result, ah = remainder
+    {
+        AddCycles( cycles, 90 ); // assume worst-case
+        uint8_t rhs = * get_rm_ptr8( _rm, cycles );
+        if ( 0 != rhs )
+        {
+            uint16_t lhs = ax;
+            set_al( (uint8_t) ( lhs / (uint16_t) rhs ) );
+            set_ah( lhs % rhs );
+
+            // documentation says these bits are undefined, but real hardware does this.
+            //bool oldZero = fZero;
+            //set_PSZ16( ax );
+            //fZero = oldZero;
+        }
+        else
+            return true;
+    }
+    else if ( 7 == _reg ) // idiv r/m8
+    {
+        AddCycles( cycles, 112 ); // assume worst-case
+        uint8_t rhs = * get_rm_ptr8( _rm, cycles );
+        if ( 0 != rhs )
+        {
+            int16_t lhs = ax;
+            set_al( ( lhs / (int16_t) rhs ) & 0xff );
+            set_ah( lhs % (int16_t) rhs );
+
+            // documentation says these bits are undefined, but real hardware does this.
+            //bool oldZero = fZero;
+            //set_PSZ16( ax );
+            //fZero = oldZero;
+        }
+        else
+            return true;
+    }
+    else
+        unhandled_instruction();
+
+    return false;
+} //op_f6
+
+not_inlined bool i8086::op_f7( uint64_t & cycles )
+{
+    _bc++;
+
+    if ( 0 == _reg ) // test reg16/mem16, immed16
+    {
+        AddMemCycles( cycles, 8 );
+        uint16_t lhs = * get_rm_ptr16( _rm, cycles );
+        uint16_t rhs = * (uint16_t *) ( _pcode + _bc );
+        _bc += 2;
+        op_and16( lhs, rhs );
+    }
+    else if ( 2 == _reg ) // not reg16/mem16 -- no flags updated
+    {
+        AddMemCycles( cycles, 13 );
+        uint16_t * pval = get_rm_ptr16( _rm, cycles );
+        *pval = ~ ( *pval );
+    }
+    else if ( 3 == _reg ) // neg reg16/mem16 (subtract from 0)
+    {
+        AddMemCycles( cycles, 13 );
+        uint16_t * pval = get_rm_ptr16( _rm, cycles );
+        *pval = op_sub16( 0, *pval );
+    }
+    else if ( 4 == _reg ) // mul. dx:ax = ax * src
+    {
+        AddCycles( cycles, 133 ); // assume worst-case
+        uint16_t rhs = * get_rm_ptr16( _rm, cycles );
+        uint32_t result = (uint32_t) ax * (uint32_t) rhs;
+        dx = result >> 16;
+        ax = result & 0xffff;
+        fCarry = fOverflow = ( result > 0xffff );
+        //fAuxCarry = ( result > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
+        set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
+    }
+    else if ( 5 == _reg ) // imul. dx:ax = ax * src
+    {
+        AddCycles( cycles, 154 ); // assume worst-case
+        uint16_t rhs = * get_rm_ptr16( _rm, cycles );
+        uint32_t result = (int32_t) ax * (int32_t) rhs;
+        dx = result >> 16;
+        ax = result & 0xffff;
+        result &= 0xffff8000;
+        fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
+        //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
+        set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
+    }
+    else if ( 6 == _reg ) // div dx:ax / src. ax = result, dx = remainder
+    {
+        AddCycles( cycles, 162 ); // assume worst-case
+        uint16_t rhs = * get_rm_ptr16( _rm, cycles );
+        if ( 0 != rhs )
+        {
+            uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
+            ax = (uint16_t) ( lhs / (uint32_t) rhs );
+            dx = lhs % rhs;
+
+            // documentation says these bits are undefined, but real hardware does this.
+            //bool oldZero = fZero;
+            //set_PSZ16( ax );
+            //fZero = oldZero;
+        }
+        else
+            return true;
+    }
+    else if ( 7 == _reg ) // idiv dx:ax / src. ax = result, dx = remainder
+    {
+        AddCycles( cycles, 184 ); // assume worst-case
+        uint16_t rhs = * get_rm_ptr16( _rm, cycles );
+        if ( 0 != rhs )
+        {
+            uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
+            ax = (uint16_t) ( (int32_t) lhs / (int32_t) (int16_t) rhs );
+            dx = (int32_t) lhs % (int32_t) rhs;
+
+            // documentation says these bits are undefined, but real hardware does this.
+            //bool oldZero = fZero;
+            //set_PSZ16( ax );
+            //fZero = oldZero;
+        }
+        else
+            return true;
+    }
+    else
+        unhandled_instruction();
+    return false;
+} //op_f7
+
+not_inlined bool i8086::op_ff( uint64_t & cycles )
+{
+    if ( 0 == _reg ) // inc mem16
+    {
+        AddCycles( cycles, 21 );
+        uint16_t * pval = get_rm_ptr16( _rm, cycles );
+        *pval = op_inc16( *pval );
+        _bc++;
+    }
+    else if ( 1 == _reg ) // dec mem16
+    {
+        AddCycles( cycles, 21 );
+        uint16_t * pval = get_rm_ptr16( _rm, cycles );
+        *pval = op_dec16( *pval );
+        _bc++;
+    }
+    else if ( 2 == _reg ) // call reg16/mem16 (intra segment)
+    {
+        AddCycles( cycles, 18 );
+        AddMemCycles( cycles, 9 );
+        uint16_t * pfunc = get_rm_ptr16( _rm, cycles );
+        uint16_t return_address = ip + _bc + 1;
+        push( return_address );
+        ip = *pfunc;
+        return true;
+    }
+    else if ( 3 == _reg ) // call mem16:16 (inter segment)
+    {
+        AddCycles( cycles, 35 );
+        uint16_t * pdata = get_rm_ptr16( _rm, cycles );
+        push( cs );
+        push( ip + _bc + 1 );
+        ip = pdata[ 0 ];
+        cs = pdata[ 1 ];
+        return true;
+    }
+    else if ( 4 == _reg ) // jmp reg16/mem16 (intra segment)
+    {
+        AddCycles( cycles, 13 );
+        AddMemCycles( cycles, 3 );
+        ip = * get_rm_ptr16( _rm, cycles );
+        return true;
+    }
+    else if ( 5 == _reg ) // jmp mem16 (inter segment)
+    {
+        AddCycles( cycles, 16 );
+        uint16_t * pdata = get_rm_ptr16( _rm, cycles );
+        ip = pdata[ 0 ];
+        cs = pdata[ 1 ];
+        return true;
+    }
+    else if ( 6 == _reg ) // push mem16
+    {
+        AddCycles( cycles, 14 );
+        uint16_t * pval = get_rm_ptr16( _rm, cycles );
+        push( *pval );
+        _bc++;
+    }
+    else
+        unhandled_instruction();
+    return false;
+} //op_ff
+
 not_inlined bool i8086::handle_state()
 {
     // all of this code exists to reduce what would be multiple checks per instruction loop to just one check
@@ -814,26 +1056,32 @@ not_inlined bool i8086::handle_state()
 uint64_t i8086::emulate( uint64_t maxcycles )
 {
     uint64_t cycles = 0;
-    while ( cycles < maxcycles )                           // .91% of runtime
+
+    while ( cycles < maxcycles )                           // 4.8% of runtime
     {
-        prefix_segment_override = 0xff;                    // .66% of runtime though both are updated at once
+        prefix_segment_override = 0xff;                    // .69% of runtime though both are updated at once
         prefix_repeat_opcode = 0xff;
 
 _prefix_set:
-        if ( 0 != g_State )                                // 2.8% of runtime
+        if ( 0 != g_State )                                // 1.6% of runtime
             if ( handle_state() )
                 break;
 
         assert( 0 != cs || 0 != ip );                      // almost certainly an app bug.
-        decode_instruction( memptr( flat_ip() ) );         // 29 % of runtime
+        decode_instruction( memptr( flat_ip() ) );         // 23% of runtime
 
         #ifdef I8086_TRACK_CYCLES
-            cycles += i8086_cycles[ _b0 ];                 // .25% of runtime
+            cycles += i8086_cycles[ _b0 ];                 // 2% of runtime
         #else
             cycles += 18; // average for the mips.com benchmark
         #endif
 
-        switch( _b0 )                                      // 21.2% of runtime setting up for jumptable
+        // 30% of runtime setting up for use of the jumptables because they are in TEXT and
+        // the LEA instruction has a terrible interaction with L1/L2 instruction cache misses
+        // for each of the lookups (the 1-byte element table with 251 entries and the 4-byte
+        // element table with 115 entries).
+
+        switch( _b0 )
         {
             case 0x04: { set_al( op_add8( al(), _b1 ) ); _bc++; break; } // add al, immed8
             case 0x05: { ax = op_add16( ax, b12() ); _bc += 2; break; } // add ax, immed16
@@ -958,17 +1206,16 @@ _prefix_set:
             {
                 _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
-                * get_rm_ptr16_override( _rm, cycles ) = * seg_reg( _reg ); // 0x8c is even, but it's a word instruction not byte
+                * get_rm_ptr16( _rm, cycles ) = * seg_reg( _reg ); // 0x8c is even, but it's a word instruction not byte
                 break;
             }
             case 0x8d: { _bc++; * get_preg16( _reg ) = get_rm_ea( _rm, cycles ); break; } // lea reg16, mem16
             case 0x8e: // mov sreg, reg16/mem16
             {
-                 _bc++;
+                _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
-                 _isword = true; // the opcode indicates it's a byte instruction, but it's not
-                 * seg_reg( _reg ) = * get_rm_ptr16( _rm, cycles );
-                 break;
+                * seg_reg( _reg ) = * get_rm_ptr16( _rm, cycles );
+                break;
             }
             case 0x8f: // pop reg16/mem16
             {
@@ -1254,7 +1501,6 @@ _prefix_set:
             case 0xc3: { ip = pop(); continue; } // ret intrasegment
             case 0xc4: // les reg16, [mem16]
             {
-                _isword = true; // opcode is even, but it's a word.
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
                 uint16_t * pvalue = get_rm_ptr16( _rm, cycles );
@@ -1264,7 +1510,6 @@ _prefix_set:
             }
             case 0xc5: // lds reg16, [mem16]
             {
-                _isword = true; // opcode is even, but it's a word.
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
                 uint16_t * pvalue = get_rm_ptr16( _rm, cycles );
@@ -1274,6 +1519,8 @@ _prefix_set:
             }
             case 0xc6: // mov mem8, immed8
             {
+                if ( 0 != _reg )
+                    unhandled_instruction();
                 _bc++;
                 uint8_t * pdst = get_rm_ptr8( _rm, cycles );
                 *pdst = _pcode[ _bc ];
@@ -1282,6 +1529,8 @@ _prefix_set:
             }
             case 0xc7: // mov mem16, immed16
             {
+                if ( 0 != _reg )
+                    unhandled_instruction();
                 _bc++;
                 uint16_t src;
                 uint16_t * pdst = get_op_args16( false, src, cycles );
@@ -1393,11 +1642,7 @@ _prefix_set:
                 _bc++;
                 break;
             }
-            case 0xd6: // salc (undocumented. IP protection scheme?)
-            {
-                set_al( fCarry ? 0xff : 0 );
-                break;
-            }
+            case 0xd6: { set_al( fCarry ? 0xff : 0 ); break; } // salc (undocumented. IP protection scheme?)
             case 0xd7: // xlat
             {
                 uint8_t * ptable = flat_address8( get_seg_value( ds, cycles ), bx );
@@ -1476,191 +1721,20 @@ _prefix_set:
             case 0xf5: { fCarry = !fCarry; break; } //cmc
             case 0xf6: // test/UNUSED/not/neg/mul/imul/div/idiv r/m8
             {
-                _bc++;
-
-                if ( 0 == _reg ) // test reg8/mem8, immed8
+                if ( op_f6( cycles ) )
                 {
-                    AddMemCycles( cycles, 8 );
-                    uint8_t lhs = * get_rm_ptr8( _rm, cycles );
-                    uint8_t rhs = _pcode[ _bc++ ];
-                    op_and8( lhs, rhs );
+                    op_interrupt( 0, _bc ); // divide by 0
+                    continue;
                 }
-                else if ( 2 == _reg ) // not reg8/mem8 -- no flags updated
-                {
-                    AddMemCycles( cycles, 13 );
-                    uint8_t * pval = get_rm_ptr8( _rm, cycles );
-                    *pval = ~ ( *pval );
-                }
-                else if ( 3 == _reg ) // neg reg8/mem8 (subtract from 0)
-                {
-                    AddMemCycles( cycles, 13 );
-                    uint8_t * pval = get_rm_ptr8( _rm, cycles );
-                    *pval = op_sub8( 0, *pval );
-                }
-                else if ( 4 == _reg ) // mul. ax = al * r/m8
-                {
-                    AddCycles( cycles, 77 ); // assume worst-case
-                    uint8_t rhs = * get_rm_ptr8( _rm, cycles );
-                    ax = (uint16_t) al() * (uint16_t) rhs;
-                    fCarry = fOverflow = ( 0 != ah() );
-                    //fAuxCarry = ( ax > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
-                    set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
-                    fSign = ( 0 != ( 0x80 & al() ) ); // documentation says these bits are undefined, but real hardware does this
-                }
-                else if ( 5 == _reg ) // imul. ax = al * r/m8
-                {
-                    AddCycles( cycles, 98 ); // assume worst-case
-                    uint8_t rhs = * get_rm_ptr8( _rm, cycles );
-                    uint32_t result = (int16_t) al() * (int16_t) rhs;
-                    ax = result & 0xffff;
-                    result &= 0xffff8000;
-                    fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
-                    //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
-                    set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
-                }
-                else if ( 6 == _reg ) // div m, r8 / src. al = result, ah = remainder
-                {
-                    AddCycles( cycles, 90 ); // assume worst-case
-                    uint8_t rhs = * get_rm_ptr8( _rm, cycles );
-                    if ( 0 != rhs )
-                    {
-                        uint16_t lhs = ax;
-                        set_al( (uint8_t) ( lhs / (uint16_t) rhs ) );
-                        set_ah( lhs % rhs );
-
-                        // documentation says these bits are undefined, but real hardware does this.
-                        //bool oldZero = fZero;
-                        //set_PSZ16( ax );
-                        //fZero = oldZero;
-                    }
-                    else
-                    {
-                        tracer.Trace( "divide by zero in div m, r8\n" );
-                        op_interrupt( 0, _bc );
-                        continue;
-                    }
-                }
-                else if ( 7 == _reg ) // idiv r/m8
-                {
-                    AddCycles( cycles, 112 ); // assume worst-case
-                    uint8_t rhs = * get_rm_ptr8( _rm, cycles );
-                    if ( 0 != rhs )
-                    {
-                        int16_t lhs = ax;
-                        set_al( ( lhs / (int16_t) rhs ) & 0xff );
-                        set_ah( lhs % (int16_t) rhs );
-
-                        // documentation says these bits are undefined, but real hardware does this.
-                        //bool oldZero = fZero;
-                        //set_PSZ16( ax );
-                        //fZero = oldZero;
-                    }
-                    else
-                    {
-                        tracer.Trace( "divide by zero in idiv r/m8\n" );
-                        op_interrupt( 0, _bc );
-                        continue;
-                    }
-                }
-                else
-                    assert( false );
-
                 break;
             }
             case 0xf7: // test/UNUSED/not/neg/mul/imul/div/idiv r/m16
             {
-                _bc++;
-
-                if ( 0 == _reg ) // test reg16/mem16, immed16
+                if ( op_f7( cycles ) )
                 {
-                    AddMemCycles( cycles, 8 );
-                    uint16_t lhs = * get_rm_ptr16( _rm, cycles );
-                    uint16_t rhs = * (uint16_t *) ( _pcode + _bc );
-                    _bc += 2;
-                    op_and16( lhs, rhs );
+                    op_interrupt( 0, _bc ); // divide by 0
+                    continue;
                 }
-                else if ( 2 == _reg ) // not reg16/mem16 -- no flags updated
-                {
-                    AddMemCycles( cycles, 13 );
-                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
-                    *pval = ~ ( *pval );
-                }
-                else if ( 3 == _reg ) // neg reg16/mem16 (subtract from 0)
-                {
-                    AddMemCycles( cycles, 13 );
-                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
-                    *pval = op_sub16( 0, *pval );
-                }
-                else if ( 4 == _reg ) // mul. dx:ax = ax * src
-                {
-                    AddCycles( cycles, 133 ); // assume worst-case
-                    uint16_t rhs = * get_rm_ptr16( _rm, cycles );
-                    uint32_t result = (uint32_t) ax * (uint32_t) rhs;
-                    dx = result >> 16;
-                    ax = result & 0xffff;
-                    fCarry = fOverflow = ( result > 0xffff );
-                    //fAuxCarry = ( result > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
-                    set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
-                }
-                else if ( 5 == _reg ) // imul. dx:ax = ax * src
-                {
-                    AddCycles( cycles, 154 ); // assume worst-case
-                    uint16_t rhs = * get_rm_ptr16( _rm, cycles );
-                    uint32_t result = (int32_t) ax * (int32_t) rhs;
-                    dx = result >> 16;
-                    ax = result & 0xffff;
-                    result &= 0xffff8000;
-                    fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
-                    //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
-                    set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
-                }
-                else if ( 6 == _reg ) // div dx:ax / src. ax = result, dx = remainder
-                {
-                    AddCycles( cycles, 162 ); // assume worst-case
-                    uint16_t rhs = * get_rm_ptr16( _rm, cycles );
-                    if ( 0 != rhs )
-                    {
-                        uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
-                        ax = (uint16_t) ( lhs / (uint32_t) rhs );
-                        dx = lhs % rhs;
-
-                        // documentation says these bits are undefined, but real hardware does this.
-                        //bool oldZero = fZero;
-                        //set_PSZ16( ax );
-                        //fZero = oldZero;
-                    }
-                    else
-                    {
-                        tracer.Trace( "divide by zero in div dx:ax / src\n" );
-                        op_interrupt( 0, _bc );
-                        continue;
-                    }
-                }
-                else if ( 7 == _reg ) // idiv dx:ax / src. ax = result, dx = remainder
-                {
-                    AddCycles( cycles, 184 ); // assume worst-case
-                    uint16_t rhs = * get_rm_ptr16( _rm, cycles );
-                    if ( 0 != rhs )
-                    {
-                        uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
-                        ax = (uint16_t) ( (int32_t) lhs / (int32_t) (int16_t) rhs );
-                        dx = (int32_t) lhs % (int32_t) rhs;
-
-                        // documentation says these bits are undefined, but real hardware does this.
-                        //bool oldZero = fZero;
-                        //set_PSZ16( ax );
-                        //fZero = oldZero;
-                    }
-                    else
-                    {
-                        tracer.Trace( "divide by zero in idiv dx:ax / src\n" );
-                        op_interrupt( 0, _bc );
-                        continue;
-                    }
-                }
-                else
-                    assert( false );
-
                 break;
             }
             case 0xf8: { fCarry = false; break; } // clc
@@ -1681,80 +1755,38 @@ _prefix_set:
                     *pdst = op_dec8( *pdst );
                 break;
             }
-            case 0xff: // many
+            case 0xff: { if ( op_ff( cycles ) ) continue; break; } // many
+            default: // check for ranges of opcodes after exceptions were filtered out above
             {
-                if ( 0 == _reg ) // inc mem16
+                if ( _b0 <= 0x3d ) // add, or, adc, sbb, and, sub, xor, cmp
                 {
-                    AddCycles( cycles, 21 );
-                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
-                    *pval = op_inc16( *pval );
-                    _bc++;
+                    _bc = 2;
+                    AddMemCycles( cycles, 10 );
+                    uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
+                    if ( isword() )
+                    {
+                        uint16_t src;
+                        uint16_t * pdst = get_op_args16( true, src, cycles );
+                        do_math16( bits5to3, pdst, src );
+                    }
+                    else
+                    {
+                        uint8_t src;
+                        uint8_t * pdst = get_op_args8( true, src, cycles );
+                        do_math8( bits5to3, pdst, src );
+                    }
                 }
-                else if ( 1 == _reg ) // dec mem16
-                {
-                    AddCycles( cycles, 21 );
-                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
-                    *pval = op_dec16( *pval );
-                    _bc++;
-                }
-                else if ( 2 == _reg ) // call reg16/mem16 (intra segment)
-                {
-                    AddCycles( cycles, 18 );
-                    AddMemCycles( cycles, 9 );
-                    uint16_t * pfunc = get_rm_ptr16( _rm, cycles );
-                    uint16_t return_address = ip + _bc + 1;
-                    push( return_address );
-                    ip = *pfunc;
-                    continue;
-                }
-                else if ( 3 == _reg ) // call mem16:16 (inter segment)
-                {
-                    AddCycles( cycles, 35 );
-                    uint16_t * pdata = get_rm_ptr16( _rm, cycles );
-                    push( cs );
-                    push( ip + _bc + 1 );
-                    ip = pdata[ 0 ];
-                    cs = pdata[ 1 ];
-                    continue;
-                }
-                else if ( 4 == _reg ) // jmp reg16/mem16 (intra segment)
-                {
-                    AddCycles( cycles, 13 );
-                    AddMemCycles( cycles, 3 );
-                    ip = * get_rm_ptr16( _rm, cycles );
-                    continue;
-                }
-                else if ( 5 == _reg ) // jmp mem16 (inter segment)
-                {
-                    AddCycles( cycles, 16 );
-                    uint16_t * pdata = get_rm_ptr16( _rm, cycles );
-                    ip = pdata[ 0 ];
-                    cs = pdata[ 1 ];
-                    continue;
-                }
-                else if ( 6 == _reg ) // push mem16
-                {
-                    AddCycles( cycles, 14 );
-                    uint16_t * pval = get_rm_ptr16( _rm, cycles );
-                    push( *pval );
-                    _bc++;
-                }
-
-                break;
-            }
-            default: // check for ranges of opcodes
-            {
-                if ( _b0 <= 0x47 && _b0 >= 0x40 ) // inc ax..di
+                else if ( _b0 <= 0x47 ) // inc ax..di
                 {
                     uint16_t *pval = get_preg16( _b0 - 0x40 );
                     *pval = op_inc16( *pval );
                 }
-                else if ( _b0 <= 0x4f && _b0 >= 0x48 ) // dec ax..di
+                else if ( _b0 <= 0x4f ) // dec ax..di
                 {
                     uint16_t *pval = get_preg16( _b0 - 0x48 );
                     *pval = op_dec16( *pval );
                 }
-                else if ( _b0 <= 0x5f && _b0 >= 0x50 ) // push / pop
+                else if ( _b0 <= 0x5f ) // push / pop
                 {
                     uint16_t * preg = get_preg16( _b0 & 7 );
                     if ( _b0 <= 0x57 )
@@ -1762,7 +1794,9 @@ _prefix_set:
                     else 
                         *preg = pop();
                 }
-                else if ( _b0 <= 0x7f && _b0 >= 0x70 ) // jcc
+                else if ( _b0 <= 0x6f )
+                    unhandled_instruction();
+                else if ( _b0 <= 0x7f ) // jcc
                 {
                     bool takejmp;
                     switch( _b0 & 0xf )
@@ -1794,6 +1828,34 @@ _prefix_set:
                     else
                         _bc = 2;
                 }
+                else if ( _b0 <= 0x83 ) // math
+                {
+                    uint8_t math = _reg; // the _reg field is the math operator, not a register
+                    _bc = 3;
+        
+                    bool directAddress = ( 0 == _mod && 6 == _rm );
+                    AddCycles( cycles, directAddress ? 13 : 6 );
+                    int imm_offset = mod_to_imm_offset();
+        
+                    if ( isword() )
+                    {
+                        uint16_t rhs;
+                        if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
+                            rhs = (int8_t) _pcode[ imm_offset ]; // cast for sign extension from byte to word
+                        else
+                        {
+                            _bc++;
+                            rhs = * (uint16_t *) ( _pcode + imm_offset );
+                        }
+        
+                        do_math16( math, get_rm_ptr16( _rm, cycles ), rhs );
+                    }
+                    else
+                    {
+                        uint8_t rhs = _pcode[ imm_offset ];
+                        do_math8( math, get_rm_ptr8( _rm, cycles ), rhs );
+                    }
+                }
                 else if ( _b0 <= 0x97 && _b0 >= 0x91 ) // xchg ax, cx/dx/bx/sp/bp/si/di  0x90 is nop
                 {
                     uint16_t * preg = get_preg16( _b0 & 7 );
@@ -1815,71 +1877,18 @@ _prefix_set:
                 else if ( _b0 <= 0xde && _b0 >= 0xd8 ) // esc (8087 instructions)
                 {
                     _bc++;
-                    if ( _isword )
+                    if ( isword() )
                         void * p = get_rm_ptr16( _rm, cycles );
                     else
                         void * p = get_rm_ptr8( _rm, cycles );
                     // ignore p -- just consume the correct number of opcodes
                 }
-                else if ( 0 == ( 0xc4 & _b0 ) ) // add, or, adc, sbb, and, sub, xor, cmp
-                {
-                    _bc = 2;
-                    AddMemCycles( cycles, 10 );
-                    uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
-                    if ( _isword )
-                    {
-                        uint16_t src;
-                        uint16_t * pdst = get_op_args16( true, src, cycles );
-                        do_math16( bits5to3, pdst, src );
-                    }
-                    else
-                    {
-                        uint8_t src;
-                        uint8_t * pdst = get_op_args8( true, src, cycles );
-                        do_math8( bits5to3, pdst, src );
-                    }
-                }
-                else if ( 0x80 == ( 0xfc & _b0 ) ) // math
-                {
-                    uint8_t math = _reg; // the _reg field is the math operator, not a register
-                    _bc = 3;
-        
-                    bool directAddress = ( 0 == _mod && 6 == _rm );
-                    int immoffset;
-                    if ( 1 == _mod )
-                        immoffset = 3;
-                    else if ( 2 == _mod || directAddress )
-                        immoffset = 4;
-                    else
-                        immoffset = 2;
-        
-                    AddCycles( cycles, directAddress ? 13 : 6 );
-        
-                    if ( _isword )
-                    {
-                        uint16_t rhs;
-                        if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
-                            rhs = (int8_t) _pcode[ immoffset ]; // cast for sign extension from byte to word
-                        else
-                        {
-                            _bc++;
-                            rhs = * (uint16_t *) ( _pcode + immoffset );
-                        }
-        
-                        do_math16( math, get_rm_ptr16( _rm, cycles ), rhs );
-                    }
-                    else
-                    {
-                        uint8_t rhs = _pcode[ immoffset ];
-                        do_math8( math, get_rm_ptr8( _rm, cycles ), rhs );
-                    }
-                }
                 else
-                    i8086_hard_exit( "unhandled 8086 instruction %02x\n", _b0 );
+                    unhandled_instruction();
             } //default
         } //switch
   
-        ip += _bc;                                         // 4.4% of runtime
+        ip += _bc;                                         // 8.7% of runtime (includes while check above)
     } //while
 
 _all_done:
