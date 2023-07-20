@@ -193,7 +193,7 @@ inline const char * build_platform()
 inline const char * build_string()
 {
     static char bs[ 100 ];
-    sprintf( bs, "built for %s %s on %s by %s on %s\n", target_platform(), build_type(), __TIMESTAMP__, compiler_used(), build_platform() );
+    sprintf( bs, "built for %s %s on %s %s by %s on %s\n", target_platform(), build_type(), __DATE__, __TIME__, compiler_used(), build_platform() );
     return bs;
 } //build_string
 
