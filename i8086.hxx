@@ -347,9 +347,9 @@ struct i8086
 
     uint16_t get_rm_ea( uint8_t rm_to_use, uint64_t & cycles ) // effective address. used strictly for lea
     {
-        assert( _mod <= 3 );
-        if ( 3 == _mod )
-            return isword() ? * get_preg16( rm_to_use ) : * get_preg8( rm_to_use );
+        assert( isword() );
+        assert( 0x8d == _b0 ); // it's lea
+        assert( _mod <= 2 ); // lea specifies the source operand must be memory, not a register
         
         if ( 1 == _mod )
         {
@@ -385,55 +385,29 @@ struct i8086
         return 2;
     } //mod_to_imm_offset
 
-    uint16_t * get_op_args16( bool firstArgReg, uint16_t & rhs, uint64_t & cycles )
+    uint16_t * get_op_args16( uint16_t & rhs, uint64_t & cycles )
     {
         assert( isword() );
-        if ( !toreg() )
-        {
-            rhs = get_reg_value16( _reg );
-            return get_rm_ptr16( _rm, cycles );
-        }
-
-        if ( firstArgReg )
+        if ( toreg() )
         {
             rhs = * get_rm_ptr16( _rm, cycles );
             return get_preg16( _reg );
         }
 
-        if ( 3 == _mod ) // second argument is a register
-        {
-            rhs = get_reg_value16( _rm );
-            return get_rm_ptr16( _reg, cycles );
-        }
-
-        rhs = * (uint16_t *) ( _pcode + mod_to_imm_offset() );
-        _bc += 2;
+        rhs = get_reg_value16( _reg );
         return get_rm_ptr16( _rm, cycles );
     } //get_op_args16
     
-    uint8_t * get_op_args8( bool firstArgReg, uint8_t & rhs, uint64_t & cycles )
+    uint8_t * get_op_args8( uint8_t & rhs, uint64_t & cycles )
     {
         assert( !isword() );
-        if ( !toreg() )
-        {
-            rhs = get_reg_value8( _reg );
-            return get_rm_ptr8( _rm, cycles );
-        }
-
-        if ( firstArgReg )
+        if ( toreg() )
         {
             rhs = * get_rm_ptr8( _rm, cycles );
             return get_preg8( _reg );
         }
 
-        if ( 3 == _mod ) // second argument is a register
-        {
-            rhs = get_reg_value8( _rm );
-            return get_rm_ptr8( _reg, cycles );
-        }
-
-        rhs = _pcode[ mod_to_imm_offset() ];
-        _bc += 1;
+        rhs = get_reg_value8( _reg );
         return get_rm_ptr8( _rm, cycles );
     } //get_op_args8
     

@@ -122,49 +122,29 @@ void i8086::update_rep_sidi8()
 
 force_inlined uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 {
-    // com == ones-complement
-    uint8_t com_rhs = ~rhs;
+    uint8_t com_rhs = ~rhs; // com == ones-complement
     uint8_t borrow_int = borrow ? 0 : 1;
-    uint16_t res16 =  (uint16_t) lhs + (uint16_t) com_rhs + (uint16_t) borrow_int;
+    uint16_t res16 = (uint16_t) lhs + (uint16_t) com_rhs + (uint16_t) borrow_int;
     uint8_t res8 = res16 & 0xff;
     fCarry = ( 0 == ( res16 & 0x100 ) );
     set_PSZ8( res8 );
-
-    // if not ( ( one of lhs and com_x are negative ) and ( one of lhs and result are negative ) )
-    fOverflow = ! ( ( lhs ^ com_rhs ) & 0x80 ) && ( ( lhs ^ res8 ) & 0x80 );
-    uint8_t l_nibble = lhs & 0xf;
-    uint8_t r_nibble = rhs & 0xf;
-    fAuxCarry = ( 0 != ( ( l_nibble - r_nibble - ( borrow ? 1 : 0 ) ) & ~0xf ) );
+    fOverflow = ( ! ( ( lhs ^ com_rhs ) & 0x80 ) ) && ( ( lhs ^ res8 ) & 0x80 );
+    fAuxCarry = ( 0 != ( ( ( lhs & 0xf ) - ( rhs & 0xf ) - ( borrow ? 1 : 0 ) ) & ~0xf ) );
     return res8;
 } //op_sub8
 
 force_inlined uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
 {
-    // com == ones-complement
-    uint16_t com_rhs = ~rhs;
+    uint16_t com_rhs = ~rhs; // com == ones-complement
     uint16_t borrow_int = borrow ? 0 : 1;
-    uint32_t res32 =  (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) borrow_int;
+    uint32_t res32 = (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) borrow_int;
     uint16_t res16 = res32 & 0xffff;
     fCarry = ( 0 == ( res32 & 0x10000 ) );
     set_PSZ16( res16 );
     fOverflow = ( ! ( ( lhs ^ com_rhs ) & 0x8000 ) ) && ( ( lhs ^ res16 ) & 0x8000 );
-    uint8_t l_nibble = lhs & 0xf;
-    uint8_t r_nibble = rhs & 0xf;
-    fAuxCarry = ( 0 != ( ( l_nibble - r_nibble - ( borrow ? 1 : 0 ) ) & ~0xf ) );
+    fAuxCarry = ( 0 != ( ( ( lhs & 0xf ) - ( rhs & 0xf ) - ( borrow ? 1 : 0 ) ) & ~0xf ) );
     return res16;
 } //op_sub16
-
-force_inlined uint16_t i8086::op_add16( uint16_t lhs, uint16_t rhs, bool carry )
-{
-    uint32_t carry_int = carry ? 1 : 0;
-    uint32_t r32 = (uint32_t) lhs + (uint32_t) rhs + carry_int;
-    uint16_t r16 = r32 & 0xffff;
-    fCarry = ( 0 != ( r32 & 0x010000 ) );
-    fAuxCarry = ( 0 != ( ( ( 0xf & lhs ) + ( 0xf & rhs ) + carry_int ) & 0x10 ) );
-    set_PSZ16( r16 );
-    fOverflow = ( ! ( ( lhs ^ rhs ) & 0x8000 ) ) && ( ( lhs ^ r16 ) & 0x8000 );
-    return r16;
-} //op_add16
 
 force_inlined uint8_t i8086::op_add8( uint8_t lhs, uint8_t rhs, bool carry )
 {
@@ -172,11 +152,23 @@ force_inlined uint8_t i8086::op_add8( uint8_t lhs, uint8_t rhs, bool carry )
     uint16_t r16 = (uint16_t) lhs + (uint16_t) rhs + carry_int;
     uint8_t r8 = r16 & 0xff;
     fCarry = ( 0 != ( r16 & 0x0100 ) );
-    fAuxCarry = ( 0 != ( ( ( 0xf & lhs ) + ( 0xf & rhs ) + carry_int ) & 0x10 ) );
     set_PSZ8( r8 );
     fOverflow = ( ! ( ( lhs ^ rhs ) & 0x80 ) ) && ( ( lhs ^ r8 ) & 0x80 );
+    fAuxCarry = ( 0 != ( ( ( 0xf & lhs ) + ( 0xf & rhs ) + carry_int ) & 0x10 ) );
     return r8;
 } //op_add8
+
+force_inlined uint16_t i8086::op_add16( uint16_t lhs, uint16_t rhs, bool carry )
+{
+    uint32_t carry_int = carry ? 1 : 0;
+    uint32_t r32 = (uint32_t) lhs + (uint32_t) rhs + carry_int;
+    uint16_t r16 = r32 & 0xffff;
+    fCarry = ( 0 != ( r32 & 0x010000 ) );
+    set_PSZ16( r16 );
+    fOverflow = ( ! ( ( lhs ^ rhs ) & 0x8000 ) ) && ( ( lhs ^ r16 ) & 0x8000 );
+    fAuxCarry = ( 0 != ( ( ( 0xf & lhs ) + ( 0xf & rhs ) + carry_int ) & 0x10 ) );
+    return r16;
+} //op_add16
 
 uint16_t i8086::op_and16( uint16_t lhs, uint16_t rhs )
 {
@@ -1083,6 +1075,28 @@ _prefix_set:
 
         switch( _b0 )
         {
+            case 0x00: case 0x01: case 0x02: case 0x03: case 0x08: case 0x09: case 0x0a: case 0x0b:  // add, or, adc, sbb, and, sub, xor, cmp
+            case 0x10: case 0x11: case 0x12: case 0x13: case 0x18: case 0x19: case 0x1a: case 0x1b: 
+            case 0x20: case 0x21: case 0x22: case 0x23: case 0x28: case 0x29: case 0x2a: case 0x2b: 
+            case 0x30: case 0x31: case 0x32: case 0x33: case 0x38: case 0x39: case 0x3a: case 0x3b: 
+            {
+                _bc = 2;
+                AddMemCycles( cycles, 10 );
+                uint8_t math = ( _b0 >> 3 ) & 7;
+                if ( isword() )
+                {
+                    uint16_t src;
+                    uint16_t * pdst = get_op_args16( src, cycles );
+                    do_math16( math, pdst, src );
+                }
+                else
+                {
+                    uint8_t src;
+                    uint8_t * pdst = get_op_args8( src, cycles );
+                    do_math8( math, pdst, src );
+                }
+                break;
+            }
             case 0x04: { set_al( op_add8( al(), _b1 ) ); _bc++; break; } // add al, immed8
             case 0x05: { ax = op_add16( ax, b12() ); _bc += 2; break; } // add ax, immed16
             case 0x06: { push( es ); break; } // push es
@@ -1114,6 +1128,28 @@ _prefix_set:
             case 0x3d: { _bc += 2; op_sub16( ax, b12() ); break; } // cmp ax, i16
             case 0x3e: { prefix_segment_override = 3; ip++; goto _prefix_set; } // ds segment override
             case 0x3f: { op_aas(); break; } // aas. ascii adjust al after subtraction
+            case 0x40: case 0x41: case 0x42: case 0x43: case 0x44: case 0x45: case 0x46: case 0x47: // inc ax..di
+            {
+                uint16_t *pval = get_preg16( _b0 - 0x40 );
+                *pval = op_inc16( *pval );
+                break;
+            }
+            case 0x48: case 0x49: case 0x4a: case 0x4b: case 0x4c: case 0x4d: case 0x4e: case 0x4f: // dec ax..di
+            {
+                uint16_t *pval = get_preg16( _b0 - 0x48 );
+                *pval = op_dec16( *pval );
+                break;
+            }
+            case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57: // push
+            case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f: // pop
+            {
+                uint16_t * preg = get_preg16( _b0 & 7 );
+                if ( _b0 <= 0x57 )
+                    push( *preg );
+                else 
+                    *preg = pop();
+                break;
+            }
             case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt. default interrupt routines execute this to get to C++ code
             {
                 _bc++;
@@ -1127,7 +1163,68 @@ _prefix_set:
                 
                  if ( old_ip != ip || old_cs != cs )
                     continue;
+                break;
+            }
+            case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75: case 0x76: case 0x77: // jcc
+            case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f:
+            {
+                bool takejmp;
+                switch( _b0 & 0xf )
+                {                                                                //                   hints:
+                    case 0:  takejmp = fOverflow; break;                         // jo                o = overflow
+                    case 1:  takejmp = !fOverflow; break;                        // jno               n = not
+                    case 2:  takejmp = fCarry; break;                            // jb / jnae / jc    b = below, ae = above or equal, c = carry
+                    case 3:  takejmp = !fCarry; break;                           // jnb / jae / jnc
+                    case 4:  takejmp = fZero; break;                             // je / jz           e = equal, z = zero
+                    case 5:  takejmp = !fZero; break;                            // jne / jnz
+                    case 6:  takejmp = fCarry || fZero; break;                   // jbe / jna         be = below or equal, na = not above
+                    case 7:  takejmp = !fCarry && !fZero; break;                 // jnbe / ja
+                    case 8:  takejmp = fSign; break;                             // js                s = signed
+                    case 9:  takejmp = !fSign; break;                            // jns
+                    case 10: takejmp = fParityEven; break;                       // jp / jpe          p / pe = parity even
+                    case 11: takejmp = !fParityEven; break;                      // jnp / jpo         po = parity odd
+                    case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge         l = less than, nge = not greater than or equal
+                    case 13: takejmp = ( fSign == fOverflow ); break;            // jnl / jge
+                    case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng         le = less than or equal, ng = not greather than
+                    case 15: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg
+                }
+    
+                if ( takejmp )
+                {
+                    ip += ( 2 + (int) (int8_t) _b1 );
+                    AddCycles( cycles, 12 );
+                    continue;
+                }
 
+                _bc = 2;
+                break;
+            }
+            case 0x80: case 0x81: case 0x82: case 0x83: // math
+            {
+                uint8_t math = _reg; // the _reg field is the math operator, not a register
+                _bc = 3;
+                bool directAddress = ( 0 == _mod && 6 == _rm );
+                AddCycles( cycles, directAddress ? 13 : 6 );
+                int imm_offset = mod_to_imm_offset();
+        
+                if ( isword() )
+                {
+                    uint16_t rhs;
+                    if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
+                        rhs = (int8_t) _pcode[ imm_offset ]; // cast for sign extension from byte to word
+                    else
+                    {
+                        _bc++;
+                        rhs = * (uint16_t *) ( _pcode + imm_offset );
+                    }
+        
+                    do_math16( math, get_rm_ptr16( _rm, cycles ), rhs );
+                }
+                else
+                {
+                    uint8_t rhs = _pcode[ imm_offset ];
+                    do_math8( math, get_rm_ptr8( _rm, cycles ), rhs );
+                }
                 break;
             }
             case 0x84: // test reg8/mem8, reg8
@@ -1135,7 +1232,7 @@ _prefix_set:
                 _bc++;
                 AddMemCycles( cycles, 8 );
                 uint8_t src;
-                uint8_t * pleft = get_op_args8( toreg(), src, cycles );
+                uint8_t * pleft = get_op_args8( src, cycles );
                 op_and8( *pleft, src );
                 break;
             }
@@ -1144,7 +1241,7 @@ _prefix_set:
                 _bc++;
                 AddMemCycles( cycles, 8 );
                 uint16_t src;
-                uint16_t * pleft = get_op_args16( toreg(), src, cycles );
+                uint16_t * pleft = get_op_args16( src, cycles );
                 op_and16( *pleft, src );
                 break;
             }
@@ -1175,7 +1272,7 @@ _prefix_set:
                 _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
                 uint8_t src;
-                uint8_t * pdst = get_op_args8( toreg(), src, cycles );
+                uint8_t * pdst = get_op_args8( src, cycles );
                 * pdst = src;
                 break;
             }
@@ -1184,7 +1281,7 @@ _prefix_set:
                 _bc++;
                 AddMemCycles( cycles, 11 ); // 10/11/12 possible
                 uint16_t src;
-                uint16_t * pdst = get_op_args16( toreg(), src, cycles );
+                uint16_t * pdst = get_op_args16( src, cycles );
                 * pdst = src;
                 break;
             }
@@ -1225,8 +1322,13 @@ _prefix_set:
                 _bc++;
                 break;
             }
-            case 0x90: { break; } // nop
-            case 0x98: { set_ah( ( al() & 0x80 ) ? 0xff : 0 ); break; } // cbw -- covert byte in al to word in ax. sign extend
+            case 0x90: case 0x91: case 0x92: case 0x93: case 0x94: case 0x95: case 0x96: case 0x97: // nop + xchg ax, cx/dx/bx/sp/bp/si/di
+            {
+                uint16_t * preg = get_preg16( _b0 & 7 );
+                swap( ax, * preg );
+                break;
+            }
+            case 0x98: { set_ah( ( al() & 0x80 ) ? 0xff : 0 ); break; } // cbw -- covert byte in al to word in ax. sign
             case 0x99: { dx = ( ax & 0x8000 ) ? 0xffff : 0; break; } // cwd -- convert word in ax to to double-word in dx:ax. sign extend
             case 0x9a: // call far proc
             {
@@ -1497,6 +1599,18 @@ _prefix_set:
                     op_scas16( cycles );
                 break;
             }
+            case 0xb0: case 0xb1: case 0xb2: case 0xb3: case 0xb4: case 0xb5: case 0xb6: case 0xb7: // mov r8, immed
+            {
+                * get_preg8( _b0 & 7 ) = _b1;
+                _bc = 2;
+                break;
+            }
+            case 0xb8: case 0xb9: case 0xba: case 0xbb: case 0xbc: case 0xbd: case 0xbe: case 0xbf: // mov r16, immed
+            {
+                * get_preg16( _b0 & 7 ) = b12();
+                _bc = 3;
+                break;
+            }
             case 0xc2: { ip = pop(); sp += b12(); continue; } // ret immed16 intrasegment
             case 0xc3: { ip = pop(); continue; } // ret intrasegment
             case 0xc4: // les reg16, [mem16]
@@ -1532,9 +1646,9 @@ _prefix_set:
                 if ( 0 != _reg )
                     unhandled_instruction();
                 _bc++;
-                uint16_t src;
-                uint16_t * pdst = get_op_args16( false, src, cycles );
-                *pdst = src;
+                uint16_t * pdst = get_rm_ptr16( _rm, cycles );
+                *pdst = * (uint16_t *) & _pcode[ _bc ];
+                _bc += 2;
                 break;
             }
             case 0xca: { ip = pop(); cs = pop(); sp += b12(); continue; } // retf immed16
@@ -1649,6 +1763,16 @@ _prefix_set:
                 set_al( ptable[ al() ] );
                 break;
             }
+            case 0xd8: case 0xd9: case 0xda: case 0xdb: case 0xdc: case 0xdd: case 0xde:  // esc (8087 instructions)
+            {
+                _bc++;
+                if ( isword() )
+                    void * p = get_rm_ptr16( _rm, cycles );
+                else
+                    void * p = get_rm_ptr8( _rm, cycles );
+                // ignore p -- just consume the correct number of opcodes
+                break;
+            }
             case 0xe0: // loopne/loopnz short-label
             {
                 cx--;
@@ -1756,136 +1880,8 @@ _prefix_set:
                 break;
             }
             case 0xff: { if ( op_ff( cycles ) ) continue; break; } // many
-            default: // check for ranges of opcodes after exceptions were filtered out above
-            {
-                if ( _b0 <= 0x3d ) // add, or, adc, sbb, and, sub, xor, cmp
-                {
-                    _bc = 2;
-                    AddMemCycles( cycles, 10 );
-                    uint8_t bits5to3 = ( _b0 >> 3 ) & 7;
-                    if ( isword() )
-                    {
-                        uint16_t src;
-                        uint16_t * pdst = get_op_args16( true, src, cycles );
-                        do_math16( bits5to3, pdst, src );
-                    }
-                    else
-                    {
-                        uint8_t src;
-                        uint8_t * pdst = get_op_args8( true, src, cycles );
-                        do_math8( bits5to3, pdst, src );
-                    }
-                }
-                else if ( _b0 <= 0x47 ) // inc ax..di
-                {
-                    uint16_t *pval = get_preg16( _b0 - 0x40 );
-                    *pval = op_inc16( *pval );
-                }
-                else if ( _b0 <= 0x4f ) // dec ax..di
-                {
-                    uint16_t *pval = get_preg16( _b0 - 0x48 );
-                    *pval = op_dec16( *pval );
-                }
-                else if ( _b0 <= 0x5f ) // push / pop
-                {
-                    uint16_t * preg = get_preg16( _b0 & 7 );
-                    if ( _b0 <= 0x57 )
-                        push( *preg );
-                    else 
-                        *preg = pop();
-                }
-                else if ( _b0 <= 0x6f )
-                    unhandled_instruction();
-                else if ( _b0 <= 0x7f ) // jcc
-                {
-                    bool takejmp;
-                    switch( _b0 & 0xf )
-                    {                                                                //                   hints:
-                        case 0:  takejmp = fOverflow; break;                         // jo                o = overflow
-                        case 1:  takejmp = !fOverflow; break;                        // jno               n = not
-                        case 2:  takejmp = fCarry; break;                            // jb / jnae / jc    b = below, ae = above or equal, c = carry
-                        case 3:  takejmp = !fCarry; break;                           // jnb / jae / jnc
-                        case 4:  takejmp = fZero; break;                             // je / jz           e = equal, z = zero
-                        case 5:  takejmp = !fZero; break;                            // jne / jnz
-                        case 6:  takejmp = fCarry || fZero; break;                   // jbe / jna         be = below or equal, na = not above
-                        case 7:  takejmp = !fCarry && !fZero; break;                 // jnbe / ja
-                        case 8:  takejmp = fSign; break;                             // js                s = signed
-                        case 9:  takejmp = !fSign; break;                            // jns
-                        case 10: takejmp = fParityEven; break;                       // jp / jpe          p / pe = parity even
-                        case 11: takejmp = !fParityEven; break;                      // jnp / jpo         po = parity odd
-                        case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge         l = less than, nge = not greater than or equal
-                        case 13: takejmp = ( fSign == fOverflow ); break;            // jnl / jge
-                        case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng         le = less than or equal, ng = not greather than
-                        case 15: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg
-                    }
-    
-                    if ( takejmp )
-                    {
-                        ip += ( 2 + (int) (int8_t) _b1 );
-                        AddCycles( cycles, 12 );
-                        continue;
-                    }
-                    else
-                        _bc = 2;
-                }
-                else if ( _b0 <= 0x83 ) // math
-                {
-                    uint8_t math = _reg; // the _reg field is the math operator, not a register
-                    _bc = 3;
-        
-                    bool directAddress = ( 0 == _mod && 6 == _rm );
-                    AddCycles( cycles, directAddress ? 13 : 6 );
-                    int imm_offset = mod_to_imm_offset();
-        
-                    if ( isword() )
-                    {
-                        uint16_t rhs;
-                        if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
-                            rhs = (int8_t) _pcode[ imm_offset ]; // cast for sign extension from byte to word
-                        else
-                        {
-                            _bc++;
-                            rhs = * (uint16_t *) ( _pcode + imm_offset );
-                        }
-        
-                        do_math16( math, get_rm_ptr16( _rm, cycles ), rhs );
-                    }
-                    else
-                    {
-                        uint8_t rhs = _pcode[ imm_offset ];
-                        do_math8( math, get_rm_ptr8( _rm, cycles ), rhs );
-                    }
-                }
-                else if ( _b0 <= 0x97 && _b0 >= 0x91 ) // xchg ax, cx/dx/bx/sp/bp/si/di  0x90 is nop
-                {
-                    uint16_t * preg = get_preg16( _b0 & 7 );
-                    swap( ax, * preg );
-                }
-                else if ( _b0 <= 0xbf && _b0 >= 0xb0 ) // mov r, immed
-                {
-                    if ( _b0 <= 0xb7 )
-                    {
-                        * get_preg8( _b0 & 7 ) = _b1;
-                        _bc = 2;
-                    }
-                    else
-                    {
-                        * get_preg16( _b0 & 7 ) = b12();
-                        _bc = 3;
-                    }
-                }
-                else if ( _b0 <= 0xde && _b0 >= 0xd8 ) // esc (8087 instructions)
-                {
-                    _bc++;
-                    if ( isword() )
-                        void * p = get_rm_ptr16( _rm, cycles );
-                    else
-                        void * p = get_rm_ptr8( _rm, cycles );
-                    // ignore p -- just consume the correct number of opcodes
-                }
-                else
-                    unhandled_instruction();
-            } //default
+            default:
+                unhandled_instruction();
         } //switch
   
         ip += _bc;                                         // 8.7% of runtime (includes while check above)
