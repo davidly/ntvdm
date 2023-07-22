@@ -1767,9 +1767,9 @@ _prefix_set:
             {
                 _bc++;
                 if ( isword() )
-                    void * p = get_rm_ptr16( _rm, cycles );
+                    get_rm_ptr16( _rm, cycles );
                 else
-                    void * p = get_rm_ptr8( _rm, cycles );
+                    get_rm_ptr8( _rm, cycles );
                 // ignore p -- just consume the correct number of opcodes
                 break;
             }

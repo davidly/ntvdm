@@ -299,7 +299,7 @@ struct i8086
         {
             _bc += 1;
             AddCycles( cycles, 4 );
-            int offset = (int) (char) _pcode[ 2 ];
+            int16_t offset = (int16_t) (char) _pcode[ 2 ];
             uint16_t regval = get_displacement( rm_to_use, cycles );
             uint16_t segment = get_displacement_seg( rm_to_use, cycles );
             return flat_address( segment, regval + offset );

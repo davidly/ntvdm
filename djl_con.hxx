@@ -26,7 +26,7 @@ class ConsoleConfiguration
 
     public:
         #ifdef _MSC_VER
-            ConsoleConfiguration() : consoleOutputHandle( 0 ), consoleInputHandle( 0 ), oldConsoleMode( 0 ), setWidth( 0 )
+            ConsoleConfiguration() : consoleOutputHandle( 0 ), consoleInputHandle( 0 ), oldConsoleMode( 0 ), setWidth( 0 ), oldOutputCP( 0 )
             {
                 oldWindowPlacement = {0};
                 oldScreenInfo = {0};
@@ -220,7 +220,7 @@ class ConsoleConfiguration
                     dwMode |= ( ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_WINDOW_INPUT );
                     SetConsoleMode( hcon, dwMode );
                     SendClsSequence();
-                    SetConsoleMode( hcon, dwMode );
+                    SetConsoleMode( hcon, oldMode );
                 }
             #else
                 SendClsSequence();
@@ -279,7 +279,7 @@ class ConsoleConfiguration
             size_t len = 0;
             do
             {
-                char ch = portable_getch();
+                char ch = (char) portable_getch();
                 if ( '\n' == ch || '\r' == ch )
                 {
                     printf( "\n" );
@@ -316,7 +316,7 @@ class ConsoleConfiguration
             out_len = 0;
             do
             {
-                char ch = portable_getch();
+                char ch = (char) portable_getch();
                 if ( '\n' == ch || '\r' == ch )
                 {
                     printf( "\r" );

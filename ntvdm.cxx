@@ -329,7 +329,7 @@ int ends_with( const char * str, const char * end )
 
 bool isFilenameChar( char c )
 {
-    char l = tolower( c );
+    char l = (char) tolower( c );
     return ( ( l >= 'a' && l <= 'z' ) || ( l >= '0' && l <= '9' ) || '_' == c || '^' == c || '$' == c || '~' == c || '!' == c || '*' == c );
 } //isFilenameChar
 
@@ -369,7 +369,7 @@ uint8_t get_current_drive()
     // 0 == A...
 
     GetCurrentDirectoryA( sizeof( cwd ), cwd );
-    return toupper( cwd[0] ) - 'A';
+    return (uint8_t) toupper( cwd[0] ) - 'A';
 } //get_current_drive
 
 static int compare_int_entries( const void * a, const void * b )
@@ -393,22 +393,6 @@ static int compare_int_entries( const void * a, const void * b )
 
     return -1;
 } //compare_int_entries
-
-static int compare_alloc_entries( const void * a, const void * b )
-{
-    // sort by segment, low to high
-
-    DosAllocation const * pa = (DosAllocation const *) a;
-    DosAllocation const * pb = (DosAllocation const *) b;
-
-    if ( pa->segment > pb->segment )
-        return 1;
-
-    if ( pa->segment == pb->segment )
-        return 0;
-
-    return -1;
-} //compare_alloc_entries
 
 static int compare_file_entries( const void * a, const void * b )
 {
@@ -1081,7 +1065,7 @@ void traceDisplayBuffers()
     for ( int i = 0; i < 2; i++ )
     {
         tracer.Trace( "cga memory buffer %d\n", i );
-        uint8_t * pbuf = GetMem( ScreenBufferSegment, 0x1000 * i );
+        uint8_t * pbuf = GetMem( ScreenBufferSegment, (uint16_t) ( 0x1000 * i ) );
         for ( size_t y = 0; y < ScreenRows; y++ )
         {
             size_t yoffset = y * ScreenColumns * 2;
@@ -2042,7 +2026,6 @@ void handle_int_10( uint8_t c )
 
             GetCursorPosition( row, col );
             uint16_t lastRow = row;
-            uint16_t lastCol = col;
 
             row = cpu.dh();
             col = cpu.dl();
@@ -2115,8 +2098,8 @@ void handle_int_10( uint8_t c )
                     if ( 0 == lines )
                     {
                         tracer.Trace( "SCROLLUP CLEAR!!!!!!!!\n", lines );
-                        for ( int row = rul; row <= rlr; row++ )
-                            memcpy( pbuf + ( row * ScreenColumns * 2 + cul * 2 ), blankLine, 2 * ( 1 + clr - cul ) );
+                        for ( int r = rul; r <= rlr; r++ )
+                            memcpy( pbuf + ( r * ScreenColumns * 2 + cul * 2 ), blankLine, 2 * ( 1 + clr - cul ) );
                     }
                     else
                         ClearDisplay();
@@ -2168,8 +2151,8 @@ void handle_int_10( uint8_t c )
                     if ( 0 == lines )
                     {
                         tracer.Trace( "SCROLLDOWN CLEAR!!!!!!!!\n", lines );
-                        for ( int row = rul; row <= rlr; row++ )
-                            memcpy( pbuf + ( row * ScreenColumns * 2 + cul * 2 ), blankLine, 2 * ( 1 + clr - cul ) );
+                        for ( int r = rul; r <= rlr; r++ )
+                            memcpy( pbuf + ( r * ScreenColumns * 2 + cul * 2 ), blankLine, 2 * ( 1 + clr - cul ) );
                     }
                     else
                         ClearDisplay();
@@ -2179,16 +2162,16 @@ void handle_int_10( uint8_t c )
                     // likely data: lines = 1, rul = 1, cul = 0, rlr = 24, clr = 79
                     //          or: lines = 1, rul = 0, cul = 0, rlr = 24, clr = 79
 
-                    for ( int row = rlr; row >= rul; row-- )
+                    for ( int r = rlr; r >= rul; r-- )
                     {
-                        int targetrow = row + lines;
+                        int targetrow = r + lines;
                         if ( targetrow <= rlr )
                             memcpy( pbuf + ( targetrow * ScreenColumns * 2 + cul * 2 ),
-                                    pbuf + ( row * ScreenColumns * 2 + cul * 2 ),
+                                    pbuf + ( r * ScreenColumns * 2 + cul * 2 ),
                                     2 * ( clr - cul ) );
 
-                        if ( row <= ( rul + lines ) )
-                            memcpy( pbuf + ( row * ScreenColumns * 2 + cul * 2 ),
+                        if ( r <= ( rul + lines ) )
+                            memcpy( pbuf + ( r * ScreenColumns * 2 + cul * 2 ),
                                     blankLine,
                                     2 * ( 1 + clr - cul ) );
                     }
@@ -2661,12 +2644,6 @@ void handle_int_21( uint8_t c )
                 {
                     if ( row >= ScreenRowsM1 )
                     {
-                        int lines = 1;
-                        int rul = 0;
-                        int cul = 0;
-                        int rlr = ScreenRowsM1;
-                        int clr = ScreenColumnsM1;
-                
                         tracer.Trace( "  line feed scrolling up a line\n"  );
                         scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
                     }
@@ -3001,7 +2978,7 @@ void handle_int_21( uint8_t c )
                 {
                     do
                     {
-                        bool ok = ProcessFoundFileFCB( fd, attr, extendedFCB );
+                        ok = ProcessFoundFileFCB( fd, attr, extendedFCB );
                         if ( ok )
                         {
                             cpu.set_al( 0 );
@@ -3426,9 +3403,6 @@ void handle_int_21( uint8_t c )
             uint16_t * pvec = (uint16_t *) GetMem( 0, 4 * (uint16_t) cpu.al() );
             pvec[0] = cpu.get_dx();
             pvec[1] = cpu.get_ds();
-    
-            if ( 0x1c == cpu.al() )
-                uint32_t dw = ( (uint32_t) cpu.get_ds() << 16 ) | cpu.get_dx();
             return;
         }
         case 0x26:
@@ -3608,11 +3582,11 @@ void handle_int_21( uint8_t c )
             {
         
                 for ( int i = 0; i < _countof( pfcb->name ) && *pf && isFilenameChar( *pf ); i++ )
-                    pfcb->name[ i ] = toupper( *pf++ );
+                    pfcb->name[ i ] = (char) toupper( *pf++ );
                 if ( '.' == *pf )
                     pf++;
                 for ( int i = 0; i < _countof( pfcb->ext ) && *pf && isFilenameChar( *pf ); i++ )
-                    pfcb->ext[ i ] = toupper( *pf++ );
+                    pfcb->ext[ i ] = (char) toupper( *pf++ );
     
                 tracer.Trace( "  after copying filename, on char '%c', pf %p\n", *pf, pf );
         
@@ -3701,8 +3675,7 @@ void handle_int_21( uint8_t c )
                 return;
             }
 
-            size_t cEntries = g_allocEntries.size();
-            assert( 0 != cEntries ); // loading the app creates 1 shouldn't be freed.
+            assert( 0 != g_allocEntries.size() ); // loading the app creates 1 shouldn't be freed.
             trace_all_allocations();
 
             uint16_t new_paragraphs = cpu.get_dx();
@@ -4002,7 +3975,6 @@ void handle_int_21( uint8_t c )
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
     
             uint16_t h = cpu.get_bx();
-            uint16_t request_len = cpu.get_cx();
             if ( h <= 4 )
             {
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
@@ -4018,6 +3990,7 @@ void handle_int_21( uint8_t c )
                     // Callers like GWBasic ask for one character at a time but have no idea what a backspace is.
                     // So buffer until a cr, append a lf, and send that one character at a time.
     
+                    uint16_t request_len = cpu.get_cx();
                     static char acBuffer[ 128 ] = {0};
     
                     if ( g_use80x25 )
@@ -4098,7 +4071,7 @@ void handle_int_21( uint8_t c )
                     size_t numRead = fread( p, toRead, 1, fp );
                     if ( numRead )
                     {
-                        cpu.set_ax( toRead );
+                        cpu.set_ax( (uint16_t) toRead );
                         tracer.Trace( "  successfully read %04x (%u) bytes\n", toRead, toRead );
                         tracer.TraceBinaryData( p, toRead, 4 );
                     }
@@ -4153,12 +4126,6 @@ void handle_int_21( uint8_t c )
                             {
                                 if ( row >= ScreenRowsM1 )
                                 {
-                                    int lines = 1;
-                                    int rul = 0;
-                                    int cul = 0;
-                                    int rlr = ScreenRowsM1;
-                                    int clr = ScreenColumnsM1;
-                
                                     tracer.Trace( "  carriage scrolling up a line\n"  );
                                     scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
                                 }
@@ -4373,7 +4340,6 @@ void handle_int_21( uint8_t c )
             uint8_t subfunction = cpu.al();
             // handles 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
             uint16_t handle = cpu.get_bx();
-            uint8_t * pbuf = GetMem( cpu.get_ds(), cpu.get_dx() );
             cpu.set_carry( false );
     
             tracer.Trace( "  ioctl subfunction %u, get device information for handle %04x\n", subfunction, handle );
@@ -5853,7 +5819,7 @@ int main( int argc, char ** argv )
 
         if ( ( 0 == pcAPP ) && ( '-' == c || '/' == c ) )
         {
-            char ca = tolower( parg[1] );
+            char ca = (char) tolower( parg[1] );
 
             if ( 'd' == ca )
                 clearDisplayOnExit = false;
