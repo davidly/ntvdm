@@ -1409,7 +1409,7 @@ _prefix_set:
             }
             case 0xa4: // movs dst-str8, src-str8.  movsb
             {
-                if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here in ms-dos link.exe v2.0
+                if ( 0xff != prefix_repeat_opcode ) // f3 is legal, but f2 is used here in ms-dos link.exe v2.0
                 {
                     while ( 0 != cx )
                     {
@@ -1424,7 +1424,7 @@ _prefix_set:
             }
             case 0xa5: // movs dest-str16, src-str16.  movsw
             {
-                if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here in ms-dos link.exe v2.0
+                if ( 0xff != prefix_repeat_opcode ) // f3 is legal, but f2 is used here in ms-dos link.exe v2.0
                 {
                     while ( 0 != cx )
                     {
@@ -1439,25 +1439,15 @@ _prefix_set:
             }
             case 0xa6: // cmps m8, m8. cmpsb
             {
-                if ( 0xf2 == prefix_repeat_opcode )
+                if ( 0xff != prefix_repeat_opcode )
                 {
                     while ( 0 != cx )
                     {
                         AddCycles( cycles, 30 );
                         op_cmps8( cycles );
                         cx--;
-                        if ( fZero )
-                            break;
-                    }
-                }
-                else if ( 0xf3 == prefix_repeat_opcode )
-                {
-                    while ( 0 != cx )
-                    {
-                        AddCycles( cycles, 30 );
-                        op_cmps8( cycles );
-                        cx--;
-                        if ( !fZero )
+                        if ( (  fZero && ( 0xf2 == prefix_repeat_opcode ) ) ||
+                             ( !fZero && ( 0xf3 == prefix_repeat_opcode ) ) )
                             break;
                     }
                 }
@@ -1465,27 +1455,17 @@ _prefix_set:
                     op_cmps8( cycles );
                 break;
             }
-            case 0xa7: // cmps dest-str15, src-str16. cmpsw
+            case 0xa7: // cmps dest-str16, src-str16. cmpsw
             {
-                if ( 0xf2 == prefix_repeat_opcode )
+                if ( 0xff != prefix_repeat_opcode )
                 {
                     while ( 0 != cx )
                     {
                         AddCycles( cycles, 30 );
                         op_cmps16( cycles );
                         cx--;
-                        if ( fZero )
-                            break;
-                    }
-                }
-                else if ( 0xf3 == prefix_repeat_opcode )
-                {
-                    while ( 0 != cx )
-                    {
-                        AddCycles( cycles, 30 );
-                        op_cmps16( cycles );
-                        cx--;
-                        if ( !fZero )
+                        if ( (  fZero && ( 0xf2 == prefix_repeat_opcode ) ) ||
+                             ( !fZero && ( 0xf3 == prefix_repeat_opcode ) ) )
                             break;
                     }
                 }
@@ -1502,7 +1482,7 @@ _prefix_set:
             }
             case 0xaa: // stos8 -- fill bytes with al. stosb
             {
-                if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode )
+                if ( 0xff != prefix_repeat_opcode ) // f3 is legal, but f2 is used here in ms-dos link.exe v2.0
                 {
                     while ( 0 != cx )
                     {
@@ -1517,7 +1497,7 @@ _prefix_set:
             }
             case 0xab: // stos16 -- fill words with ax. stosw
             {
-                if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here in ms-dos link.exe v2.0
+                if ( 0xff != prefix_repeat_opcode ) // f3 is legal, but f2 is used here in ms-dos link.exe v2.0
                 {
                     while ( 0 != cx )
                     {
@@ -1532,7 +1512,7 @@ _prefix_set:
             }
             case 0xac: // lods8 src-str8. lodsb
             {
-                if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here is illegal but used
+                if ( 0xff != prefix_repeat_opcode ) // f3 is odd but supported. f2 here is illegal but used
                 {
                     while ( 0 != cx )
                     {
@@ -1547,7 +1527,7 @@ _prefix_set:
             }
             case 0xad: // lods16 src-str16. lodsw
             {
-                if ( 0xf3 == prefix_repeat_opcode || 0xf2 == prefix_repeat_opcode ) // f2 here is illegal but used
+                if ( 0xff != prefix_repeat_opcode ) // f3 is odd but supported. f2 here is illegal but used
                 {
                     while ( 0 != cx )
                     {
@@ -1562,25 +1542,15 @@ _prefix_set:
             }
             case 0xae: // scas8 compare al with byte at es:di. scasb
             {
-                if ( 0xf2 == prefix_repeat_opcode )
+                if ( 0xff != prefix_repeat_opcode )
                 {
                     while ( 0 != cx )
                     {
                         AddCycles( cycles, 15 ); // a guess
                         op_scas8( cycles );
                         cx--;
-                        if ( fZero )
-                            break;
-                    }
-                }
-                else if ( 0xf3 == prefix_repeat_opcode )
-                {
-                    while ( 0 != cx )
-                    {
-                        AddCycles( cycles, 15 ); // a guess
-                        op_scas8( cycles );
-                        cx--;
-                        if ( !fZero )
+                        if ( (  fZero && ( 0xf2 == prefix_repeat_opcode ) ) ||
+                             ( !fZero && ( 0xf3 == prefix_repeat_opcode ) ) )
                             break;
                     }
                 }
@@ -1590,25 +1560,15 @@ _prefix_set:
             }
             case 0xaf: // scas16 compare ax with word at es:di. scasw
             {
-                if ( 0xf2 == prefix_repeat_opcode )
+                if ( 0xff != prefix_repeat_opcode )
                 {
                     while ( 0 != cx )
                     {
                         AddCycles( cycles, 19 ); // a guess
                         op_scas16( cycles );
                         cx--;
-                        if ( fZero )
-                            break;
-                    }
-                }
-                else if ( 0xf3 == prefix_repeat_opcode )
-                {
-                    while ( 0 != cx )
-                    {
-                        AddCycles( cycles, 19 ); // a guess
-                        op_scas16( cycles );
-                        cx--;
-                        if ( !fZero )
+                        if ( (  fZero && ( 0xf2 == prefix_repeat_opcode ) ) ||
+                             ( !fZero && ( 0xf3 == prefix_repeat_opcode ) ) )
                             break;
                     }
                 }

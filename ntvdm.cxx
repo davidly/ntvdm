@@ -5,7 +5,7 @@
 // Only CGA text modes 2 and 3 (80x25 greyscale and color) are supported.
 // No graphics, sound, mouse, or anything else not needed for simple command-line apps.
 // tested apps:
-//    Turbo Pascal 1.00A, 3.02A, and 5.5, both the apps and the programs they generate.
+//    Turbo Pascal 1.00A, 3.02A, 5.5, and 7.0, both the apps and the programs they generate.
 //    masm.exe V1.10 and link.exe V2.00 from MS-DOS v2.0
 //    ba BASIC compiler in my ttt repo
 //    Wordstar Release 4
@@ -25,6 +25,7 @@
 //    Word for DOS 6.0.
 //    Multiplan v2. Setup for later versions fail, but they fail in dosbox too.
 //    Microsoft Works v3.0.
+//    Turbo Assembler tasm.
 //
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
 // Windows to OS/2 to NT to Mac to Linux, and mostly skipped DOS programming. Hence this fills a gap
