@@ -1045,6 +1045,19 @@ not_inlined bool i8086::handle_state()
     return false;
 } //handle_state
 
+#ifndef NDEBUG
+static uint64_t opcode_usage[ 256 ] = {0};
+
+void i8086::trace_opcode_usage()
+{
+    size_t used = 0;
+    for ( size_t i = 0; i < 256; i++ )
+        if ( opcode_usage[ i ] )
+            used++;
+    tracer.Trace( "number of unique first opcodes: %zd\n", used );
+} //trace_opcode_usage
+#endif //DEBUG
+
 uint64_t i8086::emulate( uint64_t maxcycles )
 {
     uint64_t cycles = 0;
@@ -1059,7 +1072,11 @@ _prefix_set:
             if ( handle_state() )
                 break;
 
-        assert( 0 != cs || 0 != ip );                      // almost certainly an app bug.
+        #ifndef NDEBUG
+            opcode_usage[ _b0 ]++;
+            assert( 0 != cs || 0 != ip );                      // almost certainly an app bug.
+        #endif
+
         decode_instruction( memptr( flat_ip() ) );         // 23% of runtime
 
         #ifdef I8086_TRACK_CYCLES
@@ -1186,7 +1203,7 @@ _prefix_set:
                     case 12: takejmp = ( fSign != fOverflow ); break;            // jl / jnge         l = less than, nge = not greater than or equal
                     case 13: takejmp = ( fSign == fOverflow ); break;            // jnl / jge
                     case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng         le = less than or equal, ng = not greather than
-                    case 15: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg
+                    default: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg   must be 15, but to work around a bogus compiler warning
                 }
     
                 if ( takejmp )
@@ -1378,7 +1395,7 @@ _prefix_set:
             }
             case 0xa2: // mov mem8, al
             {
-                uint8_t * pdst = (uint8_t *) ( memory + flatten( get_seg_value( ds, cycles ), b12() ) );
+                uint8_t * pdst = memory + flatten( get_seg_value( ds, cycles ), b12() );
                 *pdst = al();
                 _bc += 2;
                 break;
@@ -1672,7 +1689,6 @@ _prefix_set:
                     op_interrupt( 4, 1 ); // overflow
                     continue;
                 }
-
                 break;
             }
             case 0xcf: // iret
@@ -1694,7 +1710,6 @@ _prefix_set:
                         fIgnoreTrap = true;
                     }
                 }
-
                 continue;
             }
             case 0xd0: // bit shift reg8/mem8, 1
@@ -1770,7 +1785,6 @@ _prefix_set:
                     get_rm_ptr16( _rm, cycles );
                 else
                     get_rm_ptr8( _rm, cycles );
-                // ignore p -- just consume the correct number of opcodes
                 break;
             }
             case 0xe0: // loopne/loopnz short-label

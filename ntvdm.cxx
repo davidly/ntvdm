@@ -292,7 +292,7 @@ static void usage( char const * perr )
 #ifdef I8086_TRACK_CYCLES
     printf( "            -s:X   speed in Hz. Default is to run as fast as possible.\n" );
     printf( "                   for 4.77Mhz, use -s:4770000\n" );
-    printf( "                   to roughly match a 4.77Mhz 8088, use -s:3900000\n" );
+    printf( "                   to roughly match a 4.77Mhz 8088, use -s:4500000\n" );
 #endif
     printf( "            -t     enable debug tracing to %s.log\n", g_thisApp );
     printf( "            -z:X   applies X as a hex mask to SetProcessAffinityMask, e.g.:\n" );
@@ -6157,6 +6157,10 @@ int main( int argc, char ** argv )
                 tracer.Trace( "   %02x         %10d    %s\n", ic.i, ic.calls, pintstr );
         }
     }
+
+#ifndef NDEBUG
+    cpu.trace_opcode_usage();
+#endif
 
     tracer.Trace( "exit code of %s: %d\n", g_thisApp, g_appTerminationReturnCode );
 

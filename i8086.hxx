@@ -75,6 +75,10 @@ struct i8086
     void trace_state( void );                           // trace the registers
     void end_emulation( void );                         // make the emulator return at the start of the next instruction
 
+#ifndef NDEBUG
+    void trace_opcode_usage( void );                    // trace trends in opcode usage
+#endif
+
     i8086() : ax( 0 ), bx( 0 ), cx( 0 ), dx(0 ), si( 0 ), di( 0 ), bp( 0 ), sp( 0 ), ip( 0 ),
               es( 0 ), cs( 0 ), ss( 0 ), ds( 0 ), flags( 0 ),
               prefix_segment_override( 0xff ), prefix_repeat_opcode( 0xff ),

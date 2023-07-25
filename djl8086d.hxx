@@ -47,7 +47,7 @@ class CDisassemble8086
         uint16_t _b12;       // b1 and b2 as a little-endian word
         uint16_t _b23;       // b2 and b3 as a little-endian word
         uint16_t _b34;       // b3 and b4 as a little-endian word
-        uint16_t _reg;       // bits 5:3 of _b1
+        uint8_t _reg;        // bits 5:3 of _b1
         uint8_t _rm;         // bits 2:0 of _b1
         uint8_t _mod;        // bits 7:6 of _b1
         bool _isword;        // true if bit 0 of _b0 is 1
