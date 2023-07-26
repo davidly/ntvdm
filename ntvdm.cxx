@@ -242,7 +242,7 @@ static bool g_int16_1_loop = false;                // true if an app is looping 
 static bool g_KbdIntWaitingForRead = false;        // true when a kbd int happens and no read has happened since
 static bool g_KbdPeekAvailable = false;            // true when peek on the keyboard sees keystrokes
 static bool g_injectControlC = false;              // true when ^c is hit and it must be put in the keyboard buffer
-static bool g_appTerminationReturnCode = 0;        // when int 21 function 4c is invoked to terminate an app, this is the app return code
+static int g_appTerminationReturnCode = 0;         // when int 21 function 4c is invoked to terminate an app, this is the app return code
 static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
 static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0]), likely NTVDM
 static char g_lastLoadedApp[ MAX_PATH ] = {0};     // path of most recenly loaded program (though it may have terminated)
