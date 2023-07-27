@@ -455,7 +455,7 @@ size_t FindFileEntryIndex( uint16_t handle )
     }
 
     tracer.Trace( "  ERROR: could not find file entry for handle %04x\n", handle );
-    return -1;
+    return (size_t) -1;
 } //FindFileEntryIndex
 
 size_t FindFileEntryIndexByProcess( uint16_t seg )
@@ -465,7 +465,7 @@ size_t FindFileEntryIndexByProcess( uint16_t seg )
         if ( seg == g_fileEntries[ i ].seg_process )
             return i;
     }
-    return -1;
+    return (size_t) -1;
 } //FindFileEntryIndexByProcess
 
 const char * FindFileEntryPath( uint16_t handle )
@@ -504,7 +504,7 @@ size_t FindFileEntryFromPath( const char * pfile )
     }
 
     tracer.Trace( "  NOTICE: could not find file entry for path %s\n", pfile );
-    return -1;
+    return (size_t) -1;
 } //FindFileEntryFromPath
 
 uint16_t FindFirstFreeFileHandle()
@@ -569,7 +569,7 @@ size_t FindAllocationEntry( uint16_t segment )
 
     tracer.Trace( "  ERROR: could not find alloc entry for segment %04x\n", segment );
     trace_all_allocations();
-    return -1;
+    return (size_t) -1;
 } //FindAllocationEntry
 
 size_t FindAllocationEntryByProcess( uint16_t segment )
@@ -580,7 +580,7 @@ size_t FindAllocationEntryByProcess( uint16_t segment )
             return i;
     }
 
-    return -1;
+    return (size_t) -1;
 } //FindAllocationEntry
 
 void reset_mcb_tags()
@@ -4750,7 +4750,7 @@ void handle_int_21( uint8_t c )
         {
             // get exit code of subprogram
 
-            cpu.set_al( g_appTerminationReturnCode );
+            cpu.set_al( (int8_t) g_appTerminationReturnCode );
             cpu.set_ah( 0 );
             tracer.Trace( "  exit code of subprogram: %d\n", g_appTerminationReturnCode );
 
@@ -6139,6 +6139,11 @@ int main( int argc, char ** argv )
                 printf( "      %20s Hz\n", RenderNumberWithCommas( clockrate, ac ) );
         #endif
 
+        #ifndef NDEBUG
+            uint8_t unique_first_opcodes = cpu.trace_opcode_usage();
+            printf( "unique first opcodes: %16u\n", unique_first_opcodes );
+        #endif
+
         printf( "app exit code:    %20d\n", g_appTerminationReturnCode );
     }
 
@@ -6158,10 +6163,6 @@ int main( int argc, char ** argv )
                 tracer.Trace( "   %02x         %10d    %s\n", ic.i, ic.calls, pintstr );
         }
     }
-
-#ifndef NDEBUG
-    cpu.trace_opcode_usage();
-#endif
 
     tracer.Trace( "exit code of %s: %d\n", g_thisApp, g_appTerminationReturnCode );
 

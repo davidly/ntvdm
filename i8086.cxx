@@ -84,7 +84,7 @@ const uint8_t i8086_cycles[ 256 ]
     /*70*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
     /*80*/     4,  4,  4,  4,  5,  5,  4,  4,    2,  2,  2,  2,  2,  4,  2, 12, // lea as 4, not 2; docs can't be right
     /*90*/     4,  4,  4,  4,  4,  4,  4,  4,    2,  5, 36,  4, 14, 12,  4,  4,
-    /*a0*/    12, 12, 13, 13, 18, 26, 30, 30,    5,  5, 11, 15, 16, 16, 19, 19,
+    /*a0*/    14, 14, 14, 14, 18, 26, 30, 30,    5,  5, 11, 15, 16, 16, 19, 19,
     /*b0*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
     /*c0*/     0,  0, 24, 20, 24, 24, 14, 14,    0,  0, 33, 34, 72, 71,  4, 44,
     /*d0*/     2,  2,  8,  8, 83, 60, 11,  0,    0,  0,  0,  0,  0,  0,  0,  0,
@@ -809,7 +809,7 @@ not_inlined bool i8086::op_f6( uint64_t & cycles )
     {
         AddCycles( cycles, 98 ); // assume worst-case
         uint8_t rhs = * get_rm_ptr8( _rm, cycles );
-        uint32_t result = (int16_t) al() * (int16_t) rhs;
+        uint32_t result = (int16_t) (int8_t) al() * (int16_t) (int8_t) rhs;
         ax = result & 0xffff;
         result &= 0xffff8000;
         fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
@@ -841,8 +841,8 @@ not_inlined bool i8086::op_f6( uint64_t & cycles )
         if ( 0 != rhs )
         {
             int16_t lhs = ax;
-            set_al( ( lhs / (int16_t) rhs ) & 0xff );
-            set_ah( lhs % (int16_t) rhs );
+            set_al( ( lhs / (int16_t) (int8_t) rhs ) & 0xff );
+            set_ah( lhs % (int16_t) (int8_t) rhs );
 
             // documentation says these bits are undefined, but real hardware does this.
             //bool oldZero = fZero;
@@ -897,7 +897,7 @@ not_inlined bool i8086::op_f7( uint64_t & cycles )
     {
         AddCycles( cycles, 154 ); // assume worst-case
         uint16_t rhs = * get_rm_ptr16( _rm, cycles );
-        uint32_t result = (int32_t) ax * (int32_t) rhs;
+        uint32_t result = (int32_t) (int16_t) ax * (int32_t) (int16_t) rhs;
         dx = result >> 16;
         ax = result & 0xffff;
         result &= 0xffff8000;
@@ -930,7 +930,7 @@ not_inlined bool i8086::op_f7( uint64_t & cycles )
         if ( 0 != rhs )
         {
             uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
-            ax = (uint16_t) ( (int32_t) lhs / (int32_t) (int16_t) rhs );
+            ax = (uint16_t) ( (int32_t) (int16_t) lhs / (int32_t) (int16_t) rhs );
             dx = (int32_t) lhs % (int32_t) rhs;
 
             // documentation says these bits are undefined, but real hardware does this.
@@ -1048,13 +1048,14 @@ not_inlined bool i8086::handle_state()
 #ifndef NDEBUG
 static uint64_t opcode_usage[ 256 ] = {0};
 
-void i8086::trace_opcode_usage()
+uint8_t i8086::trace_opcode_usage()
 {
-    size_t used = 0;
+    uint8_t used = 0;
     for ( size_t i = 0; i < 256; i++ )
         if ( opcode_usage[ i ] )
             used++;
     tracer.Trace( "number of unique first opcodes: %zd\n", used );
+    return used;
 } //trace_opcode_usage
 #endif //DEBUG
 
@@ -1716,6 +1717,7 @@ _prefix_set:
                     uint8_t tempal = al();
                     set_ah( tempal / _b1 );
                     set_al( tempal % _b1 );
+                    set_PSZ16( ax );
                 }
                 else
                 {

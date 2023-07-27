@@ -76,7 +76,7 @@ struct i8086
     void end_emulation( void );                         // make the emulator return at the start of the next instruction
 
 #ifndef NDEBUG
-    void trace_opcode_usage( void );                    // trace trends in opcode usage
+    uint8_t trace_opcode_usage( void );                    // trace trends in opcode usage
 #endif
 
     i8086() : ax( 0 ), bx( 0 ), cx( 0 ), dx(0 ), si( 0 ), di( 0 ), bp( 0 ), sp( 0 ), ip( 0 ),
