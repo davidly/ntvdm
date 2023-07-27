@@ -328,6 +328,20 @@ int ends_with( const char * str, const char * end )
     return !_stricmp( str + len - lenend, end );
 } //ends_with
 
+int begins_with( const char * str, const char * start )
+{
+    while ( *str && *start )
+    {
+        if ( tolower( *str ) != tolower( *start ) )
+            return false;
+
+        str++;
+        start++;
+    }
+
+    return true;
+} //begins_with
+
 bool isFilenameChar( char c )
 {
     char l = (char) tolower( c );
@@ -2602,6 +2616,91 @@ void star_to_question( char * pstr, int len )
     }
 } //star_to_question
 
+bool command_exists( const char * pc )
+{
+    if ( file_exists( pc ) )
+        return true;
+
+    if ( ends_with( pc, ".com" ) || ends_with( pc, ".exe" ) )
+        return false;
+
+    char ac[ MAX_PATH ];
+    strcpy( ac, pc );
+    strcat( ac, ".com" );
+    if ( file_exists( ac ) )
+        return true;
+
+    strcpy( ac, pc );
+    strcat( ac, ".exe" );
+    if ( file_exists( ac ) )
+        return true;
+
+    return false;
+} //command_exists
+
+bool FindCommandInPath( char * pc )
+{
+    // check the current directory
+
+    if ( command_exists( pc ) )
+    {
+        tracer.Trace( "  command '%s' found without searching path\n", pc );
+        return true;
+    }
+
+    // if a path was specified already, don't check the environment's path variable
+
+    if ( ':' == pc[1] || '\\' == *pc || '/' == *pc )
+        return false;
+
+    DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
+    uint16_t segEnv = psp->segEnvironment;
+    const char * penv = (char *) GetMem( segEnv, 0 );
+
+    // iterate through environment variables looking for PATH=
+
+    size_t len = strlen( penv );
+    while ( 0 != len )
+    {
+        if ( begins_with( penv, "path=" ) )
+        {
+            // iterate through the paths in the path
+
+            penv += 5;
+            char acPath[ MAX_PATH ];
+            int i = 0;
+            while ( *penv && *penv != ';' )
+                acPath[ i++ ] = *penv++;
+            if ( !i )
+            {
+                tracer.Trace( "  empty value in path variable; giving up\n" );
+                return false;
+            }
+
+            acPath[ i ] = 0;
+            if ( '\\' != acPath[ i - 1 ] && '/' != acPath[ i - 1 ] )
+            {
+                acPath[ i++ ] = '\\';
+                acPath[ i ] = 0;
+            }
+
+            tracer.Trace( "  testing path '%s'\n", acPath );
+            strcat( acPath, pc );
+            if ( command_exists( acPath ) )
+            {
+                strcpy( pc, acPath );
+                tracer.Trace( "  found the command at '%s'\n", acPath );
+                return true;
+            }
+        }
+        penv += ( 1 + len );
+        len = strlen( penv );
+    }
+
+    tracer.Trace( "  command '%s' not found\n", pc );
+    return false;
+} //FindCommandInPath
+
 void handle_int_21( uint8_t c )
 {
     uint8_t row, col;
@@ -4664,6 +4763,15 @@ void handle_int_21( uint8_t c )
 
                 GetCurrentDirectoryA( sizeof( cwd ), cwd );
                 acCommandPath[ 0 ] = cwd[ 0 ];
+            }
+
+            bool found = FindCommandInPath( acCommandPath );
+            if ( !found )
+            {
+                cpu.set_ax( 2 );
+                cpu.set_carry( true );
+                tracer.Trace( "  result of CreateProcess: command not found error 2\n" );
+                return;
             }
 
             if ( 3 == mode )
