@@ -1018,8 +1018,7 @@ struct DOSEXFCB
 const char * GetCurrentAppPath()
 {
     DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
-    uint16_t segEnv = psp->segEnvironment;
-    const char * penv = (char *) GetMem( segEnv, 0 );
+    const char * penv = (char *) GetMem( psp->segEnvironment, 0 );
 
     size_t len = strlen( penv );
     while ( 0 != len )
@@ -2616,7 +2615,7 @@ void star_to_question( char * pstr, int len )
     }
 } //star_to_question
 
-bool command_exists( const char * pc )
+bool command_exists( char * pc )
 {
     if ( file_exists( pc ) )
         return true;
@@ -2626,14 +2625,20 @@ bool command_exists( const char * pc )
 
     char ac[ MAX_PATH ];
     strcpy( ac, pc );
-    strcat( ac, ".com" );
+    strcat( ac, ".COM" );
     if ( file_exists( ac ) )
+    {
+        strcat( pc, ".COM" );
         return true;
+    }
 
     strcpy( ac, pc );
-    strcat( ac, ".exe" );
+    strcat( ac, ".EXE" );
     if ( file_exists( ac ) )
+    {
+        strcat( pc, ".EXE" );
         return true;
+    }
 
     return false;
 } //command_exists
@@ -2654,8 +2659,7 @@ bool FindCommandInPath( char * pc )
         return false;
 
     DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
-    uint16_t segEnv = psp->segEnvironment;
-    const char * penv = (char *) GetMem( segEnv, 0 );
+    const char * penv = (char *) GetMem( psp->segEnvironment, 0 );
 
     // iterate through environment variables looking for PATH=
 
@@ -2664,34 +2668,42 @@ bool FindCommandInPath( char * pc )
     {
         if ( begins_with( penv, "path=" ) )
         {
-            // iterate through the paths in the path
+            // iterate through the semicolon-separated paths in the path, which is null-terminated
 
             penv += 5;
-            char acPath[ MAX_PATH ];
-            int i = 0;
-            while ( *penv && *penv != ';' )
-                acPath[ i++ ] = *penv++;
-            if ( !i )
-            {
-                tracer.Trace( "  empty value in path variable; giving up\n" );
-                return false;
-            }
 
-            acPath[ i ] = 0;
-            if ( '\\' != acPath[ i - 1 ] && '/' != acPath[ i - 1 ] )
+            do
             {
-                acPath[ i++ ] = '\\';
+                while ( *penv && ';' == *penv )
+                    penv++;
+    
+                char acPath[ MAX_PATH ];
+                int i = 0;
+                while ( *penv && ';' != *penv )
+                    acPath[ i++ ] = *penv++;
+
+                if ( 0 == i )
+                {
+                    tracer.Trace( "  empty value in path variable; giving up\n" );
+                    return false;
+                }
+    
                 acPath[ i ] = 0;
-            }
-
-            tracer.Trace( "  testing path '%s'\n", acPath );
-            strcat( acPath, pc );
-            if ( command_exists( acPath ) )
-            {
-                strcpy( pc, acPath );
-                tracer.Trace( "  found the command at '%s'\n", acPath );
-                return true;
-            }
+                if ( '\\' != acPath[ i - 1 ] && '/' != acPath[ i - 1 ] )
+                {
+                    acPath[ i++ ] = '\\';
+                    acPath[ i ] = 0;
+                }
+    
+                tracer.Trace( "  testing path '%s'\n", acPath );
+                strcat( acPath, pc );
+                if ( command_exists( acPath ) )
+                {
+                    strcpy( pc, acPath );
+                    tracer.Trace( "  found the command at '%s'\n", acPath );
+                    return true;
+                }
+            } while( true );
         }
         penv += ( 1 + len );
         len = strlen( penv );
@@ -5997,21 +6009,19 @@ int main( int argc, char ** argv )
     //_assume( 0 != pcAPP ); // the compiler warns because it doesn't know usage() always exits.
     strcpy( g_acApp, pcAPP );
     _strupr( g_acApp );
-    DWORD attr = GetFileAttributesA( g_acApp );
-    if ( INVALID_FILE_ATTRIBUTES == attr )
+
+    if ( !file_exists( g_acApp ) )
     {
-        if ( strstr( g_acApp, ".COM" ) || strstr( g_acApp, ".EXE" ) )
+        if ( ends_with( g_acApp, ".com" ) || ends_with( g_acApp, ".exe" ) )
             usage( "can't find command file .com or .exe" );
         else
         {
             strcat( g_acApp, ".COM" );
-            attr = GetFileAttributesA( g_acApp );
-            if ( INVALID_FILE_ATTRIBUTES == attr )
+            if ( !file_exists( g_acApp ) )
             {
                 char * dot = strstr( g_acApp, ".COM" );
                 strcpy( dot, ".EXE" );
-                attr = GetFileAttributesA( g_acApp );
-                if ( INVALID_FILE_ATTRIBUTES == attr )
+                if ( !file_exists( g_acApp ) )
                     usage( "can't find command file" );
             }
         }
