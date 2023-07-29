@@ -66,6 +66,10 @@
 #include <djl8086d.hxx>
 #include "i8086.hxx"
 
+// using assembly for keyboard input enables timer interrupts while spinning for a keystroke
+
+#define USE_ASSEMBLY_FOR_KBD true
+
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip );
@@ -254,6 +258,7 @@ static uint16_t g_int16_0_seg = 0;                 // "
 static char cwd[ MAX_PATH ] = {0};                 // used as a temporary in several locations
 static vector<IntCalled> g_InterruptsCalled;       // track interrupt usage
 static uint64_t g_startSystemTime;                 // system time at app start
+static uint8_t g_bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -311,9 +316,117 @@ static void usage( char const * perr )
     exit( 1 );
 } //usage
 
+class CKbdBuffer
+{
+    private:
+        uint8_t * pbiosdata;
+        uint16_t * phead;
+        uint16_t * ptail;
+
+    public:
+        CKbdBuffer()
+        {
+            pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+            phead = (uint16_t *) ( pbiosdata + 0x1a );
+            ptail = (uint16_t *) ( pbiosdata + 0x1c );
+        }
+
+        bool IsFull() { return ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ); }
+        bool IsEmpty() { return ( *phead == *ptail ); }
+
+        void Add( uint8_t asciiChar, uint8_t scancode )
+        {
+            assert( !IsFull() );
+            pbiosdata[ *ptail ] = asciiChar;
+            (*ptail)++;
+            pbiosdata[ *ptail ] = scancode;
+            (*ptail)++;
+            if ( *ptail >= 0x3e )
+                *ptail = 0x1e;
+            tracer.Trace( "    added asciichar %02x scancode %02x, new head = %04x, tail: %04x\n", asciiChar, scancode, *phead, *ptail );
+        } //Add
+
+        uint8_t CurAsciiChar()
+        {
+            assert( !IsEmpty() );
+            return pbiosdata[ *phead ];
+        } //CurAsciiChar
+
+        uint8_t CurScancode()
+        {
+            assert( !IsEmpty() );
+            return pbiosdata[ 1 + ( *phead ) ];
+        } //CurScancode
+
+        uint8_t Consume()
+        {
+            assert( !IsEmpty() );
+            uint8_t r = pbiosdata[ *phead ];
+            (*phead)++;
+            if ( *phead >= 0x3e )
+                *phead = 0x1e;
+            tracer.Trace( "    consumed char %02x, new head = %04x, tail %04x\n", r, *phead, *ptail );
+            return r;
+        } //Consume
+
+        uint32_t FreeSpots()
+        {
+            if ( IsFull() )
+                return 0;
+
+            if ( IsEmpty() )
+                return 16;
+
+            uint16_t head = *phead;
+            uint16_t tail = *ptail;
+            assert( 0 == ( head & 1 ) );
+            assert( 0 == ( tail & 1 ) );
+            assert( head >= 0x1e && head < 0x3e );
+            assert( tail >= 0x1e && tail < 0x3e );
+
+            uint32_t count = 0;
+            if ( head > tail )
+                count = ( head - tail ) / 2;
+            else
+                count = 16 - ( ( tail - head ) / 2 );
+
+            assert( count >= 1 && count <= 15 );
+            tracer.Trace( "    free spots in kbd buffer: %u. head %02x, tail %02x\n", count, head, tail );
+            return count;
+        } //FreeSpots
+};
+
+uint8_t GetActiveDisplayPage()
+{
+    uint8_t activePage = * GetMem( 0x40, 0x62 );
+    assert( activePage <= 3 );
+    return activePage;
+} //GetActiveDisplayPage
+
+void SetActiveDisplayPage( uint8_t page )
+{
+    assert( page <= 3 );
+    * GetMem( 0x40, 0x62 ) = page;
+} //SetActiveDisplayPage
+
+uint8_t * GetVideoMem()
+{
+    return GetMem( ScreenBufferSegment, 0x1000 * GetActiveDisplayPage() );
+} //GetVideoMem
+
+bool DisplayUpdateRequired()
+{
+    return ( 0 != memcmp( g_bufferLastUpdate, GetVideoMem(), sizeof( g_bufferLastUpdate ) ) );
+} //DisplayUpdateRequired
+
 void SleepAndScheduleInterruptCheck()
 {
-    SleepEx( 1, TRUE );
+    CKbdBuffer kbd_buf;
+    if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() )
+    {
+        tracer.Trace( "sleeping in SleepAndScheduleInterruptCheck\n" );
+        SleepEx( 1, TRUE );
+    }
     cpu.exit_emulate_early(); // fall out of the instruction loop early to check for a timer interrupt
 } //SleepAndScheduleInterruptCheck
 
@@ -817,24 +930,6 @@ bool keyState( int vkey )
     return 0 != ( 0x1000 & s );
 } //keyState
 
-uint8_t GetActiveDisplayPage()
-{
-    uint8_t activePage = * GetMem( 0x40, 0x62 );
-    assert( activePage <= 3 );
-    return activePage;
-} //GetActiveDisplayPage
-
-void SetActiveDisplayPage( uint8_t page )
-{
-    assert( page <= 3 );
-    * GetMem( 0x40, 0x62 ) = page;
-} //SetActiveDisplayPage
-
-uint8_t * GetVideoMem()
-{
-    return GetMem( ScreenBufferSegment, 0x1000 * GetActiveDisplayPage() );
-} //GetVideoMem
-
 void GetCursorPosition( uint8_t & row, uint8_t & col )
 {
     uint8_t * cursordata = GetMem( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
@@ -1067,11 +1162,9 @@ void UpdateWindowsCursorPosition()
     SetConsoleCursorPosition( g_hConsoleOutput, pos );
 } //UpdateWindowsCursorPosition
 
-static uint8_t bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
-
 void ClearLastUpdateBuffer()
 {
-    memset( bufferLastUpdate, 0, sizeof( bufferLastUpdate ) );
+    memset( g_bufferLastUpdate, 0, sizeof( g_bufferLastUpdate ) );
 } //ClearLastUpdateBuffer
 
 void traceDisplayBuffers()
@@ -1124,7 +1217,7 @@ bool UpdateDisplay()
     assert( g_use80x25 );
     uint8_t * pbuf = GetVideoMem();
 
-    if ( memcmp( bufferLastUpdate, pbuf, sizeof( bufferLastUpdate ) ) )
+    if ( DisplayUpdateRequired() )
     {
         //tracer.Trace( "UpdateDisplay with changes\n" );
         #if false
@@ -1141,9 +1234,9 @@ bool UpdateDisplay()
         {
             uint32_t yoffset = y * ScreenColumns * 2;
 
-            if ( memcmp( bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 ) )
+            if ( memcmp( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 ) )
             {
-                memcpy( bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
+                memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
                 WORD aAttribs[ScreenColumns];
                 char ac[ScreenColumns];
                 for ( size_t x = 0; x < ScreenColumns; x++ )
@@ -1455,12 +1548,9 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
     if ( falt && ( '\'' == asc || '`' == asc || ',' == asc || '.' == asc || '/' == asc || 0x4c == sc ) )
         return false;
 
-    uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
-    uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
-    uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
-
     // if the buffer is full, stop consuming new characters
-    if ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) )
+    CKbdBuffer kbd_buf;
+    if ( kbd_buf.IsFull() )
         return false;
 
     if ( falt )
@@ -1654,7 +1744,10 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
             UpdateDisplay();
 
         if ( sleep_on_throttle )
+        {
+            tracer.Trace( "sleeping in peek_keyboard\n" );
             Sleep( 1 );
+        }
 
         return false;
     }
@@ -1668,57 +1761,39 @@ void consume_keyboard()
     // this mutex is because I don't know if PeekConsoleInput and ReadConsoleInput are individually or mutually reenterant.
     lock_guard<mutex> lock( g_mtxEverything );
 
-    uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
-    uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
-    uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
-    tracer.Trace( "    initial state: head %04x, tail %04x\n", *phead, *ptail );
+    CKbdBuffer kbd_buf;
 
-    if ( g_injectControlC ) // largeish hack for ^c handling
+    if ( g_injectControlC && !kbd_buf.IsFull() ) // largeish hack for ^c handling
     {
         g_KbdIntWaitingForRead = false;
         g_injectControlC = false;
-        uint8_t asciiChar = 0x03;
-        uint8_t scancode = 0x2e;
-
-        // if the buffer is full, stop consuming new characters
-        if ( ! ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ) )
-        {
-            pbiosdata[ *ptail ] = asciiChar;
-            (*ptail)++;
-            pbiosdata[ *ptail ] = scancode;
-            (*ptail)++;
-            if ( *ptail >= 0x3e )
-                *ptail = 0x1e;
-        }
+        kbd_buf.Add( 0x03, 0x2e );
     }
 
     INPUT_RECORD records[ 10 ];
     DWORD numRead = 0;
-    BOOL ok = ReadConsoleInput( g_hConsoleInput, records, _countof( records ), &numRead );
-    tracer.Trace( "    consume_keyboard ReadConsole returned %d, %d events\n", ok, numRead );
-    if ( ok )
+    DWORD toRead = __min( _countof( records ), kbd_buf.FreeSpots() );
+    if ( toRead > 0 )
     {
-        uint8_t asciiChar = 0, scancode = 0;
-        for ( uint32_t x = 0; x < numRead; x++ )
+        BOOL ok = ReadConsoleInput( g_hConsoleInput, records, toRead, &numRead );
+        tracer.Trace( "    consume_keyboard ReadConsole returned %d, %d events\n", ok, numRead );
+        if ( ok )
         {
-            bool used = process_key_event( records[ x ], asciiChar, scancode );
-            if ( !used )
-                continue;
+            uint8_t asciiChar = 0, scancode = 0;
+            for ( uint32_t x = 0; x < numRead; x++ )
+            {
+                bool used = process_key_event( records[ x ], asciiChar, scancode );
+                if ( !used )
+                    continue;
+    
+                tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scancode );
+    
+                // It's ok to send more keyboard int 9s since we've consumed a character
 
-            tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scancode );
-
-            // It's ok to send more keyboard int 9s since we've consumed a character
-            g_KbdIntWaitingForRead = false;
-
-            pbiosdata[ *ptail ] = asciiChar;
-            (*ptail)++;
-            pbiosdata[ *ptail ] = scancode;
-            (*ptail)++;
-            if ( *ptail >= 0x3e )
-                *ptail = 0x1e;
+                g_KbdIntWaitingForRead = false;
+                kbd_buf.Add( asciiChar, scancode );
+            }
         }
-
-        tracer.Trace( "    final state: head %04x, tail %04x\n", *phead, *ptail );
     }
 } //consume_keyboard
 
@@ -2406,9 +2481,8 @@ void handle_int_16( uint8_t c )
 {
     uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
     pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
-    uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
-    uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
-    //tracer.Trace( "  int_16 head: %04x, tail %04x\n", *phead, *ptail );
+
+    CKbdBuffer kbd_buf;
 
     switch( c )
     {
@@ -2420,11 +2494,11 @@ void handle_int_16( uint8_t c )
             if ( g_use80x25 )
                 UpdateDisplay();
 
-#if 1
+#if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int16_0_seg );
             return;
 #else
-            while ( *phead == *ptail )
+            while ( kbd_buf.IsEmpty() )
             {
                 // block waiting for a character then return it.
 
@@ -2434,15 +2508,10 @@ void handle_int_16( uint8_t c )
                 consume_keyboard();
             }
 
-            cpu.set_al( pbiosdata[ *phead ] );
-            (*phead)++;
-            cpu.set_ah( pbiosdata[ *phead ] );
-            (*phead)++;
-            if ( *phead >= 0x3e )
-                *phead = 0x1e;
+            cpu.set_al( kbd_buf.Consume() );
+            cpu.set_ah( kbd_buf.Consume() );
 
             tracer.Trace( "  returning character %04x '%c'\n", cpu.get_ax(), printable( cpu.al() ) );
-            tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
 #endif
         }
@@ -2463,7 +2532,7 @@ void handle_int_16( uint8_t c )
                     g_int16_1_loop = false;
             }
 
-            if ( *phead == *ptail )
+            if ( kbd_buf.IsEmpty() )
             {
                 cpu.set_zero( true );
                 if ( g_int16_1_loop ) // avoid a busy loop it makes my fan loud
@@ -2473,13 +2542,12 @@ void handle_int_16( uint8_t c )
             }
             else
             {
-                cpu.set_al( pbiosdata[ *phead ] );
-                cpu.set_ah( pbiosdata[ 1 + ( *phead ) ] );
+                cpu.set_al( kbd_buf.CurAsciiChar() );
+                cpu.set_ah( kbd_buf.CurScancode() );
                 cpu.set_zero( false );
             }
 
             tracer.Trace( "  returning flag %d, ax %04x\n", cpu.get_zero(), cpu.get_ax() );
-            //tracer.Trace( "  int_16 exit head: %04x, tail %04x\n", *phead, *ptail );
             return;
         }
         case 2:
@@ -2496,14 +2564,9 @@ void handle_int_16( uint8_t c )
             // ch: scancode, cl ascii char
             // returns: al: 0 success, 1 keyboard buffer full
 
-            if ( ! ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ) )
+            if ( ! kbd_buf.IsFull() )
             {
-                pbiosdata[ *ptail ] = cpu.cl();
-                (*ptail)++;
-                pbiosdata[ *ptail ] = cpu.ch();
-                (*ptail)++;
-                if ( *ptail >= 0x3e )
-                    *ptail = 0x1e;
+                kbd_buf.Add( cpu.cl(), cpu.ch() );
                 cpu.set_al( 0 );
                 tracer.Trace( "  successfully stored keystroke in buffer\n" );
             }
@@ -2794,35 +2857,34 @@ void handle_int_21( uint8_t c )
                 // input. don't block if nothing is available
                 // Multiplan (v2) is the only app I've found that uses this function for input.
 
-                uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
-                uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
-                uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
-                tracer.Trace( "  int_21 character input head: %04x, tail %04x\n", *phead, *ptail );
+                CKbdBuffer kbd_buf;
 
-                if ( *phead != *ptail )
+                if ( !kbd_buf.IsEmpty() )
                 {
                     static bool mid_scancode_read = false;
                     cpu.set_zero( false );
 
+                    tracer.Trace( "  direct console io 6. mid_scancode_read: %d\n", mid_scancode_read );
+
                     if ( mid_scancode_read )
                     {
                         mid_scancode_read = false;
-                        cpu.set_al( pbiosdata[ * ( phead + 1 ) ] );
-                        (*phead) += 2;
-                        if ( *phead >= 0x3e )
-                            *phead = 0x1e;
+                        cpu.set_al( kbd_buf.CurScancode() );
+                        tracer.Trace( "    set al to %02x\n", cpu.al() );
+                        kbd_buf.Consume(); // asciichar
+                        kbd_buf.Consume(); // scancode
                     }
                     else
                     {
-                        cpu.set_al( pbiosdata[ *phead ] );
+                        cpu.set_al( kbd_buf.CurAsciiChar() );
+                        tracer.Trace( "    set al to %02x\n", cpu.al() );
 
-                        if ( 0 == *phead )
+                        if ( 0 == cpu.al() )
                             mid_scancode_read = true;
                         else
                         {
-                            (*phead) += 2;
-                            if ( *phead >= 0x3e )
-                                *phead = 0x1e;
+                            kbd_buf.Consume(); // asciichar
+                            kbd_buf.Consume(); // scancode
                         }
                     }
                 }
@@ -2855,15 +2917,14 @@ void handle_int_21( uint8_t c )
             if ( g_use80x25)
                 UpdateDisplay();
 
-#if 1
+#if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int21_8_seg );
             return;
 #else
-            uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
-            uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
             bool first = true;
 
-            while ( *phead == *ptail )
+            CKbdBuffer kbd_buf;
+            while ( kbd_buf.IsEmpty() )
             {
                 if ( first && g_use80x25 )
                 {
@@ -2879,17 +2940,10 @@ void handle_int_21( uint8_t c )
                 consume_keyboard();
             }
 
-            cpu.set_al( pbiosdata[ *phead ] );
-            (*phead)++;
+            cpu.set_al( kbd_buf.Consume() );
+            char scan_code = kbd_buf.Consume(); // unused
 
-            char scan_code = pbiosdata[ *phead ];
-            (*phead)++; // consume the scancode though it's not returned
-
-            if ( *phead >= 0x3e )
-                *phead = 0x1e;
-
-            tracer.Trace( "  int_21 7/8 exit head: %04x, tail %04x\n", *phead, *ptail );
-            tracer.Trace( "  direct character input returning al %#x. scan_code %#x\n", cpu.al(), scan_code );
+            tracer.Trace( "  direct character input returning al %02x. scan_code %02x\n", cpu.al(), scan_code );
             return;
 #endif
         }
@@ -2909,7 +2963,7 @@ void handle_int_21( uint8_t c )
             // Buffered Keyboard input. DS::DX pointer to buffer. byte 0 count in, byte 1 count out excluding CR, byte 2 starts the response
             // The assembler version enables the emulator to send timer and keyboard interrupts.
 
-#if 1
+#if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int21_a_seg );
             return;
 #else
@@ -2942,12 +2996,8 @@ void handle_int_21( uint8_t c )
         {
             // check standard input status. Returns AL: 0xff if char available, 0 if not
 
-            uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
-            uint16_t * phead = (uint16_t *) ( pbiosdata + 0x1a );
-            uint16_t * ptail = (uint16_t *) ( pbiosdata + 0x1c );
-            tracer.Trace( "  int_21 check input status head: %04x, tail %04x\n", *phead, *ptail );
-
-            cpu.set_al( ( *phead != *ptail ) ? 0xff : 0 );
+            CKbdBuffer kbd_buf;
+            cpu.set_al( kbd_buf.IsEmpty() ? 0 : 0xff );
 
             return;
         }
@@ -4093,7 +4143,7 @@ void handle_int_21( uint8_t c )
     
                 if ( 0 == h )
                 {
-#if 1
+#if USE_ASSEMBLY_FOR_KBD
                     // This assembler version allows the emulator to send timer and keyboard interrupts
 
                     invoke_assembler_routine( g_int21_3f_seg );
@@ -5791,7 +5841,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 
     // apps assume there is space at the end to write to. It should be at least 160 bytes in size
 
-    bytesNeeded += (uint16_t) 256;
+    bytesNeeded += (uint16_t) 512;
 
     uint16_t remaining;
     uint16_t segEnvironment = AllocateMemory( round_up_to( bytesNeeded, 16 ) / 16, remaining );
@@ -6107,6 +6157,7 @@ int main( int argc, char ** argv )
     // write assembler routines into 0x0600 - 0x0bff. make each function segment-aligned so
     // exection can start at ip 0.
 
+#if USE_ASSEMBLY_FOR_KBD
     uint16_t curseg = MachineCodeSegment;
 
     memcpy( GetMem( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
@@ -6129,6 +6180,7 @@ int main( int argc, char ** argv )
                   g_int21_3f_seg, g_int21_a_seg, g_int21_8_seg, g_int16_0_seg );
 
     assert( curseg <= InterruptRoutineSegment );
+#endif
 
     // allocate the environment space and load the binary
 
