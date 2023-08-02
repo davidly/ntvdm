@@ -147,18 +147,18 @@ inline const char * target_platform()
         return "arm64";
     #elif defined( _MSC_VER )     // msft on Windows 32-bit
         return "x86";
+    #else
+        return "(other)";
     #endif
-
-    return "(other)";
 } //target_platform
 
 inline const char * build_type()
 {
     #ifdef NDEBUG
         return "release";
+    #else
+       return "debug";
     #endif
-
-    return "debug";
 } //build_type
 
 inline const char * compiler_used()
@@ -172,9 +172,9 @@ inline const char * compiler_used()
         return acver;
     #elif defined( __clang__ )
         return "clang";
+    #else
+        return "unknown";
     #endif
-
-    return "unknown";
 } //compiler_used
 
 inline const char * build_platform()
@@ -185,9 +185,9 @@ inline const char * build_platform()
         return "linux";
     #elif defined( _MSC_VER )
         return "windows";
+    #else
+        return "unknown";
     #endif
-
-    return "unknown";
 } //build_platform
 
 inline const char * build_string()
@@ -204,4 +204,14 @@ inline const char * build_string()
     #define assume_false __assume( false )
     #define assume_false_return __assume( false )
 #endif
+
+inline long portable_filelen( FILE * fp )
+{
+    long current = ftell( fp );
+    fseek( fp, 0, SEEK_END );
+    long len = ftell( fp );
+    fseek( fp, current, SEEK_SET );
+    return len;
+} //portable_filelen
+
 

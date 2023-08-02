@@ -19,10 +19,10 @@
 //        5:3  reg. register or /X modifier of byte 1
 //        2:0  rm. register/memory
 //  meaning
-//    mod=11: r/m specifies a register modified by W
 //    mod=00: index register(s) or direct address (if rm is 110)
 //    mod=01: index register(s) plus signed 8-bit immediate offset
-//    mod=02: index register(s) plus signed 16-bit immediate offset
+//    mod=10: index register(s) plus signed 16-bit immediate offset
+//    mod=11: r/m specifies a register modified by W
 //    
 // registers: w=0 means 8 bit, w=1 means 16 bit
 //   rb 0..7: al, cl, dl, bl, ah, ch, dh, bh

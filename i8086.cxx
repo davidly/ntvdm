@@ -582,25 +582,25 @@ void i8086::op_sar8( uint8_t * pval, uint8_t shift )
 
 void i8086::op_cmps16()
 {
-    op_sub16( * flat_address16( get_seg_value( ds ), si ), * flat_address16( es, di ) );
+    op_sub16( * flat_address16( get_seg_value(), si ), * flat_address16( es, di ) ); // es cannot be overridden
     update_rep_sidi16();
 } //op_cmps16
 
 void i8086::op_cmps8()
 {
-    op_sub8( * flat_address8( get_seg_value( ds ), si ), * flat_address8( es, di ) );
+    op_sub8( * flat_address8( get_seg_value(), si ), * flat_address8( es, di ) ); // es cannot be overridden
     update_rep_sidi8();
 } //op_cmps8
 
 void i8086::op_movs16()
 {
-    * flat_address16( es, di ) = * flat_address16( get_seg_value( ds ), si );
+    * flat_address16( es, di ) = * flat_address16( get_seg_value(), si );
     update_rep_sidi16();
 } //op_movs16
 
 void i8086::op_movs8()
 {
-    * flat_address8( es, di ) = * flat_address8( get_seg_value( ds ), si );
+    * flat_address8( es, di ) = * flat_address8( get_seg_value(), si );
     update_rep_sidi8();
 } //op_movs8
 
@@ -618,25 +618,25 @@ void i8086::op_sto8()
 
 void i8086::op_lods16()
 {
-    ax = * flat_address16( get_seg_value( ds ), si );
+    ax = * flat_address16( get_seg_value(), si );
     update_index16( si );
 } //op_lods16
 
 void i8086::op_lods8()
 {
-    set_al( * flat_address8( get_seg_value( ds ), si ) );
+    set_al( * flat_address8( get_seg_value(), si ) );
     update_index8( si );
 } //op_lods8
 
 void i8086::op_scas16()
 {
-    op_sub16( ax, * flat_address16( get_seg_value( es ), di ) );
+    op_sub16( ax, * flat_address16( es, di ) ); // es cannot be overridden
     update_index16( di );
 } //op_scas16
 
 void i8086::op_scas8()
 {
-    op_sub8( al(), * flat_address8( get_seg_value( es ), di ) );
+    op_sub8( al(), * flat_address8( es, di ) ); // es cannot be overridden
     update_index8( di );
 } //op_scas8
 
@@ -648,7 +648,7 @@ void i8086::op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount )
         case 1: op_ror8( pval, amount ); break;
         case 2: op_rcl8( pval, amount ); break;
         case 3: op_rcr8( pval, amount ); break;
-        case 4: op_sal8( pval, amount ); break;    // aka shr
+        case 4: op_sal8( pval, amount ); break;    // aka shl
         case 5: op_shr8( pval, amount ); break;
         case 7: op_sar8( pval, amount ); break;
         // 6 is illegal
@@ -771,6 +771,27 @@ not_inlined void i8086::op_aaa()
 
     set_al( al() & 0x0f );
 } //op_aaa
+
+not_inlined void i8086::op_sahf()
+{
+    uint8_t fl = ah();
+    fSign = ( 0 != ( fl & 0x80 ) );
+    fZero = ( 0 != ( fl & 0x40 ) );
+    fAuxCarry = ( 0 != ( fl & 0x20 ) );
+    fParityEven = ( 0 != ( fl & 0x04 ) );
+    fCarry = ( 0 != ( fl & 1 ) );
+} //op_sahf
+
+not_inlined void i8086::op_lahf()
+{
+    uint8_t fl = 0x02;
+    if ( fSign ) fl |= 0x80;
+    if ( fZero ) fl |= 0x40;
+    if ( fAuxCarry ) fl |= 0x10;
+    if ( fParityEven ) fl |= 0x04;
+    if ( fCarry ) fl |= 1;
+    set_ah( fl );
+} //op_lahf
 
 not_inlined bool i8086::op_f6()
 {
@@ -1217,18 +1238,30 @@ _prefix_set:
                 _bc = 2;
                 break;
             }
-            case 0x80: case 0x81: case 0x82: case 0x83: // math
+            case 0x80: case 0x81: case 0x82: case 0x83: // math: reg8/mem8, imm8; reg16/mem16, imm16; reg16/mem16, imm8
             {
                 uint8_t math = _reg; // the _reg field is the math operator, not a register
                 _bc = 3;
+
+                // mod=00: index register(s) or direct address (if rm is 110)
+                // mod=01: index register(s) plus signed 8-bit immediate offset
+                // mod=10: index register(s) plus signed 16-bit immediate offset
+                // mod=11: r/m specifies a register modified by W
+        
                 bool directAddress = ( 0 == _mod && 6 == _rm );
                 AddCycles( directAddress ? 13 : 6 );
-                int imm_offset = mod_to_imm_offset();
-        
+                int imm_offset;
+                if ( 1 == _mod )
+                    imm_offset = 3;
+                else if ( ( 2 == _mod ) || directAddress )
+                    imm_offset = 4;
+                else
+                    imm_offset = 2;
+
                 if ( isword() )
                 {
                     uint16_t rhs;
-                    if ( 0x83 == _b0 ) // one byte immediate, word math. (add sp, imm8)
+                    if ( 0x83 == _b0 ) // one byte signed immediate, word math. (add sp, imm8)
                         rhs = (int8_t) _pcode[ imm_offset ]; // cast for sign extension from byte to word
                     else
                     {
@@ -1317,7 +1350,7 @@ _prefix_set:
                 * get_preg16( _reg ) = * get_rm_ptr16();
                 break;
             } 
-            case 0x8c: // mov r/m16, sreg
+            case 0x8c: // mov reg16/m16, sreg
             {
                 _bc++;
                 AddMemCycles( 11 ); // 10/11/12 possible
@@ -1359,51 +1392,32 @@ _prefix_set:
             case 0x9b: break; // wait for pending floating point exceptions
             case 0x9c: { materializeFlags(); push( flags ); break; } // pushf
             case 0x9d: { flags = pop(); unmaterializeFlags(); break; } // popf
-            case 0x9e: // sahf -- stores a subset of flags from ah
-            {
-                uint8_t fl = ah();
-                fSign = ( 0 != ( fl & 0x80 ) );
-                fZero = ( 0 != ( fl & 0x40 ) );
-                fAuxCarry = ( 0 != ( fl & 0x20 ) );
-                fParityEven = ( 0 != ( fl & 0x04 ) );
-                fCarry = ( 0 != ( fl & 1 ) );
-                break;
-            }
-            case 0x9f: // lahf -- loads a subset of flags to ah
-            {
-                uint8_t fl = 0x02;
-                if ( fSign ) fl |= 0x80;
-                if ( fZero ) fl |= 0x40;
-                if ( fAuxCarry ) fl |= 0x10;
-                if ( fParityEven ) fl |= 0x04;
-                if ( fCarry ) fl |= 1;
-                set_ah( fl );
-                break;
-            }
+            case 0x9e: { op_sahf(); break; } // sahf -- stores a subset of flags from ah
+            case 0x9f: { op_lahf(); break; } // lahf -- loads a subset of flags to ah
             case 0xa0: // mov al, mem8
             {
-                uint32_t flat = flatten( get_seg_value( ds ), b12() );
+                uint32_t flat = flatten( get_seg_value(), b12() );
                 set_al( * (uint8_t *) ( memory + flat ) );
                 _bc += 2;
                 break;
             }
             case 0xa1: // mov ax, mem16
             {
-                uint32_t flat = flatten( get_seg_value( ds ), b12() );
+                uint32_t flat = flatten( get_seg_value(), b12() );
                 ax = * (uint16_t *) ( memory + flat );
                 _bc += 2;
                 break;
             }
             case 0xa2: // mov mem8, al
             {
-                uint8_t * pdst = memory + flatten( get_seg_value( ds ), b12() );
+                uint8_t * pdst = memory + flatten( get_seg_value(), b12() );
                 *pdst = al();
                 _bc += 2;
                 break;
             }
             case 0xa3: // mov mem16, ax
             {
-                uint16_t * pdst = (uint16_t *) ( memory + flatten( get_seg_value( ds ), b12() ) );
+                uint16_t * pdst = (uint16_t *) ( memory + flatten( get_seg_value(), b12() ) );
                 *pdst = ax;
                 _bc += 2;
                 break;
@@ -1736,7 +1750,7 @@ _prefix_set:
             case 0xd6: { set_al( fCarry ? 0xff : 0 ); break; } // salc (undocumented. IP protection scheme?)
             case 0xd7: // xlat
             {
-                uint8_t * ptable = flat_address8( get_seg_value( ds ), bx );
+                uint8_t * ptable = flat_address8( get_seg_value(), bx );
                 set_al( ptable[ al() ] );
                 break;
             }

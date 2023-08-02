@@ -191,6 +191,9 @@ class CDJLTrace
                 if ( flush )
                     fflush( fp );
             }
+            #else
+            condition; // unused
+            format; // unused
             #endif
         } //TraceDebug
 

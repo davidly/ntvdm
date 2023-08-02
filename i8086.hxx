@@ -222,13 +222,11 @@ struct i8086
     uint16_t * seg_reg( uint8_t val ) { assert( val <= 3 ); return ( ( & es ) + val ); }
     uint8_t * get_preg8( uint8_t reg ) { assert( reg <= 7 ); return reg8_pointers[ reg ]; }
     uint16_t * get_preg16( uint8_t reg ) { assert( reg <= 7 ); return reg16_pointers[ reg ]; }
-    uint8_t get_reg_value8( uint8_t reg ) { assert( reg <= 7 ); assert( !isword() ); return * get_preg8( reg ); }
-    uint16_t get_reg_value16( uint8_t reg ) { assert( reg <= 7 ); assert( isword() ); return * get_preg16( reg ); }
 
-    uint16_t get_seg_value( uint16_t default_value )
+    uint16_t get_seg_value()
     {
         if ( 0xff == prefix_segment_override )
-            return default_value;
+            return ds; // the default if there is no override
 
         AddCycles( 2 );
         return * seg_reg( prefix_segment_override );
@@ -305,9 +303,7 @@ struct i8086
             _bc += 1;
             AddCycles( 4 );
             int16_t offset = (int16_t) (char) _pcode[ 2 ];
-            uint16_t regval = get_displacement();
-            uint16_t segment = get_displacement_seg();
-            return flat_address( segment, regval + offset );
+            return flat_address( get_displacement_seg(), get_displacement() + offset );
         }
 
         if ( 2 == _mod ) // 2-byte unsigned immediate offset from register(s)
@@ -315,26 +311,24 @@ struct i8086
             _bc += 2;
             AddCycles( 5 );
             uint16_t offset = * (uint16_t *) ( _pcode + 2 );
-            uint16_t regval = get_displacement();
-            uint16_t segment = get_displacement_seg();
-            return flat_address( segment, regval + offset );
+            return flat_address( get_displacement_seg(), get_displacement() + offset );
         }
 
         if ( 6 == _rm )  // 0 == mod. least frequent. immediate pointer to offset
         {
             _bc += 2;
             AddCycles( 5 );
-            return flat_address( get_seg_value( ds ), * (uint16_t *) ( _pcode + 2 ) );
+            return flat_address( get_seg_value(), * (uint16_t *) ( _pcode + 2 ) );
         }
 
-        uint16_t val = get_displacement(); // no offset; just value from register(s)
-        uint16_t segment = get_displacement_seg();
-        return flat_address( segment, val );
+        return flat_address( get_displacement_seg(), get_displacement() );// no offset; just a value from register(s)
     } //get_rm_ptr_common
 
     uint16_t * get_rm_ptr16()
     {
+        // these instructions are even yet operate on words: mov r16/m16, sreg; mov sreg, reg16/mem16; les reg16, [mem16]
         assert( isword() || ( 0x8c == _b0 ) || ( 0x8e == _b0 ) || ( 0xc4 == _b0 ) );
+
         if ( 3 == _mod )
             return get_preg16( _rm );
         
@@ -360,16 +354,14 @@ struct i8086
         {
             _bc += 1;
             int16_t offset = (int16_t) (int8_t) _pcode[ 2 ]; // cast for sign extension
-            uint16_t regval = get_displacement();
-            return regval + offset;
+            return get_displacement() + offset;
         }
  
         if  ( 2 == _mod )
         {
             _bc += 2;
             uint16_t offset = * (uint16_t *) ( _pcode + 2 );
-            uint16_t regval = get_displacement();
-            return regval + offset;
+            return get_displacement() + offset;
         }
 
         if ( 6 == _rm )  // 0 == mod. least frequent
@@ -381,15 +373,6 @@ struct i8086
         return get_displacement();
     } //get_rm_ea
 
-    uint8_t mod_to_imm_offset()
-    {
-        if ( 1 == _mod )
-            return 3;
-        else if ( 2 == _mod || ( 0 == _mod && 6 == _rm ) )
-            return 4;
-        return 2;
-    } //mod_to_imm_offset
-
     uint16_t * get_op_args16( uint16_t & rhs )
     {
         assert( isword() );
@@ -399,7 +382,7 @@ struct i8086
             return get_preg16( _reg );
         }
 
-        rhs = get_reg_value16( _reg );
+        rhs = * get_preg16( _reg );
         return get_rm_ptr16();
     } //get_op_args16
     
@@ -412,7 +395,7 @@ struct i8086
             return get_preg8( _reg );
         }
 
-        rhs = get_reg_value8( _reg );
+        rhs = * get_preg8( _reg );
         return get_rm_ptr8();
     } //get_op_args8
     
@@ -485,6 +468,8 @@ struct i8086
     void op_das();
     void op_aas();
     void op_aaa();
+    void op_sahf();
+    void op_lahf();
     bool op_f6();
     bool op_f7();
     bool op_ff();
