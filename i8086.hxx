@@ -84,7 +84,7 @@ struct i8086
               prefix_segment_override( 0xff ), prefix_repeat_opcode( 0xff ),
               _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ),
               fCarry( false ), fParityEven( false ), fAuxCarry( false ), fZero( false ), fSign( false ),
-              fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false ), fIgnoreTrap( false )
+              fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false ), fIgnoreTrap( false ), cycles( 0 )
     {
         reg8_pointers[ 0 ] = (uint8_t *) & ax;  // al
         reg8_pointers[ 1 ] = (uint8_t *) & cx;  // cl
@@ -144,6 +144,7 @@ struct i8086
 
     uint8_t * reg8_pointers[ 8 ];
     uint16_t * reg16_pointers[ 8 ];
+    uint64_t cycles;  // # of cycles executed so far during a call to emulate()
 
     void decode_instruction( uint8_t * pcode )
     {
@@ -224,12 +225,12 @@ struct i8086
     uint8_t get_reg_value8( uint8_t reg ) { assert( reg <= 7 ); assert( !isword() ); return * get_preg8( reg ); }
     uint16_t get_reg_value16( uint8_t reg ) { assert( reg <= 7 ); assert( isword() ); return * get_preg16( reg ); }
 
-    uint16_t get_seg_value( uint16_t default_value, uint64_t & cycles )
+    uint16_t get_seg_value( uint16_t default_value )
     {
         if ( 0xff == prefix_segment_override )
             return default_value;
 
-        AddCycles( cycles, 2 );
+        AddCycles( 2 );
         return * seg_reg( prefix_segment_override );
     } //get_seg_value
 
@@ -263,93 +264,93 @@ struct i8086
     uint16_t mword( uint16_t seg, uint16_t offset ) { return * flat_address16( seg, offset ); }
     void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * flat_address16( seg, offset ) = value; }
 
-    uint16_t get_displacement( uint8_t rm, uint64_t & cycles )
+    uint16_t get_displacement()
     {
-        assert( rm <= 7 );
-        switch ( rm )
+        assert( _rm <= 7 );
+        switch ( _rm )
         {
-            case 0: AddCycles( cycles, 7 ); return bx + si;
-            case 1: AddCycles( cycles, 7 ); return bx + di;
-            case 2: AddCycles( cycles, 8 ); return bp + si;
-            case 3: AddCycles( cycles, 8 ); return bp + di;
-            case 4: AddCycles( cycles, 6 ); return si;
-            case 5: AddCycles( cycles, 6 ); return di;
-            case 6: AddCycles( cycles, 6 ); return bp;
-            case 7: AddCycles( cycles, 6 ); return bx;
+            case 0: AddCycles( 7 ); return bx + si;
+            case 1: AddCycles( 7 ); return bx + di;
+            case 2: AddCycles( 8 ); return bp + si;
+            case 3: AddCycles( 8 ); return bp + di;
+            case 4: AddCycles( 6 ); return si;
+            case 5: AddCycles( 6 ); return di;
+            case 6: AddCycles( 6 ); return bp;
+            case 7: AddCycles( 6 ); return bx;
         }
 
         assume_false;
     } //get_displacement
 
-    uint16_t get_displacement_seg( uint8_t rm, uint64_t & cycles )
+    uint16_t get_displacement_seg()
     {
         if ( 0xff == prefix_segment_override ) // if no segment override
         {
-            if ( 2 == rm || 3 == rm || 6 == rm ) // bp defaults to ss. see get_displacement(): 2/3/6 use bp
+            if ( 2 == _rm || 3 == _rm || 6 == _rm ) // bp defaults to ss. see get_displacement(): 2/3/6 use bp
                 return ss;
 
             return ds;
         }
 
-        AddCycles( cycles, 2 );
+        AddCycles( 2 );
         return * seg_reg( prefix_segment_override );
     } //get_displacement_seg
 
-    void * get_rm_ptr_common( uint8_t rm_to_use, uint64_t & cycles )
+    void * get_rm_ptr_common()
     {
         assert( _mod <= 2 );
 
-        if ( 1 == _mod ) // 1-byte immediate offset from register(s)
+        if ( 1 == _mod ) // 1-byte signed immediate offset from register(s)
         {
             _bc += 1;
-            AddCycles( cycles, 4 );
+            AddCycles( 4 );
             int16_t offset = (int16_t) (char) _pcode[ 2 ];
-            uint16_t regval = get_displacement( rm_to_use, cycles );
-            uint16_t segment = get_displacement_seg( rm_to_use, cycles );
+            uint16_t regval = get_displacement();
+            uint16_t segment = get_displacement_seg();
             return flat_address( segment, regval + offset );
         }
 
-        if ( 2 == _mod ) // 2-byte immediate offset from register(s)
+        if ( 2 == _mod ) // 2-byte unsigned immediate offset from register(s)
         {
             _bc += 2;
-            AddCycles( cycles, 5 );
+            AddCycles( 5 );
             uint16_t offset = * (uint16_t *) ( _pcode + 2 );
-            uint16_t regval = get_displacement( rm_to_use, cycles );
-            uint16_t segment = get_displacement_seg( rm_to_use, cycles );
+            uint16_t regval = get_displacement();
+            uint16_t segment = get_displacement_seg();
             return flat_address( segment, regval + offset );
         }
 
-        if ( 6 == rm_to_use )  // 0 == mod. least frequent. immediate pointer to offset
+        if ( 6 == _rm )  // 0 == mod. least frequent. immediate pointer to offset
         {
             _bc += 2;
-            AddCycles( cycles, 5 );
-            return flat_address( get_seg_value( ds, cycles ), * (uint16_t *) ( _pcode + 2 ) );
+            AddCycles( 5 );
+            return flat_address( get_seg_value( ds ), * (uint16_t *) ( _pcode + 2 ) );
         }
 
-        uint16_t val = get_displacement( rm_to_use, cycles ); // no offset; just the register value
-        uint16_t segment = get_displacement_seg( rm_to_use, cycles );
+        uint16_t val = get_displacement(); // no offset; just value from register(s)
+        uint16_t segment = get_displacement_seg();
         return flat_address( segment, val );
     } //get_rm_ptr_common
 
-    uint16_t * get_rm_ptr16( uint8_t rm_to_use, uint64_t & cycles )
+    uint16_t * get_rm_ptr16()
     {
         assert( isword() || ( 0x8c == _b0 ) || ( 0x8e == _b0 ) || ( 0xc4 == _b0 ) );
         if ( 3 == _mod )
-            return get_preg16( rm_to_use );
+            return get_preg16( _rm );
         
-        return (uint16_t *) get_rm_ptr_common( rm_to_use, cycles );
+        return (uint16_t *) get_rm_ptr_common();
     } //get_rm_ptr16
 
-    uint8_t * get_rm_ptr8( uint8_t rm_to_use, uint64_t & cycles )
+    uint8_t * get_rm_ptr8()
     {
         assert( !isword() );
         if ( 3 == _mod )
-            return get_preg8( rm_to_use );
+            return get_preg8( _rm );
         
-        return (uint8_t *) get_rm_ptr_common( rm_to_use, cycles );
+        return (uint8_t *) get_rm_ptr_common();
     } //get_rm_ptr8
 
-    uint16_t get_rm_ea( uint8_t rm_to_use, uint64_t & cycles ) // effective address. used strictly for lea
+    uint16_t get_rm_ea() // effective address. used strictly for lea
     {
         assert( isword() );
         assert( 0x8d == _b0 ); // it's lea
@@ -359,7 +360,7 @@ struct i8086
         {
             _bc += 1;
             int16_t offset = (int16_t) (int8_t) _pcode[ 2 ]; // cast for sign extension
-            uint16_t regval = get_displacement( rm_to_use, cycles );
+            uint16_t regval = get_displacement();
             return regval + offset;
         }
  
@@ -367,17 +368,17 @@ struct i8086
         {
             _bc += 2;
             uint16_t offset = * (uint16_t *) ( _pcode + 2 );
-            uint16_t regval = get_displacement( rm_to_use, cycles );
+            uint16_t regval = get_displacement();
             return regval + offset;
         }
 
-        if ( 6 == rm_to_use )  // 0 == mod. least frequent
+        if ( 6 == _rm )  // 0 == mod. least frequent
         {
             _bc += 2;
             return * (uint16_t *) ( _pcode + 2 );
         }
 
-        return get_displacement( rm_to_use, cycles );
+        return get_displacement();
     } //get_rm_ea
 
     uint8_t mod_to_imm_offset()
@@ -389,30 +390,30 @@ struct i8086
         return 2;
     } //mod_to_imm_offset
 
-    uint16_t * get_op_args16( uint16_t & rhs, uint64_t & cycles )
+    uint16_t * get_op_args16( uint16_t & rhs )
     {
         assert( isword() );
         if ( toreg() )
         {
-            rhs = * get_rm_ptr16( _rm, cycles );
+            rhs = * get_rm_ptr16();
             return get_preg16( _reg );
         }
 
         rhs = get_reg_value16( _reg );
-        return get_rm_ptr16( _rm, cycles );
+        return get_rm_ptr16();
     } //get_op_args16
     
-    uint8_t * get_op_args8( uint8_t & rhs, uint64_t & cycles )
+    uint8_t * get_op_args8( uint8_t & rhs )
     {
         assert( !isword() );
         if ( toreg() )
         {
-            rhs = * get_rm_ptr8( _rm, cycles );
+            rhs = * get_rm_ptr8();
             return get_preg8( _reg );
         }
 
         rhs = get_reg_value8( _reg );
-        return get_rm_ptr8( _rm, cycles );
+        return get_rm_ptr8();
     } //get_op_args8
     
     const char * render_flags() // show the subset actually used with any frequency
@@ -459,16 +460,16 @@ struct i8086
     void op_sal16( uint16_t * pval, uint8_t shift );
     void op_shr16( uint16_t * pval, uint8_t shift );
     void op_sar16( uint16_t * pval, uint8_t shift );
-    void op_cmps8( uint64_t & cycles );
+    void op_cmps8();
     void op_sto8();
-    void op_lods8( uint64_t & cycles );
-    void op_scas8( uint64_t & cycles );
-    void op_movs8( uint64_t & cycles );
-    void op_cmps16( uint64_t & cycles );
+    void op_lods8();
+    void op_scas8();
+    void op_movs8();
+    void op_cmps16();
     void op_sto16();
-    void op_lods16( uint64_t & cycles );
-    void op_scas16( uint64_t & cycles );
-    void op_movs16( uint64_t & cycles );
+    void op_lods16();
+    void op_scas16();
+    void op_movs16();
     void update_index16( uint16_t & index_register );
     void update_index8( uint16_t & index_register );
     void update_rep_sidi8();
@@ -484,16 +485,16 @@ struct i8086
     void op_das();
     void op_aas();
     void op_aaa();
-    bool op_f6( uint64_t & cycles );
-    bool op_f7( uint64_t & cycles );
-    bool op_ff( uint64_t & cycles );
+    bool op_f6();
+    bool op_f7();
+    bool op_ff();
 
     #ifdef I8086_TRACK_CYCLES
-        void AddCycles( uint64_t & cycles, uint8_t amount ) { cycles += amount; }
-        void AddMemCycles( uint64_t & cycles, uint8_t amount ) { if ( 3 != _mod ) cycles += amount; }
+        void AddCycles( uint8_t amount ) { cycles += amount; }
+        void AddMemCycles( uint8_t amount ) { if ( 3 != _mod ) cycles += amount; }
     #else
-        void AddCycles( uint64_t & cycles, uint8_t amount ) {}
-        void AddMemCycles( uint64_t & cycles, uint8_t amount ) {}
+        void AddCycles( uint8_t amount ) {}
+        void AddMemCycles( uint8_t amount ) {}
     #endif
 
 }; //i8086
