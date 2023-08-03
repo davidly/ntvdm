@@ -61,7 +61,7 @@ void i8086::trace_state()
 //    tracer.Trace( "x594 + 24: " ); tracer.TraceBinaryData( memory + flatten( 0x3c9b, 0x594 + 24 ), 4, 0 );
 //    tracer.TraceBinaryData( memory + flatten( 0, 4 * 0x1c ), 4, 0 );
 
-    uint8_t * pcode = memptr( flat_ip() );
+    uint8_t * pcode = flat_address8( cs, ip );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
     tracer.TraceQuiet( "ip %4x, opc %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
                        "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s, %s ; %u\n",
@@ -483,7 +483,7 @@ void i8086::op_ror8( uint8_t * pval, uint8_t shift )
     *pval = val;
 } //ror8
 
-void i8086::op_rcl8( uint8_t * pval, uint8_t shift )
+not_inlined void i8086::op_rcl8( uint8_t * pval, uint8_t shift )
 {
     if ( 0 == shift )
         return;
@@ -506,7 +506,7 @@ void i8086::op_rcl8( uint8_t * pval, uint8_t shift )
     *pval = val;
 } //rcl8
 
-void i8086::op_rcr8( uint8_t * pval, uint8_t shift )
+not_inlined void i8086::op_rcr8( uint8_t * pval, uint8_t shift )
 {
     if ( 0 == shift )
         return;
@@ -556,7 +556,7 @@ void i8086::op_shr8( uint8_t * pval, uint8_t shift )
     set_PSZ8( *pval );
 } //shr8
 
-void i8086::op_sar8( uint8_t * pval, uint8_t shift )
+not_inlined void i8086::op_sar8( uint8_t * pval, uint8_t shift )
 {
     if ( 0 == shift )
         return;
@@ -1054,7 +1054,6 @@ not_inlined bool i8086::handle_state()
     if ( g_State & stateTrapSet )
     {
         assert( fTrap );
-        tracer.Trace( "trapset is set. ignore trap %d, ftrap %d\n", fIgnoreTrap, fTrap );
         if ( fIgnoreTrap )  // set just after the iret that enables fTrap or an int3; actually trap after the following instruction
             fIgnoreTrap = false;
         else
@@ -1096,10 +1095,10 @@ _prefix_set:
 
         #ifndef NDEBUG
             opcode_usage[ _b0 ]++;
-            assert( 0 != cs || 0 != ip );                      // almost certainly an app bug.
+            assert( 0 != cs || 0 != ip );                  // almost certainly an app bug.
         #endif
 
-        decode_instruction( memptr( flat_ip() ) );         // 23% of runtime
+        decode_instruction( flat_address8( cs, ip ) );     // 23% of runtime
 
         #ifdef I8086_TRACK_CYCLES
             cycles += i8086_cycles[ _b0 ];                 // 2% of runtime
@@ -1299,22 +1298,14 @@ _prefix_set:
             case 0x86: // xchg reg8, reg8/mem8
             {
                 AddMemCycles( 21 );
-                uint8_t * pA = get_preg8( _reg );
-                uint8_t * pB = get_rm_ptr8();
-                uint8_t tmp = *pB;
-                *pB = *pA;
-                *pA = tmp;
+                swap( * get_preg8( _reg ), * get_rm_ptr8() );
                 _bc++;
                 break;
             }
             case 0x87: // xchg reg16, reg16/mem16
             {
                 AddMemCycles( 21 );
-                uint16_t * pA = get_preg16( _reg );
-                uint16_t * pB = get_rm_ptr16();
-                uint16_t tmp = *pB;
-                *pB = *pA;
-                *pA = tmp;
+                swap( * get_preg16( _reg ), * get_rm_ptr16() );
                 _bc++;
                 break;
             }
@@ -1375,8 +1366,7 @@ _prefix_set:
             }
             case 0x90: case 0x91: case 0x92: case 0x93: case 0x94: case 0x95: case 0x96: case 0x97: // nop + xchg ax, cx/dx/bx/sp/bp/si/di
             {
-                uint16_t * preg = get_preg16( _b0 & 7 );
-                swap( ax, * preg );
+                swap( ax, * get_preg16( _b0 & 7 ) );
                 break;
             }
             case 0x98: { set_ah( ( al() & 0x80 ) ? 0xff : 0 ); break; } // cbw -- covert byte in al to word in ax. sign extend
@@ -1680,10 +1670,7 @@ _prefix_set:
                 {
                     trap_set();
                     if ( !previousTrap )
-                    {
-                        tracer.Trace( "iret setting ignore trap\n" );
                         fIgnoreTrap = true;
-                    }
                 }
                 continue;
             }

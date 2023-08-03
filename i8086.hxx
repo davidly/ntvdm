@@ -157,7 +157,7 @@ struct i8086
     } //decode_instruction
 
     bool isword() { return ( _b0 & 1 ); } // true if the instruction is dealing with a word, not a byte (there are several exceptions)
-    bool toreg() { return ( 0 != ( _b0 & 2 ) ); } // decode on the fly since it's rarely used
+    bool toreg() { return ( _b0 & 2 ); } // decode on the fly since it's rarely used
     uint16_t b12() { return * (uint16_t *) ( _pcode + 1 ); } // bytes 1 and 2 from the start of the opcode
     uint16_t b34() { return * (uint16_t *) ( _pcode + 3 ); } // bytes 3 and 4 from the start of the opcode
 
@@ -232,8 +232,6 @@ struct i8086
         return * seg_reg( prefix_segment_override );
     } //get_seg_value
 
-    uint8_t * memptr( uint32_t address ) { return memory + address; }
-
     uint32_t flatten( uint16_t seg, uint16_t offset )
     {
         #ifdef NDEBUG
@@ -255,7 +253,6 @@ struct i8086
     } //flatten
 
     void unhandled_instruction();
-    uint32_t flat_ip() { return flatten( cs, ip ); }
     void * flat_address( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return (uint8_t *) flat_address( seg, offset ); }
     uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) flat_address( seg, offset ); }
@@ -348,7 +345,7 @@ struct i8086
     {
         assert( isword() );
         assert( 0x8d == _b0 ); // it's lea
-        assert( _mod <= 2 ); // lea specifies the source operand must be memory, not a register
+        assert( _mod <= 2 ); // lea specifies that the source operand must be memory, not a register
         
         if ( 1 == _mod )
         {
