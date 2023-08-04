@@ -63,6 +63,7 @@
 #include <djl_cycle.hxx>
 #include <djl_durat.hxx>
 #include <djl_thrd.hxx>
+#include <djl_kslog.hxx>
 #include <djl8086d.hxx>
 #include "i8086.hxx"
 
@@ -243,9 +244,8 @@ static uint16_t g_currentPSP = 0;                  // psp of the currently runni
 static bool g_use80x25 = false;                    // true to force 80x25 with cursor positioning
 static bool g_forceConsole = false;                // true to force teletype mode, with no cursor positioning
 static bool g_int16_1_loop = false;                // true if an app is looping to get keyboard input. don't busy loop.
-static bool g_KbdIntWaitingForRead = false;        // true when a kbd int happens and no read has happened since
 static bool g_KbdPeekAvailable = false;            // true when peek on the keyboard sees keystrokes
-static bool g_injectControlC = false;              // true when ^c is hit and it must be put in the keyboard buffer
+static LONG g_injectedControlC = 0;                // # of control c events to inject
 static int g_appTerminationReturnCode = 0;         // when int 21 function 4c is invoked to terminate an app, this is the app return code
 static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
 static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0]), likely NTVDM
@@ -259,6 +259,8 @@ static char cwd[ MAX_PATH ] = {0};                 // used as a temporary in sev
 static vector<IntCalled> g_InterruptsCalled;       // track interrupt usage
 static uint64_t g_startSystemTime;                 // system time at app start
 static uint8_t g_bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
+static CKeyStrokes g_keyStrokes;                   // read or write keystrokes between kslog.txt and the app
+static HANDLE g_heventKeyStroke;
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -294,6 +296,10 @@ static void usage( char const * perr )
     printf( "            -e     comma-separated list of environment variables. e.g. -e:include=..\\include,lib=..\\lib\n" );
     printf( "            -h     workaround for Packed File Corrupt error: load apps High, above 64k\n" );
     printf( "            -i     trace instructions as they are executed to %s.log (this is verbose!)\n", g_thisApp );
+/* work in progress
+    printf( "            -kr    read keystrokes from kslog.txt\n" );
+    printf( "            -kw    write keywtrokes to kslog.txt\n" );
+*/
     printf( "            -p     show performance information\n" ); 
 #ifdef I8086_TRACK_CYCLES
     printf( "            -s:X   speed in Hz. Default is to run as fast as possible.\n" );
@@ -334,8 +340,14 @@ class CKbdBuffer
         bool IsFull() { return ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ); }
         bool IsEmpty() { return ( *phead == *ptail ); }
 
-        void Add( uint8_t asciiChar, uint8_t scancode )
+        void Add( uint8_t asciiChar, uint8_t scancode, bool userGenerated = true )
         {
+            if ( userGenerated )
+            {
+                uint16_t stroke = ( ( (uint16_t) scancode ) << 8 ) | asciiChar;
+                g_keyStrokes.Append( stroke );
+            }
+
             assert( !IsFull() );
             pbiosdata[ *ptail ] = asciiChar;
             (*ptail)++;
@@ -422,12 +434,14 @@ bool DisplayUpdateRequired()
 void SleepAndScheduleInterruptCheck()
 {
     CKbdBuffer kbd_buf;
-    if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() )
+    if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
     {
-        tracer.Trace( "sleeping in SleepAndScheduleInterruptCheck\n" );
-        SleepEx( 1, TRUE );
+        tracer.Trace( "sleeping in SleepAndScheduleInterruptCheck. g_KbdPeekAvailable %d\n", g_KbdPeekAvailable );
+        DWORD dw = WaitForSingleObject( g_heventKeyStroke, 1 );
+        tracer.Trace( "sleep woke up due to %s\n", ( 0 == dw ) ? "keystroke event signaled" : "timeout" );
+        // just because the event was signaled doesn't ensure a keystroke is available. It may be from earlier, but that's OK
     }
-    cpu.exit_emulate_early(); // fall out of the instruction loop early to check for a timer interrupt
+    cpu.exit_emulate_early(); // fall out of the instruction loop early to check for a timer or keyboard interrupt
 } //SleepAndScheduleInterruptCheck
 
 int ends_with( const char * str, const char * end )
@@ -1328,7 +1342,7 @@ BOOL WINAPI ControlHandler( DWORD fdwCtrlType )
             cpu.end_emulation();
         }
         else
-            g_injectControlC = true;
+            InterlockedIncrement( &g_injectedControlC );
 
         return TRUE;
     }
@@ -1702,7 +1716,15 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
     // this mutex is because I don't know if PeekConsoleInput and ReadConsoleInput are individually or mutually reenterant.
     lock_guard<mutex> lock( g_mtxEverything );
 
-    if ( g_injectControlC )
+    if ( g_keyStrokes.KeystrokeAvailable() )
+    {
+        uint16_t x = g_keyStrokes.Peek();
+        asciiChar = x & 0xff;
+        scancode = x >> 8;
+        return true;
+    }
+
+    if ( 0 != g_injectedControlC )
     {
         asciiChar = 0x03;
         scancode = 0x2e;
@@ -1746,7 +1768,7 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
         if ( sleep_on_throttle )
         {
             tracer.Trace( "sleeping in peek_keyboard\n" );
-            Sleep( 1 );
+            WaitForSingleObject( g_heventKeyStroke, 1 );
         }
 
         return false;
@@ -1756,20 +1778,32 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
     return peek_keyboard( a, s );
 } //peek_keyboard
 
+void InjectKeystrokes()
+{
+    CKbdBuffer kbd_buf;
+    while ( g_keyStrokes.KeystrokeAvailable() && !kbd_buf.IsFull() )
+    {
+        uint16_t x = g_keyStrokes.ConsumeNext();
+        tracer.Trace( "injecting keystroke %04x from log file\n", x );
+        kbd_buf.Add( x & 0xff, x >> 8 );
+    }
+
+    while ( ( 0 != g_injectedControlC ) && !kbd_buf.IsFull() ) // largeish hack for ^c handling
+    {
+        tracer.Trace( "injecting controlc count %d\n", g_injectedControlC );
+        InterlockedDecrement( &g_injectedControlC );
+        kbd_buf.Add( 0x03, 0x2e );
+    }
+} //InjectKeystrokes
+
 void consume_keyboard()
 {
     // this mutex is because I don't know if PeekConsoleInput and ReadConsoleInput are individually or mutually reenterant.
     lock_guard<mutex> lock( g_mtxEverything );
 
+    InjectKeystrokes();
+
     CKbdBuffer kbd_buf;
-
-    if ( g_injectControlC && !kbd_buf.IsFull() ) // largeish hack for ^c handling
-    {
-        g_KbdIntWaitingForRead = false;
-        g_injectControlC = false;
-        kbd_buf.Add( 0x03, 0x2e );
-    }
-
     INPUT_RECORD records[ 10 ];
     DWORD numRead = 0;
     DWORD toRead = __min( _countof( records ), kbd_buf.FreeSpots() );
@@ -1780,17 +1814,13 @@ void consume_keyboard()
         if ( ok )
         {
             uint8_t asciiChar = 0, scancode = 0;
-            for ( uint32_t x = 0; x < numRead; x++ )
+            for ( DWORD x = 0; x < numRead; x++ )
             {
                 bool used = process_key_event( records[ x ], asciiChar, scancode );
                 if ( !used )
                     continue;
     
                 tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scancode );
-    
-                // It's ok to send more keyboard int 9s since we've consumed a character
-
-                g_KbdIntWaitingForRead = false;
                 kbd_buf.Add( asciiChar, scancode );
             }
         }
@@ -2112,9 +2142,9 @@ void handle_int_10( uint8_t c )
         case 2:
         {
             tracer.Trace( "  set cursor position to row %d col %d\n", cpu.dh(), cpu.dl() );
-
-            GetCursorPosition( row, col );
-            uint16_t lastRow = row;
+            uint8_t prevRow, prevCol;
+            if ( !g_use80x25 )
+                GetCursorPosition( prevRow, prevCol );
 
             row = cpu.dh();
             col = cpu.dl();
@@ -2122,7 +2152,7 @@ void handle_int_10( uint8_t c )
 
             if ( g_use80x25 )
                 UpdateWindowsCursorPosition();
-            else if ( 0 == col && ( row == ( lastRow + 1 ) ) )
+            else if ( 0 == col && ( row == ( prevRow + 1 ) ) )
                 printf( "\n" );
 
             return;
@@ -2494,6 +2524,8 @@ void handle_int_16( uint8_t c )
             if ( g_use80x25 )
                 UpdateDisplay();
 
+            InjectKeystrokes();
+
 #if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int16_0_seg );
             return;
@@ -2532,6 +2564,8 @@ void handle_int_16( uint8_t c )
                     g_int16_1_loop = false;
             }
 
+            InjectKeystrokes();
+
             if ( kbd_buf.IsEmpty() )
             {
                 cpu.set_zero( true );
@@ -2566,7 +2600,7 @@ void handle_int_16( uint8_t c )
 
             if ( ! kbd_buf.IsFull() )
             {
-                kbd_buf.Add( cpu.cl(), cpu.ch() );
+                kbd_buf.Add( cpu.cl(), cpu.ch(), false );
                 cpu.set_al( 0 );
                 tracer.Trace( "  successfully stored keystroke in buffer\n" );
             }
@@ -2858,6 +2892,7 @@ void handle_int_21( uint8_t c )
                 // Multiplan (v2) is the only app I've found that uses this function for input.
 
                 CKbdBuffer kbd_buf;
+                InjectKeystrokes();
 
                 if ( !kbd_buf.IsEmpty() )
                 {
@@ -2916,6 +2951,8 @@ void handle_int_21( uint8_t c )
 
             if ( g_use80x25)
                 UpdateDisplay();
+
+            InjectKeystrokes();
 
 #if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int21_8_seg );
@@ -2996,6 +3033,7 @@ void handle_int_21( uint8_t c )
         {
             // check standard input status. Returns AL: 0xff if char available, 0 if not
 
+            InjectKeystrokes();
             CKbdBuffer kbd_buf;
             cpu.set_al( kbd_buf.IsEmpty() ? 0 : 0xff );
 
@@ -5296,7 +5334,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         tracer.Trace( "    overflow exception interrupt 4\n" );
         return;
     }
-    else if ( 0x09 == interrupt_num )
+    else if ( 9 == interrupt_num )
     {
         consume_keyboard();
         return;
@@ -5789,13 +5827,15 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
         if ( WAIT_OBJECT_0 == ret )
             break;
 
-        if ( !g_KbdIntWaitingForRead && !g_KbdPeekAvailable )
+        if ( !g_KbdPeekAvailable )
         {
             uint8_t asciiChar, scancode;
             if ( peek_keyboard( asciiChar, scancode ) )
             {
-                tracer.Trace( "async thread (woken via %08x) noticed that a keystroke is available: %02x%02x\n", ret, scancode, asciiChar );
-                g_KbdPeekAvailable = true;
+                tracer.Trace( "async thread (woken via %s) noticed that a keystroke is available: %02x%02x\n",
+                              ( 1 == ret ) ? "console input" : "timeout", scancode, asciiChar );
+                g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+                SetEvent( g_heventKeyStroke ); // if the main thread is sleeping waiting for input, wake it.
                 cpu.exit_emulate_early(); // no time to lose processing the keystroke
             }
         }
@@ -5969,6 +6009,7 @@ int main( int argc, char ** argv )
 
     g_hConsoleOutput = GetStdHandle( STD_OUTPUT_HANDLE );
     g_hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
+    g_heventKeyStroke = CreateEvent( 0, FALSE, FALSE, 0 );
 
     init_blankline( DefaultVideoAttribute );
 
@@ -5982,6 +6023,7 @@ int main( int argc, char ** argv )
     bool clearDisplayOnExit = true;
     char * penvVars = 0;
     DWORD_PTR dwProcessAffinityMask = 0; // by default let the OS decide
+    CKeyStrokes::KeystrokeMode keystroke_mode = CKeyStrokes::KeystrokeMode::ksm_None;
 
     for ( int i = 1; i < argc; i++ )
     {
@@ -6023,10 +6065,20 @@ int main( int argc, char ** argv )
             }
             else if ( 'h' == ca )
                 g_PackedFileCorruptWorkaround = true;
+            else if ( 'k' == ca )
+            {
+                char cmode = (char) tolower( parg[2] );
+                if ( 'w' == cmode )
+                    keystroke_mode = CKeyStrokes::KeystrokeMode::ksm_Write;
+                else if ( 'r' == cmode )
+                    keystroke_mode = CKeyStrokes::KeystrokeMode::ksm_Read;
+                else
+                    usage( "invalid keystroke mode" );
+            }
             else if ( 'z' == ca )
             {
                 if ( ':' == parg[2] )
-                    dwProcessAffinityMask = _strtoui64( parg + 3 , 0, 16 );
+                    dwProcessAffinityMask = _strtoui64( parg + 3, 0, 16 );
                 else
                     usage( "colon required after z argument" );
             }
@@ -6082,6 +6134,8 @@ int main( int argc, char ** argv )
         BOOL ok = SetProcessAffinityMask( (HANDLE) -1, dwProcessAffinityMask );
         tracer.Trace( "Result of SetProcessAffinityMask( %#x ) is %d\n", dwProcessAffinityMask, ok );
     }
+
+    g_keyStrokes.SetMode( keystroke_mode );
 
     // global bios memory
 
@@ -6246,11 +6300,10 @@ int main( int argc, char ** argv )
             // if the keyboard peek thread has detected a keystroke, process it with an int 9.
             // don't plumb through port 60 since apps work without that.
     
-            if ( !g_KbdIntWaitingForRead && g_KbdPeekAvailable )
+            if ( g_KbdPeekAvailable )
             {
                 tracer.Trace( "main loop: scheduling an int 9\n" );
                 cpu.external_interrupt( 9 );
-                g_KbdIntWaitingForRead = true;
                 g_KbdPeekAvailable = false;
                 continue;
             }
@@ -6269,8 +6322,8 @@ int main( int argc, char ** argv )
         }
         else
         {
-            if ( !g_KbdIntWaitingForRead && g_KbdPeekAvailable )
-                tracer.Trace( "can't schedule a keyboard interrupt because they are disabled!\n" );
+            if ( g_KbdPeekAvailable )
+                tracer.Trace( "can't schedule a keyboard interrupt because interrupts are disabled!\n" );
         }
     } while ( true );
 
@@ -6282,6 +6335,7 @@ int main( int argc, char ** argv )
     peekKbdThread.EndThread();
 
     g_consoleConfig.RestoreConsole( clearDisplayOnExit );
+    CloseHandle( g_heventKeyStroke );
 
     if ( showPerformance )
     {

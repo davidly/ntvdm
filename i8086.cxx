@@ -675,8 +675,7 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     if ( g_State & stateTraceInstructions )
         tracer.Trace( "op_interrupt num %#x, length %d\n", interrupt_num, instruction_length );
 
-    uint32_t offset = 4 * interrupt_num;
-    uint16_t * vectorItem = (uint16_t *) ( memory + offset );
+    uint16_t * vectorItem = flat_address16( 0, 4 * interrupt_num );
     materializeFlags();
     push( flags );
     fInterrupt = false; // will perhaps be set again when flags are popped on iret
@@ -1108,8 +1107,8 @@ _prefix_set:
 
         // 30% of runtime setting up for use of the jumptables because they are in TEXT and
         // the LEA instruction has a terrible interaction with L1/L2 instruction cache misses
-        // for each of the lookups (the 1-byte element table with 251 entries and the 4-byte
-        // element table with 115 entries).
+        // for each of the lookups (the 1-byte element table with ~251 entries and the 4-byte
+        // element table with ~115 entries).
 
         switch( _b0 )
         {
@@ -1190,7 +1189,6 @@ _prefix_set:
             }
             case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt. default interrupt routines execute this to get to C++ code
             {
-                _bc++;
                 uint16_t old_ip = ip;
                 uint16_t old_cs = cs;
 
@@ -1201,6 +1199,8 @@ _prefix_set:
                 
                  if ( old_ip != ip || old_cs != cs )
                     continue;
+
+                _bc++;
                 break;
             }
             case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75: case 0x76: case 0x77: // jcc
@@ -1386,29 +1386,25 @@ _prefix_set:
             case 0x9f: { op_lahf(); break; } // lahf -- loads a subset of flags to ah
             case 0xa0: // mov al, mem8
             {
-                uint32_t flat = flatten( get_seg_value(), b12() );
-                set_al( * (uint8_t *) ( memory + flat ) );
+                set_al( * flat_address8( get_seg_value(), b12() ) );
                 _bc += 2;
                 break;
             }
             case 0xa1: // mov ax, mem16
             {
-                uint32_t flat = flatten( get_seg_value(), b12() );
-                ax = * (uint16_t *) ( memory + flat );
+                ax = * flat_address16( get_seg_value(), b12() );
                 _bc += 2;
                 break;
             }
             case 0xa2: // mov mem8, al
             {
-                uint8_t * pdst = memory + flatten( get_seg_value(), b12() );
-                *pdst = al();
+                * flat_address8( get_seg_value(), b12() ) = al();
                 _bc += 2;
                 break;
             }
             case 0xa3: // mov mem16, ax
             {
-                uint16_t * pdst = (uint16_t *) ( memory + flatten( get_seg_value(), b12() ) );
-                *pdst = ax;
+                * flat_address16( get_seg_value(), b12() ) = ax;
                 _bc += 2;
                 break;
             }
@@ -1753,37 +1749,37 @@ _prefix_set:
             case 0xe0: // loopne/loopnz short-label
             {
                 cx--;
-                _bc++;
                 if ( 0 != cx && !fZero )
                 {
                     AddCycles( 14 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
                     continue;
                 }
+                _bc++;
                 break;
             }
             case 0xe1: // loope/loopz short-label
             {
                 cx--;
-                _bc++;
                 if ( 0 != cx && fZero )
                 {
                     AddCycles( 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
                     continue;
                 }
+                _bc++;
                 break;
             }
             case 0xe2: // loop short-label
             {
                 cx--;
-                _bc++;
                 if ( 0 != cx )
                 {
                     AddCycles( 12 );
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
                     continue;
                 }
+                _bc++;
                 break;
             }
             case 0xe3: // jcxz rel8  jump if cx is 0
