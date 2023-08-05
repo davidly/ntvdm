@@ -2142,7 +2142,7 @@ void handle_int_10( uint8_t c )
         case 2:
         {
             tracer.Trace( "  set cursor position to row %d col %d\n", cpu.dh(), cpu.dl() );
-            uint8_t prevRow, prevCol;
+            uint8_t prevRow = 0, prevCol = 0;
             if ( !g_use80x25 )
                 GetCursorPosition( prevRow, prevCol );
 
