@@ -1760,7 +1760,7 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
             bool used = process_key_event( records[ x ], asciiChar, scancode );
             if ( !used )
                 continue;
-            tracer.Trace( "    peeked ascii %02x, scancode %02x\n", asciiChar, scancode );
+            tracer.Trace( "    peeked ascii %02x = '%c', scancode %02x\n", asciiChar, printable( asciiChar ), scancode );
             return true;
         }
     }
@@ -2194,7 +2194,7 @@ void handle_int_10( uint8_t c )
             cpu.set_dl( col );
             cpu.set_ch( 0 );
             cpu.set_cl( 0 );
-            tracer.Trace( "  get cursor position row %d col %d, %llu\n", cpu.dh(), cpu.dl(), time_since_last );
+            tracer.Trace( "  get cursor position row %d col %d\n", cpu.dh(), cpu.dl() );
 
             return;
         }
@@ -2609,7 +2609,10 @@ void handle_int_16( uint8_t c )
                 cpu.set_zero( false );
             }
 
-            tracer.Trace( "  returning flag %d, ax %04x\n", cpu.get_zero(), cpu.get_ax() );
+            if ( cpu.get_zero() )
+                tracer.Trace( "  returning carry flag 1; no character available\n" );
+            else
+                tracer.Trace( "  returning carry flag %d, ax %04x, ascii '%c'\n", cpu.get_zero(), cpu.get_ax(), printable( cpu.al() ) );
             return;
         }
         case 2:
