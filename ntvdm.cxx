@@ -408,6 +408,16 @@ class CKbdBuffer
         } //FreeSpots
 };
 
+uint64_t time_since_last()
+{
+    static high_resolution_clock::time_point tPrev = high_resolution_clock::now();
+    high_resolution_clock::time_point tNow = high_resolution_clock::now();
+
+    uint64_t duration = duration_cast<std::chrono::milliseconds>( tNow - tPrev ).count();
+    tPrev = tNow;
+    return duration;
+} //time_since_last
+
 uint8_t GetActiveDisplayPage()
 {
     uint8_t activePage = * GetMem( 0x40, 0x62 );
@@ -1226,6 +1236,61 @@ static WCHAR awcLowDOSChars[ 32 ] =
     0x25ba, 0x25c4, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x2190, 0x221f, 0x2194, 0x2582, 0x25bc,
 };
 
+void UpdateDisplayRow( uint32_t y )
+{
+    assert( g_use80x25 );
+    if ( y >= ScreenRows )
+        return;
+
+    uint8_t * pbuf = GetVideoMem();
+    uint32_t yoffset = y * ScreenColumns * 2;
+
+    memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
+    WORD aAttribs[ ScreenColumns ];
+    char ac[ ScreenColumns ];
+    for ( size_t x = 0; x < ScreenColumns; x++ )
+    {
+        size_t offset = yoffset + x * 2;
+        ac[ x ] = pbuf[ offset ];
+        if ( 0 == ac[ x ] )
+            ac[ x ] = ' '; // brief alternately writes 0 then ':' for the clock
+        aAttribs[ x ] = pbuf[ 1 + offset ]; 
+    }
+
+    WCHAR awcLine[ ScreenColumns ];
+    MultiByteToWideChar( 437, 0, ac, ScreenColumns, awcLine, ScreenColumns );
+
+    // CP 437 doesn't handle characters 0 to 31 or 0x7f correctly. 
+
+    for ( size_t x = 0; x < ScreenColumns; x++ )
+    {
+        if ( awcLine[ x ] < 32 )
+            awcLine[ x ] = awcLowDOSChars[ awcLine[ x ] ];
+        else if ( 0x7f == awcLine[ x ] )
+            awcLine[ x ] = 0x2302;
+    }
+
+    #if false
+        //tracer.Trace( "    row %02u: '%.80s'\n", y, ac );
+        tracer.Trace( "    row %02u: '", y );
+        for ( size_t c = 0; c < ScreenColumns; c++ )
+            tracer.Trace( "%c", printable( ac[ c ] ) );
+        tracer.Trace( "'\n" );
+    #endif
+    
+    COORD pos = { 0, (SHORT) y };
+    SetConsoleCursorPosition( g_hConsoleOutput, pos );
+    
+    BOOL ok = WriteConsoleW( g_hConsoleOutput, awcLine, ScreenColumns, 0, 0 );
+    if ( !ok )
+        tracer.Trace( "writeconsole failed with error %d\n", GetLastError() );
+    
+    DWORD dwWritten;
+    ok = WriteConsoleOutputAttribute( g_hConsoleOutput, aAttribs, ScreenColumns, pos, &dwWritten );
+    if ( !ok )
+        tracer.Trace( "writeconsoleoutputattribute failed with error %d\n", GetLastError() );
+} //UpdateDisplayRow
+
 bool UpdateDisplay()
 {
     assert( g_use80x25 );
@@ -1247,54 +1312,8 @@ bool UpdateDisplay()
         for ( uint32_t y = 0; y < ScreenRows; y++ )
         {
             uint32_t yoffset = y * ScreenColumns * 2;
-
             if ( memcmp( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 ) )
-            {
-                memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
-                WORD aAttribs[ScreenColumns];
-                char ac[ScreenColumns];
-                for ( size_t x = 0; x < ScreenColumns; x++ )
-                {
-                    size_t offset = yoffset + x * 2;
-                    ac[ x ] = pbuf[ offset ];
-                    if ( 0 == ac[ x ] )
-                        ac[ x ] = ' '; // brief alternately writes 0 then ':' for the clock
-                    aAttribs[ x ] = pbuf[ 1 + offset ]; 
-                }
-
-                WCHAR awcLine[ScreenColumns];
-                MultiByteToWideChar( 437, 0, ac, ScreenColumns, awcLine, ScreenColumns );
-
-                // CP 437 doesn't handle characters 0 to 31 or 0x7f correctly. 
-
-                for ( size_t x = 0; x < ScreenColumns; x++ )
-                {
-                    if (  awcLine[ x ] < 32 )
-                        awcLine[ x ] = awcLowDOSChars[ awcLine[ x ] ];
-                    else if ( 0x7f == awcLine[ x ] )
-                        awcLine[ x ] = 0x2302;
-                }
-
-                #if false
-                    //tracer.Trace( "    row %02u: '%.80s'\n", y, ac );
-                    tracer.Trace( "    row %02u: '", y );
-                    for ( size_t c = 0; c < 80; c++ )
-                        tracer.Trace( "%c", printable( ac[ c ] ) );
-                    tracer.Trace( "'\n" );
-                #endif
-    
-                COORD pos = { 0, (SHORT) y };
-                SetConsoleCursorPosition( g_hConsoleOutput, pos );
-    
-                BOOL ok = WriteConsoleW( g_hConsoleOutput, awcLine, ScreenColumns, 0, 0 );
-                if ( !ok )
-                    tracer.Trace( "writeconsolea failed with error %d\n", GetLastError() );
-    
-                DWORD dwWritten;
-                ok = WriteConsoleOutputAttribute( g_hConsoleOutput, aAttribs, ScreenColumns, pos, &dwWritten );
-                if ( !ok )
-                    tracer.Trace( "writeconsoleoutputattribute failed with error %d\n", GetLastError() );
-            }
+                UpdateDisplayRow( y );
         }
 
         //traceDisplayBufferAsHex();
@@ -1311,7 +1330,6 @@ bool UpdateDisplay()
 bool throttled_UpdateDisplay( int64_t delay = 50 )
 {
     static CDuration _duration;
-
     if ( _duration.HasTimeElapsedMS( delay ) )
         return UpdateDisplay();
 
@@ -1802,26 +1820,36 @@ void consume_keyboard()
     lock_guard<mutex> lock( g_mtxEverything );
 
     InjectKeystrokes();
-
     CKbdBuffer kbd_buf;
-    INPUT_RECORD records[ 10 ];
-    DWORD numRead = 0;
-    DWORD toRead = __min( _countof( records ), kbd_buf.FreeSpots() );
-    if ( toRead > 0 )
+
+    // An extra int9 may have been triggered after all input events have been consumed.
+    // Check GetNumberOfConsoleInputEvents before ReadConsoleInput, because the latter will block for a keystroke
+
+    DWORD available = 0;
+    BOOL ok = GetNumberOfConsoleInputEvents( g_hConsoleInput, &available );
+    if ( ok && ( 0 != available ) )
     {
-        BOOL ok = ReadConsoleInput( g_hConsoleInput, records, toRead, &numRead );
-        tracer.Trace( "    consume_keyboard ReadConsole returned %d, %d events\n", ok, numRead );
-        if ( ok )
+        INPUT_RECORD records[ 10 ];
+        DWORD toRead = __min( available, kbd_buf.FreeSpots() );
+        toRead = __min( _countof( records ), toRead );
+        if ( toRead > 0 )
         {
-            uint8_t asciiChar = 0, scancode = 0;
-            for ( DWORD x = 0; x < numRead; x++ )
+            tracer.Trace( "    %llu consume_keyboard calling ReadConsole\n", time_since_last() );
+            DWORD numRead = 0;
+            ok = ReadConsoleInput( g_hConsoleInput, records, toRead, &numRead );
+            tracer.Trace( "    %llu consume_keyboard ReadConsole returned %d, %d events\n", time_since_last(), ok, numRead );
+            if ( ok )
             {
-                bool used = process_key_event( records[ x ], asciiChar, scancode );
-                if ( !used )
-                    continue;
-    
-                tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scancode );
-                kbd_buf.Add( asciiChar, scancode );
+                uint8_t asciiChar = 0, scancode = 0;
+                for ( DWORD x = 0; x < numRead; x++ )
+                {
+                    bool used = process_key_event( records[ x ], asciiChar, scancode );
+                    if ( !used )
+                        continue;
+        
+                    tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scancode );
+                    kbd_buf.Add( asciiChar, scancode );
+                }
             }
         }
     }
@@ -2166,7 +2194,7 @@ void handle_int_10( uint8_t c )
             cpu.set_dl( col );
             cpu.set_ch( 0 );
             cpu.set_cl( 0 );
-            tracer.Trace( "  get cursor position row %d col %d\n", cpu.dh(), cpu.dl() );
+            tracer.Trace( "  get cursor position row %d col %d, %llu\n", cpu.dh(), cpu.dl(), time_since_last );
 
             return;
         }
@@ -2352,7 +2380,7 @@ void handle_int_10( uint8_t c )
                     pbuf[ 1 + offset ] = cpu.bl();
                 }
 
-                throttled_UpdateDisplay();
+                UpdateDisplayRow( row );
             }
             else
             {
@@ -2385,7 +2413,7 @@ void handle_int_10( uint8_t c )
                 for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                     pbuf[ offset ] = ch;
 
-                throttled_UpdateDisplay();
+                UpdateDisplayRow( row );
             }
             else
             {
@@ -5832,8 +5860,8 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
             uint8_t asciiChar, scancode;
             if ( peek_keyboard( asciiChar, scancode ) )
             {
-                tracer.Trace( "async thread (woken via %s) noticed that a keystroke is available: %02x%02x\n",
-                              ( 1 == ret ) ? "console input" : "timeout", scancode, asciiChar );
+                tracer.Trace( "%llu async thread (woken via %s) noticed that a keystroke is available: %02x%02x == '%c'\n",
+                              time_since_last(), ( 1 == ret ) ? "console input" : "timeout", scancode, asciiChar, printable( asciiChar ) );
                 g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
                 SetEvent( g_heventKeyStroke ); // if the main thread is sleeping waiting for input, wake it.
                 cpu.exit_emulate_early(); // no time to lose processing the keystroke
@@ -6302,7 +6330,7 @@ int main( int argc, char ** argv )
     
             if ( g_KbdPeekAvailable )
             {
-                tracer.Trace( "main loop: scheduling an int 9\n" );
+                tracer.Trace( "%llu main loop: scheduling an int 9\n", time_since_last() );
                 cpu.external_interrupt( 9 );
                 g_KbdPeekAvailable = false;
                 continue;
