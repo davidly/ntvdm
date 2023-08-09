@@ -2568,8 +2568,8 @@ void handle_int_16( uint8_t c )
                 consume_keyboard();
             }
 
-            cpu.set_al( kbd_buf.Consume() );
-            cpu.set_ah( kbd_buf.Consume() );
+            cpu.set_al( kbd_buf.Consume() ); // ascii
+            cpu.set_ah( kbd_buf.Consume() ); // scancode
 
             tracer.Trace( "  returning character %04x '%c'\n", cpu.get_ax(), printable( cpu.al() ) );
             return;
@@ -6420,7 +6420,6 @@ int main( int argc, char ** argv )
     }
 
     tracer.Trace( "exit code of %s: %d\n", g_thisApp, g_appTerminationReturnCode );
-
     tracer.Shutdown();
 
     return g_appTerminationReturnCode; // return what the main app returned
