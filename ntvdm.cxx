@@ -1345,7 +1345,7 @@ void ClearDisplay()
         memcpy( pbuf + ( y * 2 * ScreenColumns ), blankLine, sizeof( blankLine ) );
 } //ClearDisplay
 
-BOOL WINAPI ControlHandler( DWORD fdwCtrlType )
+BOOL WINAPI ControlHandlerProc( DWORD fdwCtrlType )
 {
     // this happens in a third thread, which is implicitly created
 
@@ -1353,6 +1353,7 @@ BOOL WINAPI ControlHandler( DWORD fdwCtrlType )
     {
         // for 80x25 apps, ^c is often a valid character for page down, etc.
         // for command-line apps, terminate execution.
+        tracer.Trace( "ControlHandlerProc received a CTRL_C_EVENT\n" );
 
         if ( !g_use80x25 )
         {
@@ -1366,7 +1367,7 @@ BOOL WINAPI ControlHandler( DWORD fdwCtrlType )
     }
 
     return FALSE;
-} //ControlHandler
+} //ControlHandlerProc
 
 struct IntInfo
 {
@@ -2089,7 +2090,7 @@ void PerhapsFlipTo80x25()
         if ( !g_forceConsole )
         {
             g_use80x25 = true;
-            g_consoleConfig.EstablishConsole( ScreenColumns, ScreenRows, (void *) ControlHandler  );
+            g_consoleConfig.EstablishConsoleOutput( ScreenColumns, ScreenRows );
             ClearDisplay();
         }
     }
@@ -6024,6 +6025,7 @@ uint32_t GetBiosDailyTimer()
 int main( int argc, char ** argv )
 {
     GetSystemTimeAsFileTime( (FILETIME *) & g_startSystemTime );
+    g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
 
     // put the app name without a path or .exe into g_thisApp
 

@@ -405,7 +405,7 @@ not_inlined void i8086::op_rcl8( uint8_t * pval, uint8_t shift )
     *pval = val;
 } //op_rcl8
 
-void i8086::op_rcl16( uint16_t * pval, uint8_t shift )
+not_inlined void i8086::op_rcl16( uint16_t * pval, uint8_t shift )
 {
     if ( 0 == shift )
         return;
@@ -451,7 +451,7 @@ not_inlined void i8086::op_rcr8( uint8_t * pval, uint8_t shift )
     *pval = val;
 } //op_rcr8
 
-void i8086::op_rcr16( uint16_t * pval, uint8_t shift )
+not_inlined void i8086::op_rcr16( uint16_t * pval, uint8_t shift )
 {
     if ( 0 == shift )
         return;
@@ -675,15 +675,15 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     if ( g_State & stateTraceInstructions )
         tracer.Trace( "op_interrupt num %#x, length %d\n", interrupt_num, instruction_length );
 
-    uint16_t * vectorItem = flat_address16( 0, 4 * interrupt_num );
     materializeFlags();
     push( flags );
-    fInterrupt = false; // will perhaps be set again when flags are popped on iret
+    fInterrupt = false; // will be set again if/when flags are popped on iret
     fTrap = false;
     fAuxCarry = false;
     push( cs );
     push( ip + instruction_length );
 
+    uint16_t * vectorItem = flat_address16( 0, 4 * interrupt_num );
     ip = vectorItem[ 0 ];
     cs = vectorItem[ 1 ];
 } //op_interrupt
@@ -1109,6 +1109,8 @@ _prefix_set:
         // the LEA instruction has a terrible interaction with L1/L2 instruction cache misses
         // for each of the lookups (the 1-byte element table with ~251 entries and the 4-byte
         // element table with ~115 entries).
+        // Update: newer versions of the compiler no longer use lea, but the tables are still
+        // in TEXT even with the /jumptablerdata flag set. It's a frustration, Microsoft.
 
         switch( _b0 )
         {
@@ -1359,8 +1361,7 @@ _prefix_set:
             case 0x8f: // pop reg16/mem16
             {
                 AddMemCycles( 14 );
-                uint16_t * pdst = get_rm_ptr16();
-                *pdst = pop();
+                * get_rm_ptr16() = pop();
                 _bc++;
                 break;
             }

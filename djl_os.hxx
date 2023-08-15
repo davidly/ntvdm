@@ -48,14 +48,14 @@
     #include <unistd.h>
     #include <ctype.h>
 
-    #define not_inlined noinline
+    #define not_inlined __attribute__ ((noinline))
     #define force_inlined inline
 
     inline void bump_thread_priority() {}
 
     inline void set_process_affinity( uint64_t processAffinityMask )
     {
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) && !defined( OLDGCC )
         cpu_set_t mask;
         CPU_ZERO( &mask );
 

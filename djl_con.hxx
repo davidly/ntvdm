@@ -12,43 +12,37 @@ class ConsoleConfiguration
             HANDLE consoleInputHandle;
             WINDOWPLACEMENT oldWindowPlacement;
             CONSOLE_SCREEN_BUFFER_INFOEX oldScreenInfo;
-            DWORD oldConsoleMode;
+            DWORD oldOutputConsoleMode, oldInputConsoleMode;
             CONSOLE_CURSOR_INFO oldCursorInfo;
             int16_t setWidth;
             UINT oldOutputCP;
         #else
-            bool initialized;
-            bool established;
 #ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
             struct termios orig_termios;
 #endif
         #endif
 
+        bool inputEstablished, outputEstablished;
+
     public:
         #ifdef _MSC_VER
-            ConsoleConfiguration() : consoleOutputHandle( 0 ), consoleInputHandle( 0 ), oldConsoleMode( 0 ), setWidth( 0 ), oldOutputCP( 0 )
+            ConsoleConfiguration() : oldOutputConsoleMode( 0 ), oldInputConsoleMode( 0 ),
+                                     setWidth( 0 ), oldOutputCP( 0 ),
+                                     inputEstablished( false ), outputEstablished( false )
             {
                 oldWindowPlacement = {0};
                 oldScreenInfo = {0};
                 oldCursorInfo = {0};
+
+                consoleOutputHandle = GetStdHandle( STD_OUTPUT_HANDLE );
+                consoleInputHandle = GetStdHandle( STD_INPUT_HANDLE );
+
+                EstablishConsoleInput();
             } //ConsoleConfiguration
         #else
-            ConsoleConfiguration() : initialized( false ), established( false )
+            ConsoleConfiguration() : inputEstablished( false ), outputEstablished( false )
             {
-#ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
-                tcgetattr( 0, &orig_termios );
-
-                // make input raw so it's possible to peek to see if a keystroke is available
-
-                struct termios new_termios;
-                memcpy( &new_termios, &orig_termios, sizeof( new_termios ) );
-
-                cfmakeraw( &new_termios );
-                new_termios.c_oflag = orig_termios.c_oflag;
-                tcsetattr( 0, TCSANOW, &new_termios );
-#endif
-
-                initialized = true;
+                EstablishConsoleInput();
             } //ConsoleConfiguration
         #endif
 
@@ -57,12 +51,11 @@ class ConsoleConfiguration
             RestoreConsole();
         }
 
+        bool IsOutputEstablished() { return outputEstablished; }
+
         #ifdef _MSC_VER
-            bool IsEstablished() { return ( 0 != consoleOutputHandle ); }
             HANDLE GetOutputHandle() { return consoleOutputHandle; };
             HANDLE GetInputHandle() { return consoleInputHandle; };
-        #else
-            bool IsEstablished() { return established; }
         #endif
 
         void SetCursorInfo( uint32_t size ) // 0 to 100
@@ -87,14 +80,53 @@ class ConsoleConfiguration
              #endif
         } //SetCursorInfo
 
-        void EstablishConsole( int16_t width = 80, int16_t height = 24, void * proutine = 0 )
+        void EstablishConsoleInput( void * pCtrlCRoutine = 0 )
         {
+            if ( inputEstablished )
+                RestoreConsoleInput();
+
             #ifdef _MSC_VER
-                if ( 0 != consoleOutputHandle )
-                    return;
+                GetConsoleMode( consoleOutputHandle, &oldInputConsoleMode );
+
+                if ( 0 == pCtrlCRoutine )
+                {
+                    DWORD dwMode = oldInputConsoleMode;
+                    dwMode &= ~ENABLE_PROCESSED_INPUT;
+                    SetConsoleMode( consoleInputHandle, dwMode );
+                    tracer.Trace( "old and new console input mode: %#x, %#x\n", oldInputConsoleMode, dwMode );
+                }
+                else
+                {
+                    // don't automatically have ^c terminate the app. ^break will still terminate the app
+                 
+                    PHANDLER_ROUTINE handler = (PHANDLER_ROUTINE) pCtrlCRoutine;
+                    SetConsoleCtrlHandler( handler, TRUE );
+                }
+            #else
+                #ifndef OLDGCC // the several-years-old Gnu C compiler for the RISC-V development boards. that machine has no keyboard support
+                    tcgetattr( 0, &orig_termios );
     
-                consoleOutputHandle = GetStdHandle( STD_OUTPUT_HANDLE );
-                consoleInputHandle = GetStdHandle( STD_INPUT_HANDLE );
+                    // make input raw so it's possible to peek to see if a keystroke is available
+    
+                    struct termios new_termios;
+                    memcpy( &new_termios, &orig_termios, sizeof( new_termios ) );
+    
+                    cfmakeraw( &new_termios );
+                    new_termios.c_oflag = orig_termios.c_oflag;
+                    tcsetattr( 0, TCSANOW, &new_termios );
+                #endif
+            #endif
+
+            inputEstablished = true;
+        } //EstablishConsoleInput
+
+        void EstablishConsoleOutput( int16_t width = 80, int16_t height = 24 )
+        {
+            if ( outputEstablished )
+                return;
+
+            #ifdef _MSC_VER
+    
                 GetConsoleCursorInfo( consoleOutputHandle, &oldCursorInfo );
         
                 if ( 0 != width )
@@ -144,59 +176,59 @@ class ConsoleConfiguration
             
                 DWORD dwMode = 0;
                 GetConsoleMode( consoleOutputHandle, &dwMode );
-                oldConsoleMode = dwMode;
+                oldOutputConsoleMode = dwMode;
                 dwMode |= ( ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_WINDOW_INPUT );
-                tracer.Trace( "old console mode: %04x, new mode: %04x\n", oldConsoleMode, dwMode );
+                tracer.Trace( "old and new console output mode: %04x, %04x\n", oldOutputConsoleMode, dwMode );
                 SetConsoleMode( consoleOutputHandle, dwMode );
-                                                       
-                // don't automatically have ^c terminate the app. ^break will still terminate the app
 
-                PHANDLER_ROUTINE handler = (PHANDLER_ROUTINE) proutine;
-                SetConsoleCtrlHandler( handler, TRUE );
-            #else
-                established = true;
             #endif
+
+                outputEstablished = true;
 
             if ( 0 != width )
                 SendClsSequence();
-        } //EstablishConsole
+        } //EstablishConsoleOutput
+
+        void RestoreConsoleInput()
+        {
+            if ( inputEstablished )
+            {
+                #ifdef _MSC_VER
+                    SetConsoleMode( consoleInputHandle, oldInputConsoleMode );
+                #else
+                    #ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
+                        tcsetattr( 0, TCSANOW, &orig_termios );
+                    #endif
+                #endif
+
+                inputEstablished = false;
+            }
+        } //RestoreConsoleInput
         
         void RestoreConsole( bool clearScreen = true )
         {
-            #ifdef _MSC_VER
-                if ( 0 != consoleOutputHandle )
-                {
-                    if ( clearScreen )
-                        SendClsSequence();
+            RestoreConsoleInput();
 
+            if ( outputEstablished )
+            {
+                if ( clearScreen )
+                    SendClsSequence();
+
+                #ifdef _MSC_VER
                     SetConsoleOutputCP( oldOutputCP );
                     SetConsoleCursorInfo( consoleOutputHandle, & oldCursorInfo );
-
+    
                     if ( 0 != setWidth )
                     {
                         SetConsoleScreenBufferInfoEx( consoleOutputHandle, & oldScreenInfo );
                         SetWindowPlacement( GetConsoleWindow(), & oldWindowPlacement );
                     }
+    
+                    SetConsoleMode( consoleOutputHandle, oldOutputConsoleMode );
+                #endif
 
-                    SetConsoleMode( consoleOutputHandle, oldConsoleMode );
-                    consoleOutputHandle = 0;
-                }
-            #else
-                if ( initialized )
-                {
-#ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
-                    tcsetattr( 0, TCSANOW, &orig_termios );
-#endif
-                    initialized = false;
-                }
-
-                if ( established )
-                {
-                    if ( clearScreen )
-                        SendClsSequence();
-                    established = false;
-                }
-            #endif
+                outputEstablished = false;
+            }
         } //RestoreConsole
 
         void SendClsSequence()
@@ -229,15 +261,19 @@ class ConsoleConfiguration
 
         static int portable_kbhit()
         {
+            int result = 0;
+
             #ifdef _MSC_VER
-                return _kbhit();
+                result = _kbhit();
             #else
                 fd_set set;
                 FD_ZERO( &set );
                 FD_SET( STDIN_FILENO, &set );
                 struct timeval timeout = {0};
-                return ( select( 1, &set, NULL, NULL, &timeout ) > 0 );
+                result = ( select( 1, &set, NULL, NULL, &timeout ) > 0 );
             #endif
+
+            return result;
         } //portable_kbhit
 
         static int portable_getch()
@@ -311,12 +347,23 @@ class ConsoleConfiguration
             return buf;
         } //portable_gets_s
 
-        static char * cpm_read_console( char * buf, size_t bufsize, uint8_t & out_len )
+        static int cpm_read_console( char * buf, size_t bufsize, uint8_t & out_len )
         {
+            char ch;
             out_len = 0;
             do
             {
-                char ch = (char) portable_getch();
+                ch = (char) portable_getch();
+                tracer.Trace( "  cpm_read_console read character %02x\n", ch );
+
+                // CP/M read console buffer treats these control characters as special: c, e, h, i, j, m, p, r, s, u, x
+                // per https://techtinkering.com/articles/cpm-standard-console-control-characters/
+                // Only c, h, j, and m are currently handled correctly.
+                // ^c means exit the currently running app in CP/M
+
+                if ( 3 == ch )
+                    return ch;
+
                 if ( '\n' == ch || '\r' == ch )
                 {
                     printf( "\r" );
@@ -344,7 +391,7 @@ class ConsoleConfiguration
                 }
             } while( true );
     
-            return buf;
+            return ch; // return the last character read
         } //cpm_read_console
 }; //ConsoleConfiguration
 
