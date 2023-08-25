@@ -74,8 +74,8 @@ void i8086::trace_state()
 // ea calculations, jumps taken, loops taken, rotate cl-times, and reps
 const uint8_t i8086_cycles[ 256 ]
 {
-    /*00*/     3,  3,  3,  3,  4,  4, 15, 12,    3,  3,  3,  3,  4,  4, 15,  0,
-    /*10*/     3,  3,  3,  3,  4,  4, 15, 12,    3,  3,  3,  3,  4,  4, 15, 12,
+    /*00*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14,  0,
+    /*10*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14, 12,
     /*20*/     3,  3,  3,  3,  4,  4,  2,  4,    3,  3,  3,  3,  4,  4,  2,  4,
     /*30*/     3,  3,  3,  3,  4,  4,  2,  4,    3,  3,  3,  3,  4,  4,  2,  4,
     /*40*/     3,  3,  3,  3,  3,  3,  3,  3,    3,  3,  3,  3,  3,  3,  3,  3,
@@ -89,7 +89,7 @@ const uint8_t i8086_cycles[ 256 ]
     /*c0*/     0,  0, 24, 20, 24, 24, 14, 14,    0,  0, 33, 34, 72, 71,  4, 44,
     /*d0*/     2,  2,  8,  8, 83, 60, 11,  0,    0,  0,  0,  0,  0,  0,  0,  0,
     /*e0*/     6,  5,  5,  6, 14, 14, 14, 14,   23, 15, 15, 15, 12, 12, 12, 12,
-    /*f0*/     1,  0,  9,  9,  2,  3,  5,  5,    2,  2,  2,  2,  2,  3,  2,  2,
+    /*f0*/     1,  0,  9,  9,  2,  3,  5,  5,    2,  2,  2,  2,  2,  2,  3,  2,
 };
 
 void i8086::update_index8( uint16_t & index_register ) // si or di
@@ -798,20 +798,20 @@ not_inlined bool i8086::op_f6()
 
     if ( 0 == _reg ) // test reg8/mem8, immed8
     {
-        AddMemCycles( 8 );
+        AddMemCycles( 10 );
         uint8_t lhs = * get_rm_ptr8();
         uint8_t rhs = _pcode[ _bc++ ];
         op_and8( lhs, rhs );
     }
     else if ( 2 == _reg ) // not reg8/mem8 -- no flags updated
     {
-        AddMemCycles( 13 );
+        AddMemCycles( 19 );
         uint8_t * pval = get_rm_ptr8();
         *pval = ~ ( *pval );
     }
     else if ( 3 == _reg ) // neg reg8/mem8 (subtract from 0)
     {
-        AddMemCycles( 13 );
+        AddMemCycles( 19 );
         uint8_t * pval = get_rm_ptr8();
         *pval = op_sub8( 0, *pval );
     }
@@ -884,7 +884,7 @@ not_inlined bool i8086::op_f7()
 
     if ( 0 == _reg ) // test reg16/mem16, immed16
     {
-        AddMemCycles( 8 );
+        AddMemCycles( 10 );
         uint16_t lhs = * get_rm_ptr16();
         uint16_t rhs = * (uint16_t *) ( _pcode + _bc );
         _bc += 2;
@@ -892,13 +892,13 @@ not_inlined bool i8086::op_f7()
     }
     else if ( 2 == _reg ) // not reg16/mem16 -- no flags updated
     {
-        AddMemCycles( 13 );
+        AddMemCycles( 19 );
         uint16_t * pval = get_rm_ptr16();
         *pval = ~ ( *pval );
     }
     else if ( 3 == _reg ) // neg reg16/mem16 (subtract from 0)
     {
-        AddMemCycles( 13 );
+        AddMemCycles( 19 );
         uint16_t * pval = get_rm_ptr16();
         *pval = op_sub16( 0, *pval );
     }
@@ -994,7 +994,8 @@ not_inlined bool i8086::op_ff()
     }
     else if ( 3 == _reg ) // call mem16:16 (inter segment)
     {
-        AddCycles( 35 );
+        AddCycles( 34 );
+        AddMemCycles( 17 );
         uint16_t * pdata = get_rm_ptr16();
         push( cs );
         push( ip + _bc + 1 );
@@ -1012,6 +1013,7 @@ not_inlined bool i8086::op_ff()
     else if ( 5 == _reg ) // jmp mem16 (inter segment)
     {
         AddCycles( 16 );
+        AddMemCycles( 9 );
         uint16_t * pdata = get_rm_ptr16();
         ip = pdata[ 0 ];
         cs = pdata[ 1 ];
@@ -1019,7 +1021,7 @@ not_inlined bool i8086::op_ff()
     }
     else if ( 6 == _reg ) // push mem16
     {
-        AddCycles( 14 );
+        AddCycles( 22 );
         uint16_t * pval = get_rm_ptr16();
         push( *pval );
         _bc++;
@@ -1072,7 +1074,10 @@ uint8_t i8086::trace_opcode_usage()
     uint8_t used = 0;
     for ( size_t i = 0; i < 256; i++ )
         if ( opcode_usage[ i ] )
+        {
+            tracer.Trace( "%02zx: %llu\n", i, opcode_usage[ i ] );
             used++;
+        }
     tracer.Trace( "number of unique first opcodes: %zd\n", used );
     return used;
 } //trace_opcode_usage
@@ -1120,7 +1125,11 @@ _prefix_set:
             case 0x30: case 0x31: case 0x32: case 0x33: case 0x38: case 0x39: case 0x3a: case 0x3b: 
             {
                 _bc = 2;
-                AddMemCycles( 10 );
+                if ( toreg() )
+                    AddMemCycles( 10 );
+                else
+                    AddCycles( 21 );
+
                 uint8_t math = ( _b0 >> 3 ) & 7;
                 if ( isword() )
                 {
