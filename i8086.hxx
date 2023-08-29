@@ -473,7 +473,7 @@ struct i8086
 
     #ifdef I8086_TRACK_CYCLES
         void AddCycles( uint8_t amount ) { cycles += amount; }
-        void AddMemCycles( uint8_t amount ) { if ( 3 != _mod ) cycles += amount; }
+        void AddMemCycles( uint8_t amount ) { if ( 3 != _mod ) cycles += amount; else if ( !toreg() ) cycles += 21; }
     #else
         void AddCycles( uint8_t amount ) {}
         void AddMemCycles( uint8_t amount ) {}

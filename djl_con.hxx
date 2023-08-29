@@ -289,7 +289,7 @@ class ConsoleConfiguration
 
                 return c;
             #endif
-        } // portable_getch
+        } //portable_getch
 
         static bool throttled_kbhit()
         {
@@ -346,52 +346,5 @@ class ConsoleConfiguration
             buf[ len ] = 0;
             return buf;
         } //portable_gets_s
-
-        static int cpm_read_console( char * buf, size_t bufsize, uint8_t & out_len )
-        {
-            char ch;
-            out_len = 0;
-            do
-            {
-                ch = (char) portable_getch();
-                tracer.Trace( "  cpm_read_console read character %02x\n", ch );
-
-                // CP/M read console buffer treats these control characters as special: c, e, h, i, j, m, p, r, s, u, x
-                // per https://techtinkering.com/articles/cpm-standard-console-control-characters/
-                // Only c, h, j, and m are currently handled correctly.
-                // ^c means exit the currently running app in CP/M
-
-                if ( 3 == ch )
-                    return ch;
-
-                if ( '\n' == ch || '\r' == ch )
-                {
-                    printf( "\r" );
-                    fflush( stdout ); // fflush is required on linux or it'll be buffered not seen until the app ends.
-                    break;
-                }
-    
-                if ( out_len >= (uint8_t) ( bufsize - 1 ) )                
-                    break;
-    
-                if ( 0x7f == ch || 8 == ch ) // backspace (it's not 8 for some reason)
-                {
-                    if ( out_len > 0 )
-                    {
-                        printf( "\x8 \x8" );
-                        fflush( stdout );
-                        out_len--;
-                    }
-                }
-                else
-                {
-                    printf( "%c", ch );
-                    fflush( stdout );
-                    buf[ out_len++ ] = ch;
-                }
-            } while( true );
-    
-            return ch; // return the last character read
-        } //cpm_read_console
 }; //ConsoleConfiguration
 
