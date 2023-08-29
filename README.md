@@ -67,7 +67,7 @@ get any closer than about 25% of what would be accurate. It's in the ballpark. I
 about 32% slower than this simulated 8086 at 4.77Mhz, which seems reasonably close.
 
 Using mips.com Version 1.20, a benchmark app from 1986 written by Chips and Technologies, if the clock
-is set to /s:3900000 (3.9 Mhz) the 8086 emulator runs at about the same speed as a 4.77Mhz 8088. Given the
+is set to /s:4500000 (4.5 Mhz) the 8086 emulator runs at about the same speed as a 4.77Mhz 8088. Given the
 wide variability online regarding the performance differences between the 8088 and 8086 (5%-50%) this 
 seems close. I validated the mips.com results on an actual 8088 running at 4.77Mhz.
 
@@ -98,7 +98,7 @@ Usage information:
             -p     show performance information
             -s:X   speed in Hz. Default is to run as fast as possible.
                    for 4.77Mhz, use -s:4770000
-                   to roughly match a 4.77Mhz 8088, use -s:3900000
+                   to roughly match a 4.77Mhz 8088, use -s:4500000
             -t     enable debug tracing to ntvdm.log
             -z:X   applies X as a hex mask to SetProcessAffinityMask, e.g.:
                      /z:11    2 performance cores on an i7-1280P
@@ -115,13 +115,13 @@ Usage information:
 sample usage:
 
     C:\>ntvdm -c -p ttt8086.com
-    5.7 seconds
+    3.3 seconds
     moves: 6493
     iterations: 1000
-    8086 cycles:         7,612,099,336
-    clock rate:              unbounded
-    approx ms at 4.77Mhz:    1,595,827  == 0 days, 0 hours, 26 minutes, 35 seconds, 827 milliseconds
-    kernel CPU ms:                   0
-    user CPU ms:                 5,687
-    total CPU ms:                5,687
-    elapsed ms:                  5,728
+
+    elapsed milliseconds:            3,331
+    8086 cycles:             4,761,338,635
+    clock rate:                  unbounded
+    approx ms at 4.77Mhz:          998,184  == 0 days, 0 hours, 16 minutes, 38 seconds, 184 milliseconds
+    unique first opcodes:               63
+    app exit code:                       0
