@@ -927,7 +927,7 @@ bool FreeMemory( uint16_t segment )
     if ( -1 == entry )
     {
         // The Microsoft Basic compiler BC.EXE 7.10 attempts to free segment 0x80, which it doesn't own.
-        // Turbo Pascal v5.5 exits a process never create except via int21 0x55, which frees that PSP,
+        // Turbo Pascal v5.5 exits a process never created except via int21 0x55, which frees that PSP,
         // which isn't allocated, and the environment blocked it contains (0).
 
         tracer.Trace( "  ERROR: memory corruption possible; can't find freed segment %04x\n", segment );
@@ -6242,7 +6242,7 @@ int main( int argc, char ** argv )
     }
 
     // write assembler routines into 0x0600 - 0x0bff. make each function segment-aligned so
-    // exection can start at ip 0.
+    // execution can start at ip 0.
 
 #if USE_ASSEMBLY_FOR_KBD
     uint16_t curseg = MachineCodeSegment;
