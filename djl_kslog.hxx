@@ -83,7 +83,7 @@ class CKeyStrokes
                 tracer.Trace( "keystroke file length: %ld, count %zd\n", l, count );
                 for ( size_t i = 0; i < count; i++ )
                 {
-                    char ac[ 5 ];
+                    char ac[ 5 ] = {0};
                     if ( fread( ac, 1, 4, fp ) )
                     {
                         uint16_t x = (uint16_t) _strtoui64( ac, 0, 16 );

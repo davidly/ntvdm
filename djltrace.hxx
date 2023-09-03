@@ -142,7 +142,7 @@ class CDJLTrace
                 if ( !quiet )
                     fprintf( fp, "PID %6u -- ",
 #ifdef _MSC_VER
-                             _getpid() );
+                             (unsigned) _getpid() );
 #else
                              getpid() );
 #endif

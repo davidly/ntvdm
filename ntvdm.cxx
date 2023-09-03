@@ -1807,9 +1807,9 @@ void InjectKeystrokes()
         kbd_buf.Add( x & 0xff, x >> 8 );
     }
 
-    while ( ( 0 != g_injectedControlC ) && !kbd_buf.IsFull() ) // largeish hack for ^c handling
+    while ( ( 0 != InterlockedCompareExchange( & g_injectedControlC, 0, 0 ) ) && !kbd_buf.IsFull() ) // largeish hack for ^c handling
     {
-        tracer.Trace( "injecting controlc count %d\n", g_injectedControlC );
+        tracer.Trace( "injecting controlc count %d\n", InterlockedCompareExchange( & g_injectedControlC, 0, 0 ) );
         InterlockedDecrement( &g_injectedControlC );
         kbd_buf.Add( 0x03, 0x2e );
     }
@@ -6139,9 +6139,11 @@ int main( int argc, char ** argv )
     cpu.trace_instructions( traceInstructions );
 
     if ( 0 == pcAPP )
+    {
         usage( "no command specified" );
+        assume_false; // prevent false prefast warning from the msft compiler
+    }
 
-    //_assume( 0 != pcAPP ); // the compiler warns because it doesn't know usage() always exits.
     strcpy( g_acApp, pcAPP );
     _strupr( g_acApp );
 
