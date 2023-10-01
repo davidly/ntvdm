@@ -75,6 +75,9 @@ seems close. I validated the mips.com results on an actual 8088 running at 4.77M
 The msc_v3 folder contains command.c, a greatly simplified replacement for command.com that can be built
 with that compiler. It's handy for when apps like WordStar and QBX shell out to command.com.
 
+The tasm folder contains several assembly language routines for various interrupts. mint.bat generates
+the machine code in C arrays that are copied into ntvdm.cxx and loaded into DOS RAM at runtime.
+
 Folders with test apps, copyrights owned by those owners.
 
     gwbasic -- gwbasic 3.22
@@ -83,7 +86,7 @@ Folders with test apps, copyrights owned by those owners.
     turbo3dos -- Turbo Pascal 3.02A
     qbx -- Quick Basic 7.1
     wordstar -- WordStar Professional Release 4
-    task -- Turbo Assembler
+    tasm -- Turbo Assembler
 
 Usage information:
 
