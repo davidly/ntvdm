@@ -115,9 +115,6 @@ class ConsoleConfiguration
                     new_termios.c_oflag = orig_termios.c_oflag;
                     tcsetattr( 0, TCSANOW, &new_termios );
                 #endif
-
-                printf( "%c[1 q", 27 ); // 1 == cursor blinking block. 
-                fflush( stdout );
             #endif
 
             inputEstablished = true;
@@ -129,7 +126,6 @@ class ConsoleConfiguration
                 return;
 
             #ifdef _WIN32
-    
                 GetConsoleCursorInfo( consoleOutputHandle, &oldCursorInfo );
         
                 if ( 0 != width )
@@ -183,7 +179,9 @@ class ConsoleConfiguration
                 dwMode |= ( ENABLE_VIRTUAL_TERMINAL_PROCESSING | ENABLE_WINDOW_INPUT );
                 tracer.Trace( "old and new console output mode: %04x, %04x\n", oldOutputConsoleMode, dwMode );
                 SetConsoleMode( consoleOutputHandle, dwMode );
-
+            #else
+                printf( "%c[1 q", 27 ); // 1 == cursor blinking block. 
+                fflush( stdout );
             #endif
 
                 outputEstablished = true;

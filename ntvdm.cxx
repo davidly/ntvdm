@@ -2115,9 +2115,9 @@ void InjectKeystrokes()
 const uint8_t ascii_to_scancode[ 128 ] =
 {
       0,  30,  48,  46,  32,  18,  33,  34, // 0
-     14,  15,  36,  37,  38,  28,  49,  24, // 8
+     14,  15,  28,  37,  38,  28,  49,  24, // 8   note: 10 should be 36 for ^j, but it's overloaded on Linux
      25,  16,  19,  31,  20,  22,  47,  17, // 16
-     45,  21,  44,   1,  43,   0,   0,   0, // 24
+     45,  21,  44,   1,  43,  27,   0,   0, // 24
      57,   2,  40,   4,   5,   6,   8,  40, // 32
      10,  11,   9,  13,  51,  12,  52,  53, // 40
      11,   2,   3,   4,   5,   6,   7,   8, // 48
@@ -2132,8 +2132,19 @@ const uint8_t ascii_to_scancode[ 128 ] =
      45,  21,  24,  26,  43,  27,  41,  14, // 120
 };     
 
+// broken cases on Linux:
+// - no way to determine if keypad + is from the keypad and not the plus key (Brief is sad)
+// - linux translates ^j as ascii 0xa instead of 0x6a, so ^j output is wrong for DOS apps.
+// - no global way to track if the ALT key is currently down, so the hacks below with g_altPressedRecently.
+// - ^[ comes through as ESC with no indication that the [ key was pressed
+// - perhaps the ugliest code ever; I must refactor it.
+// - ^; comes through as a plain ESC
+
 void consume_keyboard()
 {
+    const uint8_t CTRL_DOWN = 53;
+    const uint8_t ALT_DOWN = 51;
+    const uint8_t MODIFIER_DOWN = 59;
     CKbdBuffer kbd_buf;
     g_altPressedRecently = false;
 
@@ -2169,7 +2180,7 @@ void consume_keyboard()
                             uint8_t following = g_consoleConfig.portable_getch(); // discard the following character
                             tracer.Trace( "    following character: %d\n", following );
 
-                            if ( 59 == following ) // ALT/CTRL depressed for F5-F8
+                            if ( MODIFIER_DOWN == following ) // ALT/CTRL depressed for F5-F8
                             {
                                 int nextA = g_consoleConfig.portable_getch(); // consume yet more
                                 int nextB = g_consoleConfig.portable_getch(); // consume yet more
@@ -2177,21 +2188,28 @@ void consume_keyboard()
 
                                 if ( 53 == fnumber )
                                 {
-                                    if ( 53 == nextA )
+                                    if ( CTRL_DOWN == nextA )
                                         kbd_buf.Add( 0, 98 ); // CTRL
-                                    else
+                                    else if ( ALT_DOWN == nextA )
+                                    {
                                         kbd_buf.Add( 0, 108 ); // ALT
+                                        g_altPressedRecently = true;
+                                    }
                                 }
                                 else if ( fnumber >= 55 && fnumber <= 57 )
                                 {
-                                    if ( 53 == nextA )
+                                    if ( CTRL_DOWN == nextA )
                                         kbd_buf.Add( 0, fnumber + 44 ); // CTRL
-                                    else
+                                    else if ( ALT_DOWN == nextA )
+                                    {
                                         kbd_buf.Add( 0, fnumber + 54 ); // ALT
+                                        g_altPressedRecently = true;
+                                    }
                                 }
                             }
-                            else if ( 51 == following ) // ALT depressed for F1-F4, HOME, etc.
+                            else if ( ALT_DOWN == following ) // ALT depressed for F1-F4, HOME, etc.
                             {
+                                g_altPressedRecently = true;
                                 int next = g_consoleConfig.portable_getch();
                                 tracer.Trace( "    next: %d\n", next );
                                 if ( next >= 80 && next <= 83 ) // F1-F4
@@ -2211,17 +2229,30 @@ void consume_keyboard()
                                 else
                                     tracer.Trace( "    unhandled ALT F1-F4 etc.\n" );
                             }
-                            else if ( 53 == following ) // CTRL depressed for F1-F4
+                            else if ( CTRL_DOWN == following ) // CTRL depressed for F1-F4, etc.
                             {
                                 int next = g_consoleConfig.portable_getch();
                                 tracer.Trace( "    next: %d\n", next );
-                                kbd_buf.Add( 0, next + 14 );
+                                if ( 68 == next ) // left
+                                    kbd_buf.Add( 0, 115 );
+                                else if ( 66 == next ) // down
+                                    kbd_buf.Add( 0, 145 );
+                                else if ( 67 == next ) // right
+                                    kbd_buf.Add( 0, 116 );
+                                else if ( 65 == next ) // up
+                                    kbd_buf.Add( 0, 141 );
+                                else if ( 72 == next ) // home
+                                    kbd_buf.Add( 0, 119 );
+                                else if ( 70 == next ) // end
+                                    kbd_buf.Add( 0, 117 );
+                                else if ( next >= 80 && next <= 83) // F1-F4
+                                    kbd_buf.Add( 0, next + 14 );
                             }
                             else
                             {
                                 if ( 53 == fnumber )
-                                    kbd_buf.Add( 0, 63 );
-                                else if ( fnumber >= 55 && fnumber <= 57 )
+                                    kbd_buf.Add( 0, 63 ); // F5
+                                else if ( fnumber >= 55 && fnumber <= 57 ) // F6..F8
                                     kbd_buf.Add( 0, fnumber + 9 );
                             }
                         }
@@ -2239,14 +2270,15 @@ void consume_keyboard()
 
                                 tracer.Trace( "    next %d\n", next );
 
-                                if ( 59 == next ) // ALT is pressed
+                                if ( MODIFIER_DOWN == next ) // ALT/CTRL is pressed
                                 {
                                     int nextA = g_consoleConfig.portable_getch();
                                     int nextB = g_consoleConfig.portable_getch();
                                     tracer.Trace( "    nextA: %d, nextB: %d\n", nextA, nextB );
 
-                                    if ( 51 == nextA ) // ALT
+                                    if ( ALT_DOWN == nextA ) // ALT
                                     {
+                                        g_altPressedRecently = true;
                                         if ( 48 == fnumber )
                                             kbd_buf.Add( 0, 112 );
                                         else if ( 49 == fnumber )
@@ -2258,7 +2290,7 @@ void consume_keyboard()
                                         else
                                             tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
                                     }
-                                    else if ( 53 == nextA ) // CTRL
+                                    else if ( CTRL_DOWN == nextA ) // CTRL
                                     {
                                         if ( 48 == fnumber )
                                             kbd_buf.Add( 0, 102 );
@@ -2275,7 +2307,15 @@ void consume_keyboard()
                                 else if ( 51 == next )
                                 {
                                     uint8_t nextA = g_consoleConfig.portable_getch();
+                                    tracer.Trace( "    nextA: %d\n", nextA );
                                     kbd_buf.Add( 0, 162 ); // ALT + INS
+                                    g_altPressedRecently = true;
+                                }
+                                else if ( 53 == next )
+                                {
+                                    uint8_t nextA = g_consoleConfig.portable_getch();
+                                    tracer.Trace( "    nextA: %d\n", nextA );
+                                    kbd_buf.Add( 0, 146 ); // INS
                                 }
                                 else if ( 126 == next )
                                 {
@@ -2298,24 +2338,40 @@ void consume_keyboard()
                         {
                             uint8_t nextA = g_consoleConfig.portable_getch();
                             tracer.Trace( "    nextA for DEL: %d\n", nextA );
-                            if ( 59 == nextA )
+                            if ( MODIFIER_DOWN == nextA )
                             {
                                 uint8_t nextB = g_consoleConfig.portable_getch();
                                 uint8_t nextC = g_consoleConfig.portable_getch();
-                                kbd_buf.Add( 0, 163 ); // ALT + DEL
+                                tracer.Trace( "    DEL nextB %d, nextC %d\n", nextB, nextC );
+                                if ( ALT_DOWN == nextB )
+                                {
+                                    kbd_buf.Add( 0, 163 ); // ALT + DEL
+                                    g_altPressedRecently = true;
+                                }
+                                else if ( CTRL_DOWN == nextB )
+                                    kbd_buf.Add( 0, 147 ); // CTRL + DEL
                             }
-                            else
+                            else if ( 126 == nextA )
                                 kbd_buf.Add( 0, 83 );
+                            else
+                                tracer.Trace( "unknown nextA %d\n", nextA );
                         }
                         else if ( '5' == thirdAscii ) // pgup
                         {
                             uint8_t nextA = g_consoleConfig.portable_getch(); 
                             tracer.Trace( "    nextA for pgup: %d\n", nextA );
-                            if ( 59 == nextA )
+                            if ( MODIFIER_DOWN == nextA )
                             {
                                 uint8_t nextB = g_consoleConfig.portable_getch();
                                 uint8_t nextC = g_consoleConfig.portable_getch();
-                                kbd_buf.Add( 0, 153 ); // ALT + pgup
+                                tracer.Trace( "    nextB: %d, nextC %d\n", nextB, nextC );
+                                if ( CTRL_DOWN == nextB ) // CTRL
+                                    kbd_buf.Add( 0, 132 );
+                                else if ( ALT_DOWN == nextB ) //ALT
+                                {
+                                    kbd_buf.Add( 0, 153 ); // ALT + pgup
+                                    g_altPressedRecently = true;
+                                }
                             }
                             else
                                 kbd_buf.Add( 0, 73 );
@@ -2324,11 +2380,18 @@ void consume_keyboard()
                         {
                             uint8_t nextA = g_consoleConfig.portable_getch(); 
                             tracer.Trace( "    nextA for pgup: %d\n", nextA );
-                            if ( 59 == nextA )
+                            if ( MODIFIER_DOWN == nextA )
                             {
                                 uint8_t nextB = g_consoleConfig.portable_getch();
                                 uint8_t nextC = g_consoleConfig.portable_getch();
-                                kbd_buf.Add( 0, 161 ); // ALT + pgdown
+                                tracer.Trace( "    nextB: %d, nextC %d\n", nextB, nextC );
+                                if ( CTRL_DOWN == nextB ) // CTRL
+                                    kbd_buf.Add( 0, 118 );
+                                else if ( ALT_DOWN == nextB ) // ALT
+                                {
+                                    kbd_buf.Add( 0, 161 ); // ALT + pgdown
+                                    g_altPressedRecently = true;
+                                }
                             }
                             else
                                 kbd_buf.Add( 0, 81 );
@@ -2343,7 +2406,10 @@ void consume_keyboard()
                             tracer.Trace( "unknown [ ESC sequence char %d == '%c'\n", thirdAscii, thirdAscii );
                     }
                     else
+                    {
                         kbd_buf.Add( 0, 26 ); // ALT '['
+                        g_altPressedRecently = true;
+                    }
                 }
                 else if ( secondAscii <= 'z' && secondAscii >= 'a' )
                 {
@@ -2367,19 +2433,40 @@ void consume_keyboard()
                         tracer.Trace( "unknown ESC O fnumber %d\n", fnumber );
                 }
                 else if ( '\\' == secondAscii )
+                {
                     kbd_buf.Add( 0, 38 ); // ALT '\\'
+                    g_altPressedRecently = true;
+                }
                 else if ( ';' == secondAscii )
+                {
                     kbd_buf.Add( 0, 39 ); // ALT ';'
+                    g_altPressedRecently = true;
+                }
                 else if ( ']' == secondAscii )
+                {
                     kbd_buf.Add( 0, 27 ); // ALT ']'
+                    g_altPressedRecently = true;
+                }
                 else if ( '-' == secondAscii )
+                {
                     kbd_buf.Add( 0, 130 ); // ALT '-' (normal and numeric keypad, can't distinguish)
+                    g_altPressedRecently = true;
+                }
                 else if ( '=' == secondAscii )
+                {
                     kbd_buf.Add( 0, 131 ); // ALT '='
+                    g_altPressedRecently = true;
+                }
                 else if ( 127 == secondAscii ) // ALT + DEL
+                {
                     kbd_buf.Add( 0, 14 );
+                    g_altPressedRecently = true;
+                }
                 else if ( '+' == secondAscii ) // ALT + numeric keypad +
+                {
                     kbd_buf.Add( 0, 78 );
+                    g_altPressedRecently = true;
+                }
                 else if ( ',' == secondAscii || '.' == secondAscii || '/' == secondAscii || '\'' == secondAscii || '`' == secondAscii )
                     tracer.Trace( "  swallowing ALT + character '%c' == %d\n", secondAscii, secondAscii );
                 else
@@ -2739,6 +2826,8 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         std::string wc = wildcard;
         const char * pwildcard = wildcard.c_str();
         char ac[ 20 ];
+
+        // in DOS, ???????? for filename and ??? for extension are really *, not literally matching that number of characters
 
         if ( !strcmp( pwildcard, "????????.???" ) )
             wc = "*.*";
