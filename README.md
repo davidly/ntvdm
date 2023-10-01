@@ -139,7 +139,7 @@ Linux notes:
     * Building and testing was done strictly on WSL2 with Ubutnu 20.04; other platforms will likely have issues.
     * Use m.sh and mr.sh to build using g++.
     * The code assumes VT-100 support is available in your terminal window.
-    * Linix is case-sensitive and DOS isn't. On my machine I created a new root folder for test apps where everything is 
+    * Linux is case-sensitive and DOS isn't. On my machine I created a new root folder for test apps where everything is 
     UPPERCASE and I use the -u switch with NTVDM. Not doing this will lead to apps not finding files.
     * Apps that use the Alt key generally work, but I'm looking for a better solution as it's sometimes glitchy.
     * Keyboard handling adds some small (10ms) delays to app responsivness and app shutdown. I'm working on a fix.
