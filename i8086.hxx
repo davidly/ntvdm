@@ -240,14 +240,14 @@ struct i8086
             uint32_t flat = ( ( (uint32_t) seg ) << 4 ) + offset;
             //if ( flat < 0x600 )
             //    tracer.Trace( "referencing low-memory %#x\n", flat );
-            if ( flat < 0xa00 )
-                tracer.Trace( "referencing lowish-memory %#x\n", flat );
-            if ( flat >= 0xb8000 && flat < 0xb8fa0 )
-                tracer.Trace( "referencing cga-memory page 0 %#x row %d column %d\n", flat, (flat - 0xb8000) / 160, ( (flat - 0xb8000) % 160 ) / 2 );
+            //if ( flat < 0xa00 )
+            //    tracer.Trace( "referencing lowish-memory %#x\n", flat );
+            //if ( flat >= 0xb8000 && flat < 0xb8fa0 )
+            //    tracer.Trace( "referencing cga-memory page 0 %#x row %d column %d\n", flat, (flat - 0xb8000) / 160, ( (flat - 0xb8000) % 160 ) / 2 );
             //if ( flat >= 0xb8fa0 && flat < 0xbbe80 )
             //    tracer.Trace( "referencing cga-memory page 1 %#x\n", flat );
-            if ( flat >= 0xbbe80 )
-                tracer.Trace( "referencing high-memory %#x\n", flat );
+            //if ( flat >= 0xbbe80 )
+            //    tracer.Trace( "referencing high-memory %#x\n", flat );
             return flat;
         #endif
     } //flatten

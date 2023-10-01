@@ -93,7 +93,7 @@ void remember_active_display_page()
 {
     g_regs_in.h.ah = 0x0f; /* get video mode */
     int86( 0x10, &g_regs_in, &g_regs_out );
-    g_active_display_page = g_regs_in.h.bh;
+    g_active_display_page = g_regs_out.h.bh;
 } /*remember_active_display_page*/
 
 void show_prompt()
@@ -214,6 +214,7 @@ void invoke_find_next()
 {
     g_regs_in.h.ah = 0x4f; /* find next */
     g_regs_in.x.dx = FP_OFF( g_pbuf );
+    g_regs_in.x.cx = 0x10; /* show directories */
     segread( &g_segregs );
     g_segregs.ds = FP_SEG( g_pbuf );
     intdosx( &g_regs_in, &g_regs_out, &g_segregs );
@@ -223,6 +224,7 @@ void invoke_find_first()
 {
     g_regs_in.h.ah = 0x4e; /* find first */
     g_regs_in.x.dx = FP_OFF( g_pbuf );
+    g_regs_in.x.cx = 0x10; /* show directories */
     segread( &g_segregs );
     g_segregs.ds = FP_SEG( g_pbuf );
     intdosx( &g_regs_in, &g_regs_out, &g_segregs );

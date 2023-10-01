@@ -1,8 +1,6 @@
 #pragma once
 
-#include <winbase.h>
 #include <chrono>
-#include <winnt.h>
 
 using namespace std;
 using namespace std::chrono;

@@ -211,6 +211,10 @@ class ConsoleConfiguration
 
             if ( outputEstablished )
             {
+                #ifndef _MSC_VER
+                    printf( "%c[0m", 27 ); // turn off display attributes
+                #endif
+
                 if ( clearScreen )
                     SendClsSequence();
 

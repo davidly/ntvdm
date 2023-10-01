@@ -91,6 +91,8 @@
         return s;
     } //strlwr
 
+    inline uint64_t _abs64( int64_t x ) { return ( x > 0 ) ? x : -x; }
+
     inline char * _strlwr( char * s ) { return strlwr( s ); }
 
     inline void sleep_ms( uint64_t ms )
@@ -214,4 +216,15 @@ inline long portable_filelen( FILE * fp )
     return len;
 } //portable_filelen
 
+inline long portable_filelen( const char * p )
+{
+    FILE * fp = fopen( p, "r" );
+    if ( 0 != fp )
+    {
+        long len = portable_filelen( fp );
+        fclose( fp );
+        return len;
+    }
 
+    return 0;
+} //portable_filelen

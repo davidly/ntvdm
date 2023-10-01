@@ -86,7 +86,7 @@ class CKeyStrokes
                     char ac[ 5 ] = {0};
                     if ( fread( ac, 1, 4, fp ) )
                     {
-                        uint16_t x = (uint16_t) _strtoui64( ac, 0, 16 );
+                        uint16_t x = (uint16_t) strtoull( ac, 0, 16 );
                         tracer.Trace( "read key %04x\n", x );
                         keys.push_back( x );
                     }

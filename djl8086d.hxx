@@ -121,7 +121,7 @@ class CDisassemble8086
         
         const char * opargs( bool firstArgReg )
         {
-            static char ac[80];
+            static char ac[100];
             ac[0] = 0;
 
             if ( _isword )
@@ -245,7 +245,7 @@ class CDisassemble8086
                 assert( pcode == ( _pcode + _bc ) );
             }
 
-            static char acOut[ 80 ];
+            static char acOut[ 100 ];
             strcpy( acOut, "NYI" );
             DecodeInstruction( pcode );
 

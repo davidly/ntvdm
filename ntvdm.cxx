@@ -52,9 +52,22 @@
 #include <djl_os.hxx>
 #include <sys/timeb.h>
 #include <memory.h>
+#include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
+
+#ifdef _WIN32
 #include <io.h>
+#else
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/time.h>
+#include <pthread.h>
+#include <time.h>
+#include <string>
+#include <regex>
+#endif
+
 #include <assert.h>
 #include <vector>
 
@@ -66,6 +79,9 @@
 #include <djl_kslog.hxx>
 #include <djl8086d.hxx>
 #include "i8086.hxx"
+
+using namespace std;
+using namespace std::chrono;
 
 // using assembly for keyboard input enables timer interrupts while spinning for a keystroke
 
@@ -231,9 +247,6 @@ CDJLTrace tracer;
 static uint16_t blankLine[ScreenColumns] = {0};    // an optimization for filling lines with blanks
 static std::mutex g_mtxEverything;                 // one mutex for all shared state
 static ConsoleConfiguration g_consoleConfig;       // to get into and out of 80x25 mode
-static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE; // used for find first / find next
-static HANDLE g_hConsoleOutput = 0;                // the Windows console output handle
-static HANDLE g_hConsoleInput = 0;                 // the Windows console input handle
 static bool g_haltExecution = false;               // true when the app is shutting down
 static uint16_t g_diskTransferSegment = 0;         // segment of current disk transfer area
 static uint16_t g_diskTransferOffset = 0;          // offset of current disk transfer area
@@ -245,7 +258,7 @@ static bool g_use80x25 = false;                    // true to force 80x25 with c
 static bool g_forceConsole = false;                // true to force teletype mode, with no cursor positioning
 static bool g_int16_1_loop = false;                // true if an app is looping to get keyboard input. don't busy loop.
 static bool g_KbdPeekAvailable = false;            // true when peek on the keyboard sees keystrokes
-static LONG g_injectedControlC = 0;                // # of control c events to inject
+static long g_injectedControlC = 0;                // # of control c events to inject
 static int g_appTerminationReturnCode = 0;         // when int 21 function 4c is invoked to terminate an app, this is the app return code
 static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
 static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0]), likely NTVDM
@@ -257,10 +270,105 @@ static uint16_t g_int21_8_seg = 0;                 // "
 static uint16_t g_int16_0_seg = 0;                 // "
 static char cwd[ MAX_PATH ] = {0};                 // used as a temporary in several locations
 static vector<IntCalled> g_InterruptsCalled;       // track interrupt usage
-static uint64_t g_startSystemTime;                 // system time at app start
+static high_resolution_clock::time_point g_tAppStart; // system time at app start
 static uint8_t g_bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
 static CKeyStrokes g_keyStrokes;                   // read or write keystrokes between kslog.txt and the app
+
+#ifndef _WIN32
+static bool g_forcePathsUpper = false;             // helpful for Linux
+static bool g_forcePathsLower = false;             // helpful for Linux
+static bool g_altPressedRecently = false;          // hack because I can't figure out if ALT is currently pressed
+#endif
+
+bool ValidDOSFilename( char * pc )
+{
+    if ( !strcmp( pc, "." ) )
+        return false;
+
+    if ( !strcmp( pc, ".." ) )
+        return false;
+
+    const char * pcinvalid = "<>,;:=?[]%|()/\\";
+    for ( size_t i = 0; i < strlen( pcinvalid ); i++ )
+        if ( strchr( pc, pcinvalid[i] ) )
+            return false;
+
+    size_t len = strlen( pc );
+
+    if ( len > 12 )
+        return false;
+
+    char * pcdot = strchr( pc, '.' );
+
+    if ( !pcdot && ( len > 8 ) )
+        return false;
+
+    if ( pcdot && ( ( pcdot - pc ) > 8 ) )
+        return false;
+
+    return true;
+} //ValidDOSFilename
+
+void backslash_to_slash( char * p )
+{
+    while ( *p )
+    {
+        if ( '\\' == *p )
+            *p = '/';
+        p++;
+    }
+} //backslash_to_slash
+
+void slash_to_backslash( char * p )
+{
+    while ( *p )
+    {
+        if ( '/' == *p )
+            *p = '\\';
+        p++;
+    }
+} //slash_to_backslash
+
+void cr_to_zero( char * p )
+{
+    while ( *p )
+    {
+        if ( '\r' == *p )
+        {
+            *p = 0;
+            break;
+        }
+        p++;
+    }
+} //cr_to_zero
+
+const char * DOSToLinuxPath( const char * p )
+{
+#ifdef _WIN32
+    return p;
+#else        
+    static char linux_path[ MAX_PATH ];
+    if ( ':' == p[1] )
+        strcpy( linux_path, p + 2 );
+    else
+        strcpy( linux_path, p );
+
+    backslash_to_slash( linux_path );
+    cr_to_zero( linux_path );
+
+    if ( g_forcePathsLower )
+        strlwr( linux_path );
+    else if ( g_forcePathsUpper )
+        strupr( linux_path );
+    return linux_path;
+#endif    
+} //DOSToLinuxPath
+
+#ifdef _WIN32
+static HANDLE g_hConsoleOutput = 0;                // the Windows console output handle
+static HANDLE g_hConsoleInput = 0;                 // the Windows console input handle
 static HANDLE g_heventKeyStroke;
+#endif
 
 uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
 
@@ -293,6 +401,10 @@ static void usage( char const * perr )
     printf( "                   stay in teletype/console mode.\n" );
     printf( "            -C     always set window to 80x25; don't use teletype mode.\n" );
     printf( "            -d     don't clear the display on app exit when in 80x25 mode\n" );
+#ifndef _WIN32
+    printf( "            -u     force DOS paths to be uppercase\n" );
+    printf( "            -l     force DOS paths to be lowercase\n" );    
+#endif    
     printf( "            -e     comma-separated list of environment variables. e.g. -e:include=..\\include,lib=..\\lib\n" );
     printf( "            -h     workaround for Packed File Corrupt error: load apps High, above 64k\n" );
     printf( "            -i     trace instructions as they are executed to %s.log (this is verbose!)\n", g_thisApp );
@@ -447,8 +559,12 @@ void SleepAndScheduleInterruptCheck()
     if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
     {
         tracer.Trace( "sleeping in SleepAndScheduleInterruptCheck. g_KbdPeekAvailable %d\n", g_KbdPeekAvailable );
+#ifdef _WIN32
         DWORD dw = WaitForSingleObject( g_heventKeyStroke, 1 );
         tracer.Trace( "sleep woke up due to %s\n", ( 0 == dw ) ? "keystroke event signaled" : "timeout" );
+#else
+        sleep_ms( 10 );
+#endif
         // just because the event was signaled doesn't ensure a keystroke is available. It may be from earlier, but that's OK
     }
     cpu.exit_emulate_early(); // fall out of the instruction loop early to check for a timer or keyboard interrupt
@@ -520,8 +636,12 @@ uint8_t get_current_drive()
 {
     // 0 == A...
 
+#ifdef _WIN32
     GetCurrentDirectoryA( sizeof( cwd ), cwd );
     return (uint8_t) toupper( cwd[0] ) - 'A';
+#else
+    return 2; // 'C'
+#endif
 } //get_current_drive
 
 static int compare_int_entries( const void * a, const void * b )
@@ -805,7 +925,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
     if ( 0 == cEntries )
     {
-        // Microsoft (R) Overlay Linker  Version 3.61 with Quick C v 1.0 is a packed EXE that requires /h to be in high memory
+        // Microsoft (R) Overlay Linker Version 3.61 with Quick C v 1.0 is a packed EXE that requires /h to be in high memory
 
         const uint16_t baseSeg = g_PackedFileCorruptWorkaround ? ( 65536 / 16 ) : AppSegment;
         const uint16_t ParagraphsAvailable = SegmentHardware - baseSeg - 1;  // hardware starts at 0xb800, apps load at baseSeg, -1 for MCB
@@ -942,6 +1062,7 @@ bool FreeMemory( uint16_t segment )
     return true;
 } //FreeMemory
 
+#ifdef _WIN32
 bool isPressed( int vkey )
 {
     SHORT s = GetAsyncKeyState( vkey );
@@ -953,6 +1074,20 @@ bool keyState( int vkey )
     SHORT s = GetAsyncKeyState( vkey );
     return 0 != ( 0x1000 & s );
 } //keyState
+#endif
+
+void UpdateScreenCursorPosition( uint8_t row, uint8_t col )
+{
+    tracer.Trace( "updating screen cursor position to %d %d\n", row, col );
+    assert( g_use80x25 );
+#ifdef _WIN32    
+    COORD pos = { col, row };
+    SetConsoleCursorPosition( g_hConsoleOutput, pos );
+#else
+    printf( "%c[%d;%dH", 27, row + 1, col + 1 );    // vt-100 row/col are 1-based
+    fflush( stdout );
+#endif
+} //UpdateScreenCursorPosition
 
 void GetCursorPosition( uint8_t & row, uint8_t & col )
 {
@@ -968,7 +1103,18 @@ void SetCursorPosition( uint8_t row, uint8_t col )
 
     cursordata[ 0 ] = col;
     cursordata[ 1 ] = row;
+
+    if ( g_use80x25 )
+        UpdateScreenCursorPosition( row, col );
 } //SetCursorPosition
+
+void UpdateScreenCursorPosition()
+{
+    assert( g_use80x25 );
+    uint8_t row, col;
+    GetCursorPosition( row, col );
+    UpdateScreenCursorPosition( row, col );
+} //UpdateScreenCursorPosition
 
 char printable( uint8_t x )
 {
@@ -990,7 +1136,9 @@ void init_blankline( uint8_t attribute )
 
 uint8_t get_keyboard_flags_depressed()
 {
+
     uint8_t val = 0;
+#ifdef _WIN32
     val |= ( 0 != isPressed( VK_RSHIFT ) );
     val |= ( isPressed( VK_LSHIFT ) << 1 );
     val |= ( ( isPressed( VK_LCONTROL ) || isPressed( VK_RCONTROL ) ) << 2 );
@@ -999,7 +1147,10 @@ uint8_t get_keyboard_flags_depressed()
     val |= ( keyState( VK_NUMLOCK ) << 5 );
     val |= ( keyState( VK_CAPITAL ) << 6 );
     val |= ( keyState( VK_INSERT ) << 7 );
-
+#else
+    if ( g_altPressedRecently )
+        val |= ( 1 << 3 );
+#endif
     return val;
 } //get_keyboard_flags_depressed
 
@@ -1050,7 +1201,7 @@ struct DOSPSP
         if ( 0 != segEnvironment )
         {
             const char * penv = (char *) GetMem( segEnvironment, 0 );
-            tracer.TraceBinaryData( (uint8_t *) penv, 0x80, 4 );
+            tracer.TraceBinaryData( (uint8_t *) penv, 0x100, 4 );
         }
     }
 };
@@ -1174,17 +1325,15 @@ bool GetDOSFilename( DOSFCB &fcb, char * filename )
 
     *filename = 0;
 
+#ifndef _WIN32 
+    if ( g_forcePathsUpper )
+        strupr( orig );
+    else if ( g_forcePathsLower )
+        strlwr( orig );
+#endif    
+
     return ( 0 != *orig && '.' != *orig );
 } //GetDOSFilename
-
-void UpdateWindowsCursorPosition()
-{
-    assert( g_use80x25 );
-    uint8_t row, col;
-    GetCursorPosition( row, col );
-    COORD pos = { col, row };
-    SetConsoleCursorPosition( g_hConsoleOutput, pos );
-} //UpdateWindowsCursorPosition
 
 void ClearLastUpdateBuffer()
 {
@@ -1230,11 +1379,13 @@ void traceDisplayBufferAsHex()
 
 // Unicode equivalents of DOS characters < 32. Codepage 437 doesn't automatically make these work in v2 of console.
 
-static WCHAR awcLowDOSChars[ 32 ] =
+static wchar_t awcLowDOSChars[ 32 ] =
 { 
     0,      0x263a, 0x2638, 0x2665, 0x2666, 0x2663, 0x2600, 0x2022, 0x25d8, 0x25cb, 0x25d9, 0x2642, 0x2640, 0x266a, 0x266b, 0x263c,
     0x25ba, 0x25c4, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x2190, 0x221f, 0x2194, 0x2582, 0x25bc,
 };
+
+#ifdef _WIN32
 
 void UpdateDisplayRow( uint32_t y )
 {
@@ -1291,6 +1442,99 @@ void UpdateDisplayRow( uint32_t y )
         tracer.Trace( "writeconsoleoutputattribute failed with error %d\n", GetLastError() );
 } //UpdateDisplayRow
 
+#else
+
+void DecodeAttributes( uint8_t a, uint8_t & fg, uint8_t & bg, bool & intense )
+{
+    fg = ( a & 7 );
+    bg = ( ( a >> 4 ) & 7 );
+    intense = ( 0 != ( a & 8 ) );
+} //DecodeAttributes
+
+const uint8_t FGColorMap[ 8 ] =
+{
+    30, 34, 32, 36, 31, 35, 33, 37,
+};
+
+const uint8_t BGColorMap[ 8 ] =
+{
+    40, 44, 42, 46, 41, 45, 43, 47,
+};
+
+uint8_t MapAsciiArt( uint8_t x )
+{
+    if ( 0 == x ) // brief alternately writes 0 then ':' for the clock
+        return ' ';
+    if ( 7 == x ) // round dot for radio buttons
+        return '+';
+    if ( 0xc4 == x || 0x1a == x || 0x1b == x || 0xcd == x )
+        return '-';
+    if ( 0xb3 == x || 0xba == x  )
+        return '|';
+    if ( 0xda == x  || 0xc3 == x || 0xb4 == x || 0xbf == x || 0xd9 == x || 0xc0 == x || 0xd5 == x || 0xb8 == x || 0xc9 == x || 0xbb == x || 0xc8 == x || 0xbc == x || 0xd4 == x || 0xbe == x )
+        return '+';
+    if ( 0xb0 == x || 0xb1 == x || 0xb2 == x || 7 == x || 0xfe == x || 0x12 == x )
+        return ' ';
+    return x;
+} //MapAsciiArt
+
+void UpdateDisplayRow( uint32_t y )
+{
+    assert( g_use80x25 );
+    if ( y >= ScreenRows )
+        return;
+
+    uint8_t * pbuf = GetVideoMem();
+    uint32_t yoffset = y * ScreenColumns * 2;
+
+    memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
+    uint8_t aAttribs[ ScreenColumns ];
+    char ac[ ScreenColumns ];
+    bool sameAttribs = true;
+    for ( size_t x = 0; x < ScreenColumns; x++ )
+    {
+        size_t offset = yoffset + x * 2;
+        ac[ x ] = MapAsciiArt( pbuf[ offset ] );
+        aAttribs[ x ] = pbuf[ 1 + offset ]; 
+        if ( aAttribs[ 0 ] != aAttribs[ x ] )
+            sameAttribs = false;
+    }
+
+    #if false
+        //tracer.Trace( "    updaterow %02u: '%.80s'\n", y, ac );
+        tracer.Trace( "    udrow %02u: '", y );
+        for ( size_t c = 0; c < ScreenColumns; c++ )
+            tracer.Trace( "%c", printable( ac[ c ] ) );
+        tracer.Trace( "'\n" );
+    #endif
+
+    uint8_t fgRGB, bgRGB;
+    bool intense;
+    printf( "%c[%d;1H", 27, y + 1 );
+
+    if ( sameAttribs )
+    {
+        DecodeAttributes( aAttribs[ 0 ], fgRGB, bgRGB, intense );
+        printf( "%c[%d;%d;%dm", 27, intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
+        printf( "%.*s", ScreenColumns, ac ); // vt-100 row/col are 1-based
+    }
+    else
+    {
+        for ( size_t x = 0; x < ScreenColumns; x++ )
+        {
+            if ( ( 0 == x ) || ( aAttribs[ x ] != aAttribs[ x - 1 ] ) )
+            {
+                DecodeAttributes( aAttribs[ x ], fgRGB, bgRGB, intense );
+                printf( "%c[%d;%d;%dm", 27, intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
+            }
+            printf( "%c", ac[ x ] );
+        }
+    }
+    UpdateScreenCursorPosition();
+} //UpdateDisplayRow
+
+#endif
+
 bool UpdateDisplay()
 {
     assert( g_use80x25 );
@@ -1299,7 +1543,7 @@ bool UpdateDisplay()
     if ( DisplayUpdateRequired() )
     {
         //tracer.Trace( "UpdateDisplay with changes\n" );
-        #if false
+        #if false && _WIN32
             CONSOLE_SCREEN_BUFFER_INFOEX csbi = { 0 };
             csbi.cbSize = sizeof( csbi );
             GetConsoleScreenBufferInfoEx( g_hConsoleOutput, &csbi );
@@ -1319,7 +1563,7 @@ bool UpdateDisplay()
         //traceDisplayBufferAsHex();
         //traceDisplayBuffers();
         //cpu.trace_instructions( true );
-        UpdateWindowsCursorPosition();
+        UpdateScreenCursorPosition(); // restore cursor position to where it was before
         return true;
     }
 
@@ -1334,7 +1578,7 @@ bool throttled_UpdateDisplay( int64_t delay = 50 )
         return UpdateDisplay();
 
     return false;
-} //throttled_UpdateDisplay();
+} //throttled_UpdateDisplay
 
 void ClearDisplay()
 {
@@ -1345,6 +1589,7 @@ void ClearDisplay()
         memcpy( pbuf + ( y * 2 * ScreenColumns ), blankLine, sizeof( blankLine ) );
 } //ClearDisplay
 
+#ifdef _WIN32
 BOOL WINAPI ControlHandlerProc( DWORD fdwCtrlType )
 {
     // this happens in a third thread, which is implicitly created
@@ -1368,6 +1613,9 @@ BOOL WINAPI ControlHandlerProc( DWORD fdwCtrlType )
 
     return FALSE;
 } //ControlHandlerProc
+#else
+void ControlHandlerProc( void ) {}
+#endif
 
 struct IntInfo
 {
@@ -1444,6 +1692,7 @@ const IntInfo interrupt_list[] =
     { 0x16, 0x01, "keyboard status" },
     { 0x16, 0x02, "keyboard - get shift status" },
     { 0x16, 0x05, "keyboard - store keystroke in keyboard buffer" },
+    { 0x16, 0x10, "get character" },
     { 0x16, 0x11, "get enhanced keystroke" },
     { 0x16, 0x55, "microsoft TSR internal (al ff/00 word, fe qbasic)" },
     { 0x17, 0x02, "check printer status" },
@@ -1546,6 +1795,7 @@ const char * get_interrupt_string( uint8_t i, uint8_t c, bool & ah_used )
     return "unknown";
 } //get_interrupt_string
 
+#ifdef _WIN32
 bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scancode )
 {
     if ( KEY_EVENT != rec.EventType )
@@ -1831,8 +2081,8 @@ void consume_keyboard()
     if ( ok && ( 0 != available ) )
     {
         INPUT_RECORD records[ 10 ];
-        DWORD toRead = __min( available, kbd_buf.FreeSpots() );
-        toRead = __min( _countof( records ), toRead );
+        uint32_t toRead = get_min( (uint32_t) available, kbd_buf.FreeSpots() );
+        toRead = get_min( (uint32_t) _countof( records ), toRead );
         if ( toRead > 0 )
         {
             tracer.Trace( "    %llu consume_keyboard calling ReadConsole\n", time_since_last() );
@@ -1855,6 +2105,240 @@ void consume_keyboard()
         }
     }
 } //consume_keyboard
+
+#else
+
+void InjectKeystrokes()
+{
+} //InjectKeystrokes
+
+const uint8_t ascii_to_scancode[ 128 ] =
+{
+      0,  30,  48,  46,  32,  18,  33,  34, // 0
+     14,  15,  36,  37,  38,  28,  49,  24, // 8
+     25,  16,  19,  31,  20,  22,  47,  17, // 16
+     45,  21,  44,   1,   0,   0,   0,   0, // 24
+     57,   2,  40,   4,   5,   6,   8,  40, // 32
+     10,  11,   9,  13,  51,  12,  52,  53, // 40
+     11,   2,   3,   4,   5,   6,   7,   8, // 48
+      9,  10,  39,  39,  51,  13,  52,  53, // 56
+      3,  30,  48,  46,  32,  18,  33,  34, // 64
+     35,  23,  36,  37,  38,  50,  49,  24, // 72
+     25,  16,  19,  31,  20,  22,  47,  17, // 80
+     45,  21,  44,  26,  43,  27,   7,  12, // 88
+     41,  30,  48,  46,  32,  18,  33,  34, // 96
+     35,  23,  36,  37,  38,  50,  49,  24, // 104
+     25,  16,  19,  31,  20,  22,  47,  17, // 112
+     45,  21,  24,  26,  43,  27,  41,  14, // 120
+};     
+
+void consume_keyboard()
+{
+    CKbdBuffer kbd_buf;
+    g_altPressedRecently = false;
+
+    while ( g_consoleConfig.portable_kbhit() )
+    {
+        uint8_t asciiChar = 0xff & g_consoleConfig.portable_getch();
+        uint8_t scanCode = ascii_to_scancode[ asciiChar ];
+        tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scanCode );
+        if ( 27 == asciiChar ) // escape
+        {
+            if ( g_consoleConfig.portable_kbhit() )
+            {
+                uint8_t secondAscii = g_consoleConfig.portable_getch();
+                if ( '[' == secondAscii )
+                {
+                    if ( g_consoleConfig.portable_kbhit() )
+                    {
+                        uint8_t thirdAscii = g_consoleConfig.portable_getch();
+                        if ( 'D' == thirdAscii )
+                            kbd_buf.Add( 0, 75 ); // left arrow
+                        else if ( 'B' == thirdAscii )
+                            kbd_buf.Add( 0, 80 ); // down arrow
+                        else if ( 'C' == thirdAscii )
+                            kbd_buf.Add( 0, 77 ); // right arrow
+                        else if ( 'A' == thirdAscii )
+                            kbd_buf.Add( 0, 72 ); // up arrow
+                        else if ( '1' == thirdAscii ) // F5-F8
+                        {
+                            uint8_t fnumber = g_consoleConfig.portable_getch();
+                            tracer.Trace( "  f5-f8 fnumber: %d\n", fnumber );
+                            uint8_t following = g_consoleConfig.portable_getch(); // discard the following character
+                            tracer.Trace( "  following character: %d\n", following );
+
+                            if ( 59 == following ) // ALT depressed for F5-F8
+                            {
+                                if ( 53 == fnumber )
+                                    kbd_buf.Add( 0, 108 );
+                                else if ( fnumber >= 55 && fnumber <= 57 )
+                                    kbd_buf.Add( 0, fnumber + 54 );
+
+                                g_consoleConfig.portable_getch(); // consume yet more
+                                g_consoleConfig.portable_getch(); // consume yet more
+                            }
+                            else if ( 51 == following ) // ALT depressed for F1-F4
+                            {
+                                int next = g_consoleConfig.portable_getch();
+                                kbd_buf.Add( 0, next + 24 );
+                            }
+                            else
+                            {
+                                if ( 53 == fnumber )
+                                    kbd_buf.Add( 0, 63 );
+                                else if ( fnumber >= 55 && fnumber <= 57 )
+                                    kbd_buf.Add( 0, fnumber + 9 );
+                            }
+                        }
+                        else if ( '2' == thirdAscii ) // INS + F9-F12
+                        {
+                            uint8_t fnumber = g_consoleConfig.portable_getch();
+                            tracer.Trace( "  ins + f9-f12 fnumber: %d\n", fnumber );
+                            if ( 126 == fnumber )
+                                kbd_buf.Add( 0, 82 ); // INS
+                            else
+                            {
+                                int next = 0;
+                                if ( fnumber < 121 )
+                                    next = g_consoleConfig.portable_getch();
+
+                                tracer.Trace( "  next %d\n", next );
+
+                                if ( 59 == next ) // ALT is pressed
+                                {
+                                    if ( 48 == fnumber )
+                                        kbd_buf.Add( 0, 112 );
+                                    else if ( 49 == fnumber )
+                                        kbd_buf.Add( 0, 113 );
+                                    else if ( 51 == fnumber )
+                                        kbd_buf.Add( 0, 139 );
+                                    else if ( 52 == fnumber )
+                                        kbd_buf.Add( 0, 140 );
+                                    else
+                                        tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
+
+                                    g_consoleConfig.portable_getch();
+                                    g_consoleConfig.portable_getch();
+                                }
+                                else if ( 126 == next )
+                                {
+                                    if ( 48 == fnumber )
+                                        kbd_buf.Add( 0, 67 );
+                                    else if ( 49 == fnumber )
+                                        kbd_buf.Add( 0, 68 );
+                                    else if ( 51 == fnumber )
+                                        kbd_buf.Add( 0, 133 );
+                                    else if ( 52 == fnumber )
+                                        kbd_buf.Add( 0, 134 );
+                                    else
+                                        tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
+                                }
+                            }
+                        }                       
+                        else if ( '3' == thirdAscii ) // DEL
+                        {
+                            kbd_buf.Add( 0, 83 );
+                            g_consoleConfig.portable_getch(); // discard the following character
+                        }
+                        else if ( '5' == thirdAscii ) // pgup
+                        {
+                            kbd_buf.Add( 0, 73 );
+                            g_consoleConfig.portable_getch(); // discard the following character
+                        }
+                        else if ( '6' == thirdAscii ) // pgdown
+                        {
+                            kbd_buf.Add( 0, 81 );
+                            g_consoleConfig.portable_getch(); // discard the following character
+                        }
+                        else if ( 'H' == thirdAscii ) // home
+                            kbd_buf.Add( 0, 71 );
+                        else if ( 'F' == thirdAscii ) // end
+                            kbd_buf.Add( 0, 79 );
+                        else if ( 'Z' == thirdAscii ) // shift tab
+                            kbd_buf.Add( 0, 15 );
+                        else
+                            tracer.Trace( "unknown [ ESC sequence char %d == '%c'\n", thirdAscii, thirdAscii );
+                    }
+                }
+                else if ( secondAscii <= 'z' && secondAscii >= 'a' )
+                {
+                    // ALT + a through z 
+
+                    // somewhat massive hack because I don't know how to tell if ALT is pressed on Linux
+                    g_altPressedRecently = true;
+
+                    scanCode = ascii_to_scancode[ secondAscii - 'a' + 1 ];
+                    kbd_buf.Add( 0, scanCode );
+                }
+                else if ( 'O' == secondAscii ) // F1-F4
+                {
+                    uint8_t fnumber = g_consoleConfig.portable_getch();
+                    tracer.Trace( "f1-f4 fnumber: %d\n", fnumber );
+
+                    // 80-83 map to scancode 59-62
+                    if ( fnumber >= 80 && fnumber <= 83 )
+                        kbd_buf.Add( 0, fnumber - 21 );
+                    else
+                        tracer.Trace( "unknown ESC O fnumber %d\n", fnumber );
+                }
+
+                else
+                {
+                    tracer.Trace( "unknown ESC second character %d == '%c'\n", secondAscii, secondAscii );
+                    kbd_buf.Add( asciiChar, scanCode );
+                    kbd_buf.Add( secondAscii, ascii_to_scancode[ secondAscii ] );
+                }
+            }
+            else
+                kbd_buf.Add( asciiChar, 1 ); // plain old escape character
+        }
+        else if ( 8 == asciiChar ) // swap backspace with ^backspace
+            kbd_buf.Add( 127, 14 );
+        else if ( 127 == asciiChar )
+            kbd_buf.Add( 8, 14 ); // swap backspace with ^backspace
+        else
+            kbd_buf.Add( asciiChar, scanCode );
+    }
+
+    uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+    pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
+} //consume_keyboard
+
+bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
+{
+    if ( g_consoleConfig.portable_kbhit() )
+    {
+        asciiChar = 'a'; // not sure how to read and not consume on linux, so lie
+        scancode = 30;
+        return true;
+    }
+    return false;
+} //peek_keyboard
+
+bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool update_display = false )
+{
+    static CDuration _durationLastPeek;
+    static CDuration _durationLastUpdate;
+
+    if ( throttle && !_durationLastPeek.HasTimeElapsedMS( 100 ) )
+    {
+        if ( update_display && g_use80x25 && _durationLastUpdate.HasTimeElapsedMS( 333 ) )
+            UpdateDisplay();
+
+        if ( sleep_on_throttle )
+        {
+            tracer.Trace( "sleeping in peek_keyboard\n" );
+            sleep_ms( 1 );
+        }
+
+        return false;
+    }
+
+    uint8_t a, s;
+    return peek_keyboard( a, s );
+} //peek_keyboard
+
+#endif
 
 void i8086_hard_exit( const char * pcerror, uint8_t arg )
 {
@@ -1953,6 +2437,7 @@ void i8086_invoke_halt()
     g_haltExecution = true;
 } // i8086_invoke_halt
 
+#ifdef _WIN32
 void FileTimeToDos( FILETIME & ftSystem, uint16_t & dos_time, uint16_t & dos_date )
 {
     FILETIME ft;
@@ -2080,6 +2565,327 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
     return true;
 } //ProcessFoundFileFCB
 
+    static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
+
+    void CloseFindFirst()
+    {
+        if ( INVALID_HANDLE_VALUE != g_hFindFirst )
+        {
+            FindClose( g_hFindFirst );
+            g_hFindFirst = INVALID_HANDLE_VALUE;
+        }
+    } //CloseFindFirst
+
+#else
+
+    #include <dirent.h>
+    static DIR * g_FindFirst = 0;
+    static char g_acFindFirstFolder[ MAX_PATH ] = {0};
+    static char g_acFindFirstPattern[ MAX_PATH ] = {0};
+    struct LINUX_FIND_DATA
+    {
+        char cFileName[ MAX_PATH ];
+    };
+
+    bool starts_with( const char * str, const char * start )
+    {
+        int len = strlen( str );
+        int lenstart = strlen( start );
+
+        if ( len < lenstart )
+            return false;
+
+        for ( int i = 0; i < lenstart; i++ )
+            if ( toupper( str[ i ] ) != toupper( start[ i ] ) )
+                return false;
+
+        return true;
+    } //starts_with
+
+    // regex code found on stackoverflow from pooya13
+
+    std::regex wildcardToRegex( const std::string& wildcard, bool caseSensitive = true )
+    {
+        std::string regexString{ wildcard };
+        regexString = std::regex_replace( regexString, std::regex("\\\\"), "\\\\" );
+        regexString = std::regex_replace( regexString, std::regex("\\^"), "\\^" );
+        regexString = std::regex_replace( regexString, std::regex("\\."), "\\." );
+        regexString = std::regex_replace( regexString, std::regex("\\$"), "\\$" );
+        regexString = std::regex_replace( regexString, std::regex("\\|"), "\\|" );
+        regexString = std::regex_replace( regexString, std::regex("\\("), "\\(" );
+        regexString = std::regex_replace( regexString, std::regex("\\)"), "\\)" );
+        regexString = std::regex_replace( regexString, std::regex("\\{"), "\\{" );
+        regexString = std::regex_replace( regexString, std::regex("\\{"), "\\}" );
+        regexString = std::regex_replace( regexString, std::regex("\\["), "\\[" );
+        regexString = std::regex_replace( regexString, std::regex("\\]"), "\\]" );
+        regexString = std::regex_replace( regexString, std::regex("\\+"), "\\+" );
+        regexString = std::regex_replace( regexString, std::regex("\\/"), "\\/" );
+
+        // Convert wildcard specific chars * and ? to their regex equivalents:
+
+        regexString = std::regex_replace( regexString, std::regex("\\?"), "." );
+        regexString = std::regex_replace( regexString, std::regex("\\*"), ".*" );
+
+        return std::regex( regexString, caseSensitive ? std::regex_constants::ECMAScript : std::regex_constants::icase );
+    } //wildcardToRegex
+
+    bool wildMatch( const std::string & input, const std::string & wildcard )
+    {
+        // very expensive to initialize this every time, but it's an emulator doing disk I/O, so it's OK
+
+        std::string wc = wildcard;
+        const char * pwildcard = wildcard.c_str();
+        char ac[ 20 ];
+
+        if ( !strcmp( pwildcard, "????????.???" ) )
+            wc = "*.*";
+        else if ( starts_with( pwildcard, "????????." ) )
+        {
+            strcpy( ac, "*." );
+            strcat( ac, pwildcard + 9);
+            wc = ac;
+        }
+        else if ( ends_with ( pwildcard, ".???" ) )
+        {
+            strcpy( ac, pwildcard );
+            char * pdot = strchr( ac, '.' );
+            strcpy( pdot, ".*" );
+            wc = ac;
+        }
+
+        tracer.Trace( "modified wildcard from '%s' to '%s'\n", wildcard.c_str(), wc.c_str() );
+        auto rgx = wildcardToRegex( wc, false );
+        return std::regex_match( input, rgx );
+    } //wildMatch
+
+    bool ProcessFoundFile( DosFindFile * pff, LINUX_FIND_DATA & fd )
+    {
+        const char * linuxPath = DOSToLinuxPath( fd.cFileName );
+        struct stat statbuf;
+        int ret = stat( linuxPath, & statbuf );
+        if ( 0 != ret )
+            return false;
+
+        uint8_t matching_attr = 0;
+        if ( !S_ISREG( statbuf.st_mode ) )
+            matching_attr |= 0x10; // directory
+
+        // return normal files always and any of the 3 special classes if their bit is set in search_attributes
+
+        if ( ( 0 != matching_attr ) && ( 0 == ( matching_attr & pff->search_attributes ) ) )
+        {
+            tracer.Trace( "  file '%s' doesn't match the attribute filter %#x\n", fd.cFileName, pff->search_attributes );
+            return false;
+        }
+
+        char * justFilename = fd.cFileName;
+        char * slash = strrchr( justFilename, '/' );
+        if ( 0 != slash )
+            justFilename = slash + 1;
+
+        tracer.Trace( "  actual found filename: '%s'\n", justFilename );
+        if ( strlen( justFilename ) < _countof( pff->file_name ) )
+            strcpy( pff->file_name, justFilename );
+        else
+            return false;
+
+        _strupr( pff->file_name );
+        pff->file_size = statbuf.st_size;
+        pff->file_attributes = matching_attr;
+
+        struct tm modified_localtime;
+        localtime_r( &statbuf.st_mtim.tv_sec, &modified_localtime );
+        uint16_t _mday = modified_localtime.tm_mday;
+        uint16_t _mon = 1 + modified_localtime.tm_mon;
+        uint16_t _year = 1900 + modified_localtime.tm_year - 1980;
+        pff->file_date = _mday | ( _mon << 5 ) | ( _year << 9 );
+
+        uint16_t _hour = modified_localtime.tm_hour;
+        uint16_t _min = modified_localtime.tm_min; 
+        uint16_t _sec = modified_localtime.tm_sec / 2;
+        pff->file_time = _sec | ( _min << 5 ) | ( _hour << 11 );
+
+        tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
+        return true;
+    } //ProcessFoundFile
+
+    bool ProcessFoundFileFCB( LINUX_FIND_DATA & fd, uint8_t attr, bool exFCB )
+    {
+        // note: extended FCB code isn't well-tested. Multiplan setup.exe is the only app I know that uses it and it fails for other reasons
+        // non-extended FCBs will have attr = 0
+
+        attr &= ~ ( 8 ); // remove the volume label bit if set
+        const char * linuxPath = DOSToLinuxPath( fd.cFileName );
+        struct stat statbuf;
+        int ret = stat( linuxPath, & statbuf );
+        if ( 0 != ret )
+            return false;
+
+        uint8_t matching_attr = 0;
+        if ( !S_ISREG( statbuf.st_mode ) )
+            matching_attr |= 0x10; // directory
+
+        // return normal files always and any of the 3 special classes if their bit is set in search_attributes (well, just DIR on Linux)
+
+        if ( ( 0 != matching_attr ) && ( 0 == ( matching_attr & attr ) ) )
+        {
+            tracer.Trace( "  file '%s' doesn't match the attribute filter %#x\n", fd.cFileName, attr );
+            return false;
+        }
+
+        tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
+        char * justFilename = fd.cFileName;
+        char * slash = strrchr( justFilename, '/' );
+        if ( 0 != slash )
+            justFilename = slash + 1;
+
+        char acResult[ DOS_FILENAME_SIZE ];
+        if ( strlen( justFilename ) < _countof( acResult ) )
+            strcpy( acResult, justFilename );
+        else
+            return false;
+
+        _strupr( acResult );
+
+        // now write the file into an FCB at the transfer address
+
+        DOSFCB *pfcb = 0;
+        if ( exFCB )
+        {
+            DOSEXFCB * pexfcb = (DOSEXFCB *) GetDiskTransferAddress();
+            pexfcb->extendedFlag = 0xff;
+            pexfcb->attr = matching_attr;
+            memset( pexfcb->reserved, 0, sizeof( pexfcb->reserved ) );
+            pfcb = & (pexfcb->fcb);
+        }
+        else
+            pfcb = (DOSFCB *) GetDiskTransferAddress();
+
+        pfcb->drive = 0;
+        for ( int i = 0; i < _countof( pfcb->name ); i++ )
+            pfcb->name[ i ] = ' ';
+        for ( int i = 0; i < _countof( pfcb->ext ); i++ )
+            pfcb->ext[ i ] = ' ';
+        for ( int i = 0; i < _countof( pfcb->name ) && 0 != acResult[i] && '.' != acResult[i]; i++ )
+            pfcb->name[i] = acResult[i];
+        char * pdot = strchr( acResult, '.' );
+        if ( pdot )
+        {
+            pdot++;
+            for ( int i = 0; i < _countof( pfcb->ext ) && 0 != acResult[i]; i++ )
+                pfcb->ext[i] = pdot[ i ];
+        }
+
+        pfcb->fileSize = statbuf.st_size;
+
+        struct tm modified_localtime;
+        localtime_r( &statbuf.st_mtim.tv_sec, &modified_localtime );
+        uint16_t _mday = modified_localtime.tm_mday;
+        uint16_t _mon = 1 + modified_localtime.tm_mon;
+        uint16_t _year = 1900 + modified_localtime.tm_year - 1980;
+        pfcb->date = _mday | ( _mon << 5 ) | ( _year << 9 );
+
+        uint16_t _hour = modified_localtime.tm_hour;
+        uint16_t _min = modified_localtime.tm_min; 
+        uint16_t _sec = modified_localtime.tm_sec / 2;
+        pfcb->time = _sec | ( _min << 5 ) | ( _hour << 11 );
+
+        pfcb->TraceFirst16();
+        return true;
+    } //ProcessFoundFileFCB
+
+    void CloseFindFirst()
+    {
+        if ( 0 != g_FindFirst )
+        {
+            closedir( g_FindFirst );
+            g_FindFirst = 0;
+        }
+    } //CloseFindFirst
+
+    void FindCloseLinux( DIR * pdir )
+    {
+        closedir( pdir );
+    } //FindCloseLinux
+
+    bool FindNextFileLinux( DIR * pdir, LINUX_FIND_DATA & fd )
+    {
+        const char * justPattern = g_acFindFirstPattern;
+
+        do
+        {
+            struct dirent * pent = readdir( pdir );
+            if ( 0 == pent )
+                return false;
+
+            // ignore files DOS just wouldn't understand
+
+            tracer.Trace( "  checking filename %s\n", pent->d_name );
+            if ( !ValidDOSFilename( pent->d_name ) )
+            {
+                tracer.Trace( "  filename isn't valid\n" );
+                continue;
+            }
+
+            if ( !wildMatch( pent->d_name, justPattern ) )
+            {
+                tracer.Trace( "  filename didn't match pattern\n" );
+                continue;
+            }
+
+            fd.cFileName[ 0 ] = 0;
+            if ( 0 != g_acFindFirstFolder[0] )
+            {
+                strcpy( fd.cFileName, g_acFindFirstFolder );
+                strcat( fd.cFileName, "/" );
+            }
+
+            strcat( fd.cFileName, pent->d_name );
+            tracer.Trace( "  FindNextFileLinux is returning '%s'\n", fd.cFileName );
+            return true;
+        } while ( true );
+
+        return false;            
+    } //FindNextFileLinux
+
+    DIR * FindFirstFileLinux( const char * pattern, LINUX_FIND_DATA & fd )
+    {
+        g_acFindFirstFolder[ 0 ] = 0;
+        g_acFindFirstPattern[ 0 ] = 0;
+        const char * justPattern = pattern;
+        DIR * pdir = 0;
+        const char * plast = strrchr( pattern, '/' );
+        if ( 0 == plast )
+            pdir = opendir( "." );
+        else
+        {
+            strcpy( g_acFindFirstFolder, pattern );
+            g_acFindFirstFolder[ plast - pattern ] = 0;
+            pdir = opendir( g_acFindFirstFolder );
+            tracer.Trace( "  opendir for folder '%s'\n", g_acFindFirstFolder );
+            justPattern = 1 + plast;
+        }
+
+        tracer.Trace( "  opendir returned %p, errno %d\n", pdir, errno );
+
+        if ( 0 == pdir )
+            return 0;
+
+        strcpy( g_acFindFirstPattern, justPattern );
+        bool found = FindNextFileLinux( pdir, fd );
+
+        if ( !found )
+        {
+            tracer.Trace( "  FindFirstFileLinux found nothing, so closing the directory\n" );
+            closedir( pdir );
+            return 0;
+        }
+
+        return pdir;
+    } //FindFirstFileLinux
+
+#endif
+
 void PerhapsFlipTo80x25()
 {
     static bool firstTime = true;
@@ -2179,10 +2985,14 @@ void handle_int_10( uint8_t c )
             col = cpu.dl();
             SetCursorPosition( row, col );
 
-            if ( g_use80x25 )
-                UpdateWindowsCursorPosition();
-            else if ( 0 == col && ( row == ( prevRow + 1 ) ) )
-                printf( "\n" );
+            if ( !g_use80x25 )
+            {
+                if ( 0 == col && ( row == ( prevRow + 1 ) ) )
+                {
+                    printf( "\n" );
+                    fflush( stdout );
+                }
+            }
 
             return;
         }
@@ -2389,7 +3199,10 @@ void handle_int_10( uint8_t c )
                     ch = ' ';
 
                 if ( 0xd != ch )
+                {
                     printf( "%c", ch );
+                    fflush( stdout );
+                }
             }
 
             return;
@@ -2419,7 +3232,10 @@ void handle_int_10( uint8_t c )
             else
             {
                 if ( 0xd != ch )
+                {
                     printf( "%c", ch );
+                    fflush( stdout );
+                }
             }
 
             return;
@@ -2716,6 +3532,7 @@ void HandleAppExit()
 
 uint8_t HighestDrivePresent()
 {
+#ifdef _WIN32
     DWORD dwDriveMask = GetLogicalDrives();
 
     // a = 0 ... z = 25
@@ -2728,6 +3545,9 @@ uint8_t HighestDrivePresent()
     }
 
     return 0;
+#else
+    return 2; // 'C'
+#endif
 } //HighestDrivePresent
 
 void star_to_question( char * pstr, int len )
@@ -2771,6 +3591,19 @@ bool command_exists( char * pc )
 
     return false;
 } //command_exists
+
+const int day_of_week( int year, int month, int day )
+{
+    return(                                                       
+          day                                                     
+        + ((153 * (month + 12 * ((14 - month) / 12) - 3) + 2) / 5)
+        + (365 * (year + 4800 - ((14 - month) / 12)))             
+        + ((year + 4800 - ((14 - month) / 12)) / 4)               
+        - ((year + 4800 - ((14 - month) / 12)) / 100)             
+        + ((year + 4800 - ((14 - month) / 12)) / 400)             
+        - 32045                                                   
+      ) % 7;
+} //day_of_week
 
 bool FindCommandInPath( char * pc )
 {
@@ -2907,6 +3740,7 @@ void handle_int_21( uint8_t c )
                     if ( 8 == ch )
                         printf( "%c ", ch );
                     printf( "%c", ch );
+                    fflush( stdout );
                 }
             }
     
@@ -2968,7 +3802,10 @@ void handle_int_21( uint8_t c )
                 char ch = cpu.dl();
                 tracer.Trace( "    direct console output %02x, '%c'\n", (uint8_t) ch, printable( (uint8_t) ch ) );
                 if ( 0x0d != ch )
+                {
                     printf( "%c", ch );
+                    fflush( stdout );
+                }
             }
     
             return;
@@ -3024,6 +3861,7 @@ void handle_int_21( uint8_t c )
             tracer.TraceBinaryData( (uint8_t *) p, 0x40, 2 );
             while ( *p && '$' != *p )
                 printf( "%c", *p++ );
+            fflush( stdout );
     
             return;
         }
@@ -3104,8 +3942,10 @@ void handle_int_21( uint8_t c )
             acDir[0] = cpu.dl() + 'A';
             acDir[1] = ':';
             acDir[2] = 0;
+#ifdef _WIN32            
             BOOL ok = SetCurrentDirectoryA( acDir );
             tracer.Trace( "  result of SetCurrentDirectory to '%s': %d\n", acDir, ok );
+#endif            
 
             return;
         }
@@ -3181,12 +4021,7 @@ void handle_int_21( uint8_t c )
             // returns AL = 0 if file found, FF if not found
             //    if found, DTA is used as an FCB ready for an open or delete
 
-            if ( INVALID_HANDLE_VALUE != g_hFindFirst )
-            {
-                FindClose( g_hFindFirst );
-                g_hFindFirst = INVALID_HANDLE_VALUE;
-            }
-
+            CloseFindFirst();
             bool extendedFCB = false;
             DOSFCB *pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             uint8_t attr = 0;
@@ -3204,6 +4039,7 @@ void handle_int_21( uint8_t c )
             if ( ok )
             {
                 tracer.Trace( "  searching for pattern '%s'\n", search_string );
+#ifdef _WIN32                
                 WIN32_FIND_DATAA fd = {0};
                 g_hFindFirst = FindFirstFileA( search_string, &fd );
                 if ( INVALID_HANDLE_VALUE != g_hFindFirst )
@@ -3222,8 +4058,7 @@ void handle_int_21( uint8_t c )
                         {
                             cpu.set_al( 0xff );
                             tracer.Trace( "  WARNING: search next using FCB (in search first function) found no more, error %d\n", GetLastError() );
-                            FindClose( g_hFindFirst );
-                            g_hFindFirst = INVALID_HANDLE_VALUE;
+                            CloseFindFirst();
                             break;
                         }
                     } while( true );
@@ -3233,7 +4068,41 @@ void handle_int_21( uint8_t c )
                     cpu.set_al( 0xff );
                     tracer.Trace( "  WARNING: search first using FCB failed, error %d\n", GetLastError() );
                 }
-            }
+#else
+                LINUX_FIND_DATA lfd = {0};
+                tracer.TraceBinaryData( (uint8_t *) search_string, strlen( search_string ), 4 );
+                const char * linuxSearch = DOSToLinuxPath( search_string );
+                tracer.Trace( "  linux search string: '%s'\n", linuxSearch );
+                tracer.TraceBinaryData( (uint8_t *) linuxSearch, strlen( linuxSearch ), 4 );
+                g_FindFirst = FindFirstFileLinux( linuxSearch, lfd );
+                if ( 0 != g_FindFirst )
+                {
+                    do
+                    {
+                        bool ok = ProcessFoundFileFCB( lfd, attr, extendedFCB );
+                        if ( ok )
+                        {
+                            cpu.set_al( 0 );
+                            break;
+                        }
+
+                        bool found = FindNextFileLinux( g_FindFirst, lfd );
+                        if ( !found )
+                        {
+                            cpu.set_al( 0xff );
+                            tracer.Trace( "  WARNING: search next using FCB (in search first function) found no more, error %d\n", errno );
+                            CloseFindFirst();
+                            break;
+                        }
+                    } while( true );
+                }
+                else
+                {
+                    cpu.set_al( 0xff );
+                    tracer.Trace( "  WARNING: find first file using FCB failed to find anything\n" );
+                } 
+#endif
+            }            
             else
             {
                 cpu.set_al( 0xff );
@@ -3249,6 +4118,7 @@ void handle_int_21( uint8_t c )
             // returns AL = 0 if file found, FF if not found
             //    if found, DTA is used as an FCB ready for an open or delete
 
+#ifdef _WIN32
             if ( INVALID_HANDLE_VALUE == g_hFindFirst )
                 cpu.set_al( 0xff );
             else
@@ -3282,12 +4152,53 @@ void handle_int_21( uint8_t c )
                     {
                         cpu.set_al( 0xff );
                         tracer.Trace( "  WARNING: search next using FCB found no more, error %d\n", GetLastError() );
-                        FindClose( g_hFindFirst );
-                        g_hFindFirst = INVALID_HANDLE_VALUE;
+                        CloseFindFirst();
                         break;
                     }
                 } while( true );
             }
+#else
+            if ( 0 != g_FindFirst )
+            {
+                DOSFCB *pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+                uint8_t attr = 0;
+                bool extendedFCB = false;
+                if ( 0xff == pfcb->drive )
+                {
+                    extendedFCB = true;
+                    DOSEXFCB * pexfcb = (DOSEXFCB *) pfcb;
+                    attr = pexfcb->attr;
+                    pfcb = & (pexfcb->fcb);
+                }
+
+                do
+                {
+                    LINUX_FIND_DATA lfd = {0};
+                    bool found = FindNextFileLinux( g_FindFirst, lfd );
+                    if ( found )
+                    {
+                        bool ok = ProcessFoundFileFCB( lfd, attr, extendedFCB );
+                        if ( ok )
+                        {
+                            cpu.set_al( 0 );
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        cpu.set_al( 0xff ); // no more files
+                        tracer.Trace( "  WARNING: find next file using FCB found no matching files\n" );
+                        CloseFindFirst();
+                        break;
+                    }
+                } while( true );
+            }
+            else
+            {
+                cpu.set_al( 0xff ); 
+                tracer.Trace( "  ERROR: search for next FCB without a prior successful search for first\n" );
+            }                    
+#endif            
     
             return;
         }
@@ -3338,7 +4249,7 @@ void handle_int_21( uint8_t c )
             FILE * fp = pfcb->GetFP();
             if ( fp )
             {
-                ULONG seekOffset = pfcb->curRecord * pfcb->recSize;
+                uint32_t seekOffset = pfcb->curRecord * pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
@@ -3381,7 +4292,7 @@ void handle_int_21( uint8_t c )
             FILE * fp = pfcb->GetFP();
             if ( fp )
             {
-                ULONG seekOffset = pfcb->curRecord * pfcb->recSize;
+                uint32_t seekOffset = pfcb->curRecord * pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
@@ -3406,9 +4317,9 @@ void handle_int_21( uint8_t c )
         }
         case 0x16:
         {
-            // create using FCB
+            // create file using FCB
     
-            tracer.Trace( "create using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
+            tracer.Trace( "create file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
@@ -3420,7 +4331,7 @@ void handle_int_21( uint8_t c )
             char filename[ DOS_FILENAME_SIZE ];
             if ( GetDOSFilename( *pfcb, filename ) )
             {
-                tracer.Trace( "  creating %s\n", filename );
+                tracer.Trace( "  creating '%s'\n", filename );
                 pfcb->SetFP( 0 );
     
                 FILE * fp = fopen( filename, "w+b" );
@@ -3520,9 +4431,13 @@ void handle_int_21( uint8_t c )
             else
                 drive--;
 
-            DWORD dwDriveMask = GetLogicalDrives(); // a = 0 ... z = 25
+#ifdef _WIN32
+            uint32_t driveMask = GetLogicalDrives(); // a = 0 ... z = 25
+#else
+            uint32_t driveMask = 2;
+#endif            
 
-            if ( dwDriveMask & ( 1 << drive ) )
+            if ( driveMask & ( 1 << drive ) )
             {
                 cpu.set_al( 8 );
                 cpu.set_cx( 512 );
@@ -3559,7 +4474,7 @@ void handle_int_21( uint8_t c )
             {
                 // lotus 123 1.0a writes a random value to the high byte; mask it away
 
-                ULONG seekOffset = ( pfcb->recNumber & 0xffffff ) * pfcb->recSize;
+                uint32_t seekOffset = ( pfcb->recNumber & 0xffffff ) * pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
@@ -3602,7 +4517,7 @@ void handle_int_21( uint8_t c )
             {
                 // lotus 123 1.0a writes a random value to the high byte; mask it away
 
-                ULONG seekOffset = ( pfcb->recNumber & 0xffffff ) * pfcb->recSize;
+                uint32_t seekOffset = ( pfcb->recNumber & 0xffffff ) * pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
@@ -3657,12 +4572,12 @@ void handle_int_21( uint8_t c )
             // on exit, AL 0 success, 1 EOF no data read, 2 dta too small, 3 eof partial read (filled with 0s)
     
             cpu.set_al( 1 ); // eof
-            ULONG cRecords = cpu.get_cx();
+            uint32_t cRecords = cpu.get_cx();
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "random block read using FCBs\n" );
             pfcb->Trace();
-            ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
+            uint32_t seekOffset = pfcb->recNumber * pfcb->recSize;
 
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -3690,9 +4605,9 @@ void handle_int_21( uint8_t c )
                     bool ok = !fseek( fp, seekOffset, SEEK_SET );
                     if ( ok )
                     {
-                        ULONG askedBytes = pfcb->recSize * cRecords;
+                        uint32_t askedBytes = pfcb->recSize * cRecords;
                         memset( GetDiskTransferAddress(), 0, askedBytes );
-                        ULONG toRead = __min( pfcb->fileSize - seekOffset, askedBytes );
+                        uint32_t toRead = get_min( pfcb->fileSize - seekOffset, askedBytes );
                         size_t numRead = fread( GetDiskTransferAddress(), toRead, 1, fp );
                         if ( numRead )
                         {
@@ -3733,7 +4648,7 @@ void handle_int_21( uint8_t c )
             FILE * fp = pfcb->GetFP();
             if ( fp )
             {
-                ULONG seekOffset = pfcb->recNumber * pfcb->recSize;
+                uint32_t seekOffset = pfcb->recNumber * pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
@@ -3842,12 +4757,22 @@ void handle_int_21( uint8_t c )
         {
             // get system date. al is day of week 0-6 0=sunday, cx = year 1980-2099, dh = month 1-12, dl = day 1-31
     
+#ifdef _WIN32            
             SYSTEMTIME st = {0};
             GetLocalTime( &st );
             cpu.set_al( (uint8_t) st.wDayOfWeek );
             cpu.set_cx( st.wYear );
             cpu.set_dh( (uint8_t) st.wMonth );
             cpu.set_dl( (uint8_t) st.wDay );
+#else
+            time_t t = time( 0 );
+            struct tm current_dt = *localtime( &t );
+            cpu.set_al( (uint8_t) day_of_week( current_dt.tm_year + 1900, current_dt.tm_mon, current_dt.tm_mday ) );
+            tracer.Trace( "year value: %d\n", current_dt.tm_year );
+            cpu.set_cx( (uint16_t) ( current_dt.tm_year + 1900 ) );
+            cpu.set_dh( (uint8_t) current_dt.tm_mon + 1 );
+            cpu.set_dl( (uint8_t) current_dt.tm_mday );
+#endif            
     
             return;
         }           
@@ -3855,15 +4780,18 @@ void handle_int_21( uint8_t c )
         {
             // get system time into DX (seconds : hundredths of a second), CX (hours : minutes)
     
-            SYSTEMTIME st = {0};
-            GetLocalTime( &st );
-            cpu.set_ch( (uint8_t) st.wHour );
-            cpu.set_cl( (uint8_t) st.wMinute );
-            cpu.set_dh( (uint8_t) st.wSecond );
-            cpu.set_dl( (uint8_t) ( st.wMilliseconds / 10 ) );
+            system_clock::time_point now = system_clock::now();
+            uint64_t ms = duration_cast<milliseconds>( now.time_since_epoch() ).count() % 1000;
+            time_t time_now = system_clock::to_time_t( now );
+            struct tm * plocal = localtime( & time_now );
+
+            cpu.set_ch( (uint8_t) plocal->tm_hour );
+            cpu.set_cl( (uint8_t) plocal->tm_min );
+            cpu.set_dh( (uint8_t) plocal->tm_sec );
+            cpu.set_dl( (uint8_t) ( ms / 10 ) );
             tracer.Trace( "  system time is %02d:%02d:%02d.%02d\n", cpu.ch(), cpu.cl(), cpu.dh(), cpu.dl() );
 
-            #if false // useful when debugging
+            #if false // useful when debugging to keep trace files consistent between runs
                 cpu.set_ch( (uint8_t) 1 );
                 cpu.set_cl( (uint8_t) 2 );
                 cpu.set_dh( (uint8_t) 3 );
@@ -4016,10 +4944,15 @@ void handle_int_21( uint8_t c )
         case 0x39:
         {
             // create directory ds:dx asciiz directory name. cf set on error with code in ax
-            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * path = DOSToLinuxPath( pathOriginal );            
             tracer.Trace( "  create directory '%s'\n", path );
 
+#ifdef _WIN32
             int ret = _mkdir( path );
+#else
+            int ret = mkdir( path, 0x777 );
+#endif
             if ( 0 == ret )
                 cpu.set_carry( false );
             else
@@ -4034,10 +4967,15 @@ void handle_int_21( uint8_t c )
         case 0x3a:
         {
             // remove directory ds:dx asciiz directory name. cf set on error with code in ax
-            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * path = DOSToLinuxPath( pathOriginal );
             tracer.Trace( "  remove directory '%s'\n", path );
 
+#ifdef _WIN32
             int ret = _rmdir( path );
+#else
+            int ret = rmdir( path );
+#endif                        
             if ( 0 == ret )
                 cpu.set_carry( false );
             else
@@ -4052,11 +4990,16 @@ void handle_int_21( uint8_t c )
         case 0x3b:
         {
             // change directory ds:dx asciiz directory name. cf set on error with code in ax
-            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  change directory to '%s'\n", path );
+            char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * path = DOSToLinuxPath( pathOriginal );
+            tracer.Trace( "  change directory to '%s'. original path '%s'\n", path, pathOriginal );
 
+#ifdef _WIN32
             int ret = _chdir( path );
-            if ( 0 == ret )
+#else
+            int ret = chdir( path );
+#endif            
+        if ( 0 == ret )
                 cpu.set_carry( false );
             else
             {
@@ -4071,7 +5014,8 @@ void handle_int_21( uint8_t c )
         {
             // create file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
-            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * path = DOSToLinuxPath( original_path );
             tracer.Trace( "  create file '%s'\n", path );
             cpu.set_ax( 3 );
     
@@ -4104,7 +5048,8 @@ void handle_int_21( uint8_t c )
         {
             // open file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
-            char * path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * path = DOSToLinuxPath( original_path );
             tracer.TraceBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "  open file '%s'\n", path );
             uint8_t openmode = cpu.al();
@@ -4127,7 +5072,7 @@ void handle_int_21( uint8_t c )
             {
                 bool readOnly = ( 0 == openmode );
 
-                if ( !_stricmp( path, "CON" ) || !_stricmp( path, "\\DEV\\CON" ) )
+                if ( !_stricmp( path, "CON" ) || !_stricmp( path, "\\DEV\\CON" ) || !_stricmp( path, "/dev/con" ) )
                 {
                     cpu.set_ax( readOnly ? 0 : 1 );
                     cpu.set_carry( false );
@@ -4244,7 +5189,7 @@ void handle_int_21( uint8_t c )
                     }
 
                     uint16_t string_len = (uint16_t) strlen( acBuffer );
-                    uint16_t min_len = __min( string_len, request_len );
+                    uint16_t min_len = get_min( string_len, request_len );
                     cpu.set_ax( min_len );
                     uint8_t * pvideo = GetVideoMem();
                     GetCursorPosition( row, col );
@@ -4298,7 +5243,7 @@ void handle_int_21( uint8_t c )
     
                 if ( cur < size )
                 {
-                    uint32_t toRead = __min( len, size - cur );
+                    uint32_t toRead = get_min( (uint32_t) len, size - cur );
                     memset( p, 0, toRead );
                     size_t numRead = fread( p, toRead, 1, fp );
                     if ( numRead )
@@ -4386,8 +5331,6 @@ void handle_int_21( uint8_t c )
                                     col = 1;
                                 SetCursorPosition( row, col );
                             }
-    
-                            UpdateWindowsCursorPosition();
                         }
                     }
                     else
@@ -4402,6 +5345,7 @@ void handle_int_21( uint8_t c )
                             }
                         }
                         tracer.Trace( "'\n" );
+                        fflush( 0 ); // Linux needs this or the output is cached
                     }
                 }
                 return;
@@ -4442,7 +5386,8 @@ void handle_int_21( uint8_t c )
             // delete file: ds:dx has asciiz name of file to delete.
             // return: cf set on error, ax = error code
     
-            char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * pfile = DOSToLinuxPath( original_path );
             tracer.Trace( "  deleting file '%s'\n", pfile );
             trace_all_open_files();
 
@@ -4543,6 +5488,7 @@ void handle_int_21( uint8_t c )
     
             if ( 0 == cpu.al() ) // get
             {
+#ifdef _WIN32                
                 uint32_t attr = GetFileAttributesA( pfile );
                 if ( INVALID_FILE_ATTRIBUTES != attr )
                 {
@@ -4553,12 +5499,34 @@ void handle_int_21( uint8_t c )
                 }
                 else
                     cpu.set_ax( (uint16_t) GetLastError() ); // most errors map OK (file not found, path not found, etc.)
+#else
+                const char * linuxPath = DOSToLinuxPath( pfile );
+                struct stat statbuf;
+                int ret = stat( linuxPath, & statbuf );
+                if ( 0 == ret )
+                {
+                    cpu.set_carry( false );
+                    uint16_t attribs = 0;
+                    if ( !S_ISREG( statbuf.st_mode ) )
+                        attribs |= 0x10;
+                    cpu.set_cx( attribs );
+
+                    tracer.Trace( "  read get file attributes: cx %04x\n", cpu.get_cx() );
+                }
+                else
+                {
+                    tracer.Trace( "unable to get file attributes on linux path '%s'\n", linuxPath );
+                    cpu.set_ax( 2 ); // file not found
+                }
+#endif                
             }
             else
             {
                 tracer.Trace( "  put file attributes on '%s' to %04x\n", pfile, cpu.get_cx() );
+#ifdef _WIN32                
                 BOOL ok = SetFileAttributesA( pfile, cpu.get_cx() );
                 cpu.set_carry( !ok );
+#endif                
             }
     
             tracer.Trace( "  result of get/put file attributes: carry %d\n", cpu.get_carry() );
@@ -4726,18 +5694,38 @@ void handle_int_21( uint8_t c )
             // CF set on error. AX=15 for invalid drive
     
             cpu.set_carry( true );
+#ifdef _WIN32            
             if ( GetCurrentDirectoryA( sizeof( cwd ), cwd ) )
             {
-                char * paststart = cwd + 3; // result does not contain drive or initial backslash 'x:\'
-                if ( strlen( paststart ) <= 63 )
+                char * past_start = cwd + 3; // result does not contain drive or initial backslash 'x:\'
+                if ( strlen( past_start ) <= 63 )
                 {
-                    strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), paststart );
-                    tracer.Trace( "  returning current directory '%s'\n", paststart );
+                    strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), past_start );
+                    tracer.Trace( "  returning current directory '%s'\n", past_start );
                     cpu.set_carry( false );
                 }
             }
             else
                 tracer.Trace( "  ERROR: unable to get the current working directory, error %d\n", GetLastError() );
+#else
+            char acCurDir[ MAX_PATH ];
+            if ( getcwd( acCurDir, sizeof( acCurDir ) ) )            
+            {
+                slash_to_backslash( acCurDir );
+                strcpy( cwd, "C:" );
+                strcat( cwd, acCurDir );
+                tracer.Trace( "  cwd: '%s'\n", cwd );                
+                char * past_start = acCurDir + 1; // result does not contain drive or initial backslash 'c:\'
+                if ( strlen( past_start ) <= 63 )
+                {
+                    strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), past_start );
+                    tracer.Trace( "  returning current directory: '%s'\n", past_start );
+                    cpu.set_carry( false );
+                }
+            }
+            else
+                tracer.Trace( "  ERROR: unable to get the current working directory, error %d\n", errno );
+#endif            
     
             return;
         }
@@ -4884,7 +5872,8 @@ void handle_int_21( uint8_t c )
             uint16_t save_sp = cpu.get_sp();
             uint16_t save_ss = cpu.get_ss();
 
-            const char * pathToExecute = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * originalPath = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * pathToExecute = DOSToLinuxPath( originalPath );
             tracer.Trace( "  CreateProcess mode %u path to execute: '%s'\n", mode, pathToExecute );
 
             char acCommandPath[ MAX_PATH ];
@@ -4893,8 +5882,12 @@ void handle_int_21( uint8_t c )
             {
                 // DOS v2 command.com uses an '@' in this case. Not sure why.
 
+#ifdef _WIN32
                 GetCurrentDirectoryA( sizeof( cwd ), cwd );
                 acCommandPath[ 0 ] = cwd[ 0 ];
+#else
+                acCommandPath[ 0 ] = 'C';
+#endif                                
             }
 
             bool found = FindCommandInPath( acCommandPath );
@@ -5012,12 +6005,9 @@ void handle_int_21( uint8_t c )
             assert( 0x15 == offsetof( DosFindFile, file_attributes ) );
             tracer.Trace( "  Find First Asciiz for pattern '%s' attributes %#x\n", psearch_string, pff->search_attributes );
 
-            if ( INVALID_HANDLE_VALUE != g_hFindFirst )
-            {
-                FindClose( g_hFindFirst );
-                g_hFindFirst = INVALID_HANDLE_VALUE;
-            }
-    
+            CloseFindFirst();
+
+#ifdef _WIN32
             WIN32_FIND_DATAA fd = {0};
             g_hFindFirst = FindFirstFileA( psearch_string, &fd );
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
@@ -5037,8 +6027,7 @@ void handle_int_21( uint8_t c )
                         memset( pff, 0, sizeof( DosFindFile ) );
                         cpu.set_ax( 0x12 ); // no more files
                         tracer.Trace( "  WARNING: find first file found no matching files, error %d\n", GetLastError() );
-                        FindClose( g_hFindFirst );
-                        g_hFindFirst = INVALID_HANDLE_VALUE;
+                        CloseFindFirst();
                         break;
                     }
                 } while( true );
@@ -5048,17 +6037,55 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( (uint16_t) GetLastError() ); // interesting errors actually match
                 tracer.Trace( "  WARNING: find first file failed, error %d\n", GetLastError() );
             }
+#else
+
+            LINUX_FIND_DATA lfd = {0};
+            tracer.TraceBinaryData( (uint8_t *) psearch_string, strlen( psearch_string ), 4 );
+            const char * linuxSearch = DOSToLinuxPath( psearch_string );
+            tracer.Trace( "  linux search string: '%s'\n", linuxSearch );
+            tracer.TraceBinaryData( (uint8_t *) linuxSearch, strlen( linuxSearch ), 4 );
+            g_FindFirst = FindFirstFileLinux( linuxSearch, lfd );
+            if ( 0 != g_FindFirst )
+            {
+                do
+                {
+                    bool ok = ProcessFoundFile( pff, lfd );
+                    if ( ok )
+                    {
+                        tracer.Trace( "  FindFirst processed found file '%s'\n", lfd.cFileName );
+                        cpu.set_carry( false );
+                        break;
+                    }
+
+                    bool found = FindNextFileLinux( g_FindFirst, lfd );
+                    if ( !found )
+                    {
+                        memset( pff, 0, sizeof( DosFindFile ) );
+                        cpu.set_ax( 0x12 ); // no more files
+                        tracer.Trace( "  WARNING: find first file found no matching files\n" );
+                        CloseFindFirst();
+                        break;
+                    }
+                } while( true );
+            }
+            else
+            {
+                cpu.set_ax( 2 ); // not found
+                tracer.Trace( "  WARNING: find first file failed to find anything\n" );
+            }                    
+#endif            
     
             return;
         }
         case 0x4f:
         {
-            // find next asciiz. ds:dx should be unchanged from find first, but they are not used below.
+            // find next asciiz. ds:dx should be unchanged from find first, but they are not used below for Win32
     
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             tracer.Trace( "  Find Next Asciiz\n" );
     
+    #ifdef _WIN32
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
                 do
@@ -5079,8 +6106,7 @@ void handle_int_21( uint8_t c )
                         memset( pff, 0, sizeof( DosFindFile ) );
                         cpu.set_ax( 0x12 ); // no more files
                         tracer.Trace( "  WARNING: find next file found no more, error %d\n", GetLastError() );
-                        FindClose( g_hFindFirst );
-                        g_hFindFirst = INVALID_HANDLE_VALUE;
+                        CloseFindFirst();
                         break;
                     }
                 } while( true );
@@ -5090,6 +6116,39 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( 0x12 ); // no more files
                 tracer.Trace( "  ERROR: search for next without a prior successful search for first\n" );
             }
+#else
+            if ( 0 != g_FindFirst )
+            {
+                do
+                {
+                    LINUX_FIND_DATA lfd = {0};
+                    bool found = FindNextFileLinux( g_FindFirst, lfd );
+                    if ( found )
+                    {
+                        bool ok = ProcessFoundFile( pff, lfd );
+                        if ( ok )
+                        {
+                            cpu.set_carry( false );
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        memset( pff, 0, sizeof( DosFindFile ) );
+                        cpu.set_ax( 0x12 ); // no more files
+                        tracer.Trace( "  WARNING: find next file found no matching files\n" );
+                        CloseFindFirst();
+                        break;
+                    }
+                } while( true );
+            }
+            else
+            {
+                cpu.set_ax( 0x12 ); 
+                tracer.Trace( "  ERROR: search for next without a prior successful search for first\n" );
+            }                    
+
+#endif            
     
             return;
         }
@@ -5154,8 +6213,19 @@ void handle_int_21( uint8_t c )
     
             char * poldname = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             char * pnewname = (char *) GetMem( cpu.get_es(), cpu.get_di() );
+
+#ifndef _WIN32
+            char acOld[ MAX_PATH ];
+            const char * pfile = DOSToLinuxPath( poldname );
+            strcpy( acOld, pfile );
+            poldname = acOld;
+            char acNew[ MAX_PATH ];
+            pfile = DOSToLinuxPath( pnewname );
+            strcpy( acNew, pfile );
+            pnewname = acNew;
+#endif            
     
-            tracer.Trace( "renaming file '%s' to '%s'\n", poldname, pnewname );
+            tracer.Trace( "renaming file '%s' to '%s', pointers are %p to %p\n", poldname, pnewname, poldname, pnewname );
             int renameok = ( 0 == rename( poldname, pnewname ) );
             if ( renameok )
                 cpu.set_carry( false );
@@ -5189,6 +6259,7 @@ void handle_int_21( uint8_t c )
             {
                 if ( 0 == cpu.al() )
                 {
+#ifdef _WIN32                    
                     WIN32_FILE_ATTRIBUTE_DATA fad = {0};
                     if ( GetFileAttributesExA( path, GetFileExInfoStandard, &fad ) )
                     {
@@ -5204,6 +6275,32 @@ void handle_int_21( uint8_t c )
                         tracer.Trace( "  ERROR: can't get/set file date and time; getfileattributesex failed %d\n", GetLastError() );
                         cpu.set_ax( 1 );
                     }
+#else
+                    const char * linuxPath = DOSToLinuxPath( path );
+                    struct stat statbuf;
+                    int ret = stat( linuxPath, & statbuf );
+                    if ( 0 == ret )
+                    {
+                        cpu.set_ax( 0 );
+                        cpu.set_carry( false );
+                        struct tm modified_localtime;
+                        localtime_r( &statbuf.st_mtim.tv_sec, &modified_localtime );
+                        uint16_t _mday = modified_localtime.tm_mday;
+                        uint16_t _mon = 1 + modified_localtime.tm_mon;
+                        uint16_t _year = 1900 + modified_localtime.tm_year - 1980;
+                        cpu.set_dx( _mday | ( _mon << 5 ) | ( _year << 9 ) );
+
+                        uint16_t _hour = modified_localtime.tm_hour;
+                        uint16_t _min = modified_localtime.tm_min; 
+                        uint16_t _sec = modified_localtime.tm_sec / 2;
+                        cpu.set_cx( _sec | ( _min << 5 ) | ( _hour << 11 ) );
+                    }
+                    else
+                    {
+                        tracer.Trace( "  ERROR: can't get/set file date and time; getfileattributesex failed %d\n", errno );
+                        cpu.set_ax( 1 );
+                    }
+#endif                    
                 }
                 else if ( 1 == cpu.al() )
                 {
@@ -5406,7 +6503,13 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         {
             // read real time clock. get ticks since system boot. 18.2 ticks per second.
 
+#ifdef _WIN32
             ULONGLONG milliseconds = GetTickCount64();
+#else
+            struct timeval tv;
+            gettimeofday( &tv, NULL );
+            uint64_t milliseconds = tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+#endif            
             milliseconds *= 1821;
             milliseconds /= 100000;
             cpu.set_al( 0 );
@@ -5434,12 +6537,24 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
             cpu.set_carry( false );
 
+#ifdef _WIN32
             SYSTEMTIME st = {0};
             GetLocalTime( &st );
             cpu.set_ch( toBCD( (uint8_t) st.wHour ) );
             cpu.set_cl( toBCD( (uint8_t) st.wMinute ) );
             cpu.set_dh( toBCD( (uint8_t) st.wSecond ) );
             cpu.set_dl( 0 );
+#else            
+            system_clock::time_point now = system_clock::now();
+            uint64_t ms = duration_cast<milliseconds>( now.time_since_epoch() ).count() % 1000;
+            time_t time_now = system_clock::to_time_t( now );
+            struct tm * plocal = localtime( & time_now );
+
+            cpu.set_ch( toBCD( (uint8_t) plocal->tm_hour ) );
+            cpu.set_cl( toBCD( (uint8_t) plocal->tm_min ) );
+            cpu.set_dh( toBCD( (uint8_t) plocal->tm_sec ) );
+            cpu.set_dl( 0 );
+#endif            
             return;
         }
     }
@@ -5532,7 +6647,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     uint8_t len = (uint8_t) strlen( acAppArgs );
     psp->countCommandTail = len;
     strcpy( (char *) psp->commandTail, acAppArgs );
-    psp->commandTail[ len ] = 0x0d;       // DOS has 0x0d at the end of the command tail, not a null
+    psp->commandTail[ len ] = 0x0d;           // DOS has 0x0d at the end of the command tail, not a null
     psp->segEnvironment = segEnvironment;
 
     psp->Trace();
@@ -5847,6 +6962,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
     return psp;
 } //LoadBinary
 
+#ifdef _WIN32
 DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
 {
     HANDLE aHandles[ 2 ];
@@ -5875,11 +6991,81 @@ DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
 
     return 0;
 } //PeekKeyboardThreadProc
+#else
+void * PeekKeyboardThreadProc( void * param )
+{
+    tracer.Trace( "in peekkeyboardthreadproc for linux\n" );
+    CSimpleThread & thread = * (CSimpleThread *) param;
+
+    pthread_mutex_lock( & thread.the_mutex );
+
+    do
+    {
+        if ( thread.shutdown_flag )
+            break;
+
+        sleep_ms( 100 );
+
+        if ( g_consoleConfig.portable_kbhit() )
+        {
+            tracer.Trace( "async thread noticed that a keystroke is available\n" );
+            g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+            cpu.exit_emulate_early();  // no time to lose processing the keystroke
+        }
+
+#if 0        
+        //struct pthread_timestruc_t to;
+        struct timespec to;
+        to.tv_sec = 1;
+        to.tv_nsec = 100000000; // 100ms
+
+        int err = pthread_cond_timedwait( & thread.the_condition, & thread.the_mutex, & to );
+        if ( ETIMEDOUT == err )
+        {
+            tracer.Trace( "peekkeyboardthreadproc timed out in the wait\n" );
+            // check for keyboard input here
+        }
+        else if ( 0 == err )
+        {
+            tracer.Trace( "peekkeyboardthreadproc condition was signaled\n" );
+            break;
+        }
+        else
+        {
+            tracer.Trace( "peekkeyboardthreadproc error on cond_timewait: %d\n", err );
+            break;
+        }
+#endif        
+    } while( true );
+
+    pthread_mutex_unlock( & thread.the_mutex );
+    tracer.Trace( "falling out of peekkeyboardthreadproc for linux\n" );
+    return 0;
+} //PeekKeyboardThreadProc
+#endif
 
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv )
 {
     char fullPath[ MAX_PATH ];
+#ifdef _WIN32    
     GetFullPathNameA( pathToExecute, _countof( fullPath ), fullPath, 0 );
+#else
+    // can't use realpath() here because the top part of the path may be forced uppper/lowercase later.
+    // use relative paths instead, which work.
+
+    char * fpath = realpath( pathToExecute, 0 );
+    if ( !fpath )
+    {
+        tracer.Trace( "realpath failed, error %d\n", errno );
+        return 0;
+    }
+
+    strcpy( fullPath, "C:" );
+    slash_to_backslash( fpath );
+    strcpy( fullPath + 2, fpath );
+    free( fpath );
+    tracer.Trace( "full path of binary: '%s'\n", fullPath );
+#endif    
 
     const char * pComSpec = "COMSPEC=COMMAND.COM";
     const char * pBriefFlags = "BFLAGS=-kzr -mDJL";
@@ -6006,31 +7192,29 @@ uint32_t GetBiosDailyTimer()
 {
     // the daily timer bios value should increment 18.206 times per second -- every 54.9251 ms
 
-#if true
-    // this method is more accurate and rolls less often, but maybe 15% slower
-    // get 100ns intervals since 1/1/1601.
-    // 1 ms = 1000000 ns == 10000 100ns
-    // Need to subtract starting system time or apps like Quick C 2.0 fail to run.
-
-    uint64_t since_epoch;
-    GetSystemTimeAsFileTime( (FILETIME *) & since_epoch );
-    since_epoch -= g_startSystemTime;
-    return (uint32_t) ( since_epoch / 549251 );
-#else
-    // less accurate and rolls more often, but maybe 15% faster
-    return GetTickCount() / 55;
-#endif
+    high_resolution_clock::time_point tNow = high_resolution_clock::now();
+    uint64_t diff = duration_cast<std::chrono::nanoseconds>( tNow - g_tAppStart ).count();
+    return (uint32_t) ( diff / 54925100 );
 } //GetBiosDailyTimer
 
 int main( int argc, char ** argv )
 {
-    GetSystemTimeAsFileTime( (FILETIME *) & g_startSystemTime );
     g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
+    g_tAppStart = high_resolution_clock::now();    
+
+#ifndef _WIN32
+    tzset(); // or localtime_r won't work correctly
+#endif        
 
     // put the app name without a path or .exe into g_thisApp
 
     char * pname = argv[ 0 ];
+#ifdef _WIN32
     char * plastslash = strrchr( pname, '\\' );
+#else
+    char * plastslash = strrchr( pname, '/' );
+#endif
+
     if ( 0 != plastslash )
         pname = plastslash + 1;
     strcpy( g_thisApp, pname );
@@ -6040,14 +7224,16 @@ int main( int argc, char ** argv )
 
     memset( memory, 0, sizeof( memory ) );
 
+#ifdef _WIN32
     g_hConsoleOutput = GetStdHandle( STD_OUTPUT_HANDLE );
     g_hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
     g_heventKeyStroke = CreateEvent( 0, FALSE, FALSE, 0 );
+#endif
 
     init_blankline( DefaultVideoAttribute );
 
     char * pcAPP = 0;
-    bool trace = FALSE;
+    bool trace = false;
     uint64_t clockrate = 0;
     bool showPerformance = false;
     char acAppArgs[127] = {0}; // max length for DOS command tail
@@ -6055,7 +7241,9 @@ int main( int argc, char ** argv )
     bool force80x25 = false;
     bool clearDisplayOnExit = true;
     char * penvVars = 0;
+#ifdef _WIN32
     DWORD_PTR dwProcessAffinityMask = 0; // by default let the OS decide
+#endif
     CKeyStrokes::KeystrokeMode keystroke_mode = CKeyStrokes::KeystrokeMode::ksm_None;
 
     for ( int i = 1; i < argc; i++ )
@@ -6067,12 +7255,10 @@ int main( int argc, char ** argv )
         {
             char ca = (char) tolower( parg[1] );
 
-            if ( 'd' == ca )
-                clearDisplayOnExit = false;
-            else if ( 's' == ca )
+            if ( 's' == ca )
             {
                 if ( ':' == parg[2] )
-                    clockrate = _strtoui64( parg + 3 , 0, 10 );
+                    clockrate = strtoull( parg + 3 , 0, 10 );
                 else
                     usage( "colon required after s argument" );
             }
@@ -6086,6 +7272,14 @@ int main( int argc, char ** argv )
                 g_forceConsole = true;
             else if ( 'C' == parg[1] )
                 force80x25 = true;
+            else if ( 'd' == ca )
+                clearDisplayOnExit = false;
+#ifndef _WIN32
+            else if ( 'u' == ca )
+                g_forcePathsUpper = true;
+            else if ( 'l' == ca )
+                g_forcePathsLower = true;            
+#endif            
             else if ( 'e' == ca )
             {
                 if ( penvVars )
@@ -6108,6 +7302,7 @@ int main( int argc, char ** argv )
                 else
                     usage( "invalid keystroke mode" );
             }
+#ifdef _WIN32            
             else if ( 'z' == ca )
             {
                 if ( ':' == parg[2] )
@@ -6115,6 +7310,7 @@ int main( int argc, char ** argv )
                 else
                     usage( "colon required after z argument" );
             }
+#endif            
             else
                 usage( "invalid argument specified" );
         }
@@ -6132,8 +7328,13 @@ int main( int argc, char ** argv )
         }
     }
 
-    static WCHAR logFile[ MAX_PATH ];
+#ifdef _WIN32
+    static wchar_t logFile[ MAX_PATH ];
     wsprintf( logFile, L"%S.log", g_thisApp );
+#else
+    static char logFile[ MAX_PATH + 10 ];
+    sprintf( logFile, "%s.log", g_thisApp );
+#endif    
     tracer.Enable( trace, logFile, true );
     tracer.SetQuiet( true );
     cpu.trace_instructions( traceInstructions );
@@ -6145,7 +7346,12 @@ int main( int argc, char ** argv )
     }
 
     strcpy( g_acApp, pcAPP );
+#ifdef _WIN32    
     _strupr( g_acApp );
+#else
+    const char * pLinuxPath = DOSToLinuxPath( g_acApp );
+    strcpy( g_acApp, pLinuxPath );
+#endif    
 
     if ( !file_exists( g_acApp ) )
     {
@@ -6159,16 +7365,35 @@ int main( int argc, char ** argv )
                 char * dot = strstr( g_acApp, ".COM" );
                 strcpy( dot, ".EXE" );
                 if ( !file_exists( g_acApp ) )
+                {
+#ifdef _WIN32                    
                     usage( "can't find command file" );
+#else                    
+                    tracer.Trace( "couldn't find input file '%s'\n", g_acApp );
+                    char * pdot = strrchr( g_acApp, '.' );
+                    strcpy( pdot, ".com" );
+                    if ( !file_exists( g_acApp ) )
+                    {
+                        strcpy( pdot, ".exe" );
+                        if ( !file_exists( g_acApp ) )
+                        {
+                            tracer.Trace( "looked last for '%s'\n", g_acApp );
+                            usage( "can't find command file" );
+                        }
+                    }
+#endif               
+                }     
             }
         }
     }
 
+#ifdef _WIN32
     if ( 0 != dwProcessAffinityMask )
     {
         BOOL ok = SetProcessAffinityMask( (HANDLE) -1, dwProcessAffinityMask );
         tracer.Trace( "Result of SetProcessAffinityMask( %#x ) is %d\n", dwProcessAffinityMask, ok );
     }
+#endif    
 
     g_keyStrokes.SetMode( keystroke_mode );
 
@@ -6370,7 +7595,9 @@ int main( int argc, char ** argv )
     peekKbdThread.EndThread();
 
     g_consoleConfig.RestoreConsole( clearDisplayOnExit );
+#ifdef _WIN32
     CloseHandle( g_heventKeyStroke );
+#endif
 
     if ( showPerformance )
     {
