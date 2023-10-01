@@ -39,7 +39,7 @@ class CPUCycleDelay
                     // sleep in a slightly less than busy loop.
                     // this is slightly slower than running in a busy loop, but it's pretty close
 
-                    #ifdef _MSC_VER
+                    #ifdef _WIN32
                         SleepEx( 1, FALSE );
                     #else
                         struct timespec ts = { 0, 1000000 };

@@ -1937,7 +1937,7 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
     }
     else if ( 0x4e == sc ) // keypad +
     {
-        if ( falt ) { scancode = 0x4a; asciiChar = 0; }
+        if ( falt ) { scancode = 0x4e; asciiChar = 0; }
     }
     else if ( 0x4f == sc ) // End
     {
@@ -2117,7 +2117,7 @@ const uint8_t ascii_to_scancode[ 128 ] =
       0,  30,  48,  46,  32,  18,  33,  34, // 0
      14,  15,  36,  37,  38,  28,  49,  24, // 8
      25,  16,  19,  31,  20,  22,  47,  17, // 16
-     45,  21,  44,   1,   0,   0,   0,   0, // 24
+     45,  21,  44,   1,  43,   0,   0,   0, // 24
      57,   2,  40,   4,   5,   6,   8,  40, // 32
      10,  11,   9,  13,  51,  12,  52,  53, // 40
      11,   2,   3,   4,   5,   6,   7,   8, // 48
@@ -2147,11 +2147,13 @@ void consume_keyboard()
             if ( g_consoleConfig.portable_kbhit() )
             {
                 uint8_t secondAscii = g_consoleConfig.portable_getch();
+                tracer.Trace( "    secondAscii: '%c' == %d\n", secondAscii, secondAscii );
                 if ( '[' == secondAscii )
                 {
                     if ( g_consoleConfig.portable_kbhit() )
                     {
                         uint8_t thirdAscii = g_consoleConfig.portable_getch();
+                        tracer.Trace( "    thirdAscii: '%c' == %d\n", thirdAscii, thirdAscii );
                         if ( 'D' == thirdAscii )
                             kbd_buf.Add( 0, 75 ); // left arrow
                         else if ( 'B' == thirdAscii )
@@ -2188,10 +2190,26 @@ void consume_keyboard()
                                         kbd_buf.Add( 0, fnumber + 54 ); // ALT
                                 }
                             }
-                            else if ( 51 == following ) // ALT depressed for F1-F4
+                            else if ( 51 == following ) // ALT depressed for F1-F4, HOME, etc.
                             {
                                 int next = g_consoleConfig.portable_getch();
-                                kbd_buf.Add( 0, next + 24 );
+                                tracer.Trace( "    next: %d\n", next );
+                                if ( next >= 80 && next <= 83 ) // F1-F4
+                                    kbd_buf.Add( 0, next + 24 );
+                                else if ( 70 == next ) // END
+                                    kbd_buf.Add( 0, 159 );
+                                else if ( 72 == next ) // HOME
+                                    kbd_buf.Add( 0, 151 );
+                                else if ( 68 == next ) // LEFT
+                                    kbd_buf.Add( 0, 155 );
+                                else if ( 66 == next ) // DOWN
+                                    kbd_buf.Add( 0, 160 );
+                                else if ( 67 == next ) // RIGHT
+                                    kbd_buf.Add( 0, 157 );
+                                else if ( 65 == next ) // UP
+                                    kbd_buf.Add( 0, 152 );
+                                else
+                                    tracer.Trace( "    unhandled ALT F1-F4 etc.\n" );
                             }
                             else if ( 53 == following ) // CTRL depressed for F1-F4
                             {
@@ -2254,6 +2272,11 @@ void consume_keyboard()
                                             tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
                                     }
                                 }
+                                else if ( 51 == next )
+                                {
+                                    uint8_t nextA = g_consoleConfig.portable_getch();
+                                    kbd_buf.Add( 0, 162 ); // ALT + INS
+                                }
                                 else if ( 126 == next )
                                 {
                                     if ( 48 == fnumber )
@@ -2267,22 +2290,48 @@ void consume_keyboard()
                                     else
                                         tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
                                 }
+                                else
+                                    tracer.Trace( "unknown next %d\n", next );
                             }
                         }                       
                         else if ( '3' == thirdAscii ) // DEL
                         {
-                            kbd_buf.Add( 0, 83 );
-                            g_consoleConfig.portable_getch(); // discard the following character
+                            uint8_t nextA = g_consoleConfig.portable_getch();
+                            tracer.Trace( "    nextA for DEL: %d\n", nextA );
+                            if ( 59 == nextA )
+                            {
+                                uint8_t nextB = g_consoleConfig.portable_getch();
+                                uint8_t nextC = g_consoleConfig.portable_getch();
+                                kbd_buf.Add( 0, 163 ); // ALT + DEL
+                            }
+                            else
+                                kbd_buf.Add( 0, 83 );
                         }
                         else if ( '5' == thirdAscii ) // pgup
                         {
-                            kbd_buf.Add( 0, 73 );
-                            g_consoleConfig.portable_getch(); // discard the following character
+                            uint8_t nextA = g_consoleConfig.portable_getch(); 
+                            tracer.Trace( "    nextA for pgup: %d\n", nextA );
+                            if ( 59 == nextA )
+                            {
+                                uint8_t nextB = g_consoleConfig.portable_getch();
+                                uint8_t nextC = g_consoleConfig.portable_getch();
+                                kbd_buf.Add( 0, 153 ); // ALT + pgup
+                            }
+                            else
+                                kbd_buf.Add( 0, 73 );
                         }
                         else if ( '6' == thirdAscii ) // pgdown
                         {
-                            kbd_buf.Add( 0, 81 );
-                            g_consoleConfig.portable_getch(); // discard the following character
+                            uint8_t nextA = g_consoleConfig.portable_getch(); 
+                            tracer.Trace( "    nextA for pgup: %d\n", nextA );
+                            if ( 59 == nextA )
+                            {
+                                uint8_t nextB = g_consoleConfig.portable_getch();
+                                uint8_t nextC = g_consoleConfig.portable_getch();
+                                kbd_buf.Add( 0, 161 ); // ALT + pgdown
+                            }
+                            else
+                                kbd_buf.Add( 0, 81 );
                         }
                         else if ( 'H' == thirdAscii ) // home
                             kbd_buf.Add( 0, 71 );
@@ -2293,6 +2342,8 @@ void consume_keyboard()
                         else
                             tracer.Trace( "unknown [ ESC sequence char %d == '%c'\n", thirdAscii, thirdAscii );
                     }
+                    else
+                        kbd_buf.Add( 0, 26 ); // ALT '['
                 }
                 else if ( secondAscii <= 'z' && secondAscii >= 'a' )
                 {
@@ -2315,7 +2366,22 @@ void consume_keyboard()
                     else
                         tracer.Trace( "unknown ESC O fnumber %d\n", fnumber );
                 }
-
+                else if ( '\\' == secondAscii )
+                    kbd_buf.Add( 0, 38 ); // ALT '\\'
+                else if ( ';' == secondAscii )
+                    kbd_buf.Add( 0, 39 ); // ALT ';'
+                else if ( ']' == secondAscii )
+                    kbd_buf.Add( 0, 27 ); // ALT ']'
+                else if ( '-' == secondAscii )
+                    kbd_buf.Add( 0, 130 ); // ALT '-' (normal and numeric keypad, can't distinguish)
+                else if ( '=' == secondAscii )
+                    kbd_buf.Add( 0, 131 ); // ALT '='
+                else if ( 127 == secondAscii ) // ALT + DEL
+                    kbd_buf.Add( 0, 14 );
+                else if ( '+' == secondAscii ) // ALT + numeric keypad +
+                    kbd_buf.Add( 0, 78 );
+                else if ( ',' == secondAscii || '.' == secondAscii || '/' == secondAscii || '\'' == secondAscii || '`' == secondAscii )
+                    tracer.Trace( "  swallowing ALT + character '%c' == %d\n", secondAscii, secondAscii );
                 else
                 {
                     tracer.Trace( "unknown ESC second character %d == '%c'\n", secondAscii, secondAscii );
@@ -2324,7 +2390,10 @@ void consume_keyboard()
                 }
             }
             else
+            {
+                tracer.Trace( "  no character following ESC\n" );
                 kbd_buf.Add( asciiChar, 1 ); // plain old escape character
+            }
         }
         else if ( 8 == asciiChar ) // swap backspace with ^backspace
             kbd_buf.Add( 127, 14 );

@@ -1,12 +1,12 @@
 #pragma once
 
-#ifndef _MSC_VER
+#ifndef _WIN32
 #include <pthread.h>
 #endif
 
 class CSimpleThread
 {
-#ifdef _MSC_VER    
+#ifdef _WIN32    
     private:
         HANDLE heventStop;
         HANDLE hthread;
@@ -19,7 +19,7 @@ class CSimpleThread
 #endif        
 
     public:
-#ifdef _MSC_VER
+#ifdef _WIN32
         CSimpleThread( LPTHREAD_START_ROUTINE func ) : heventStop( INVALID_HANDLE_VALUE ), hthread( INVALID_HANDLE_VALUE )
         {
             heventStop = CreateEvent( 0, FALSE, FALSE, 0 );

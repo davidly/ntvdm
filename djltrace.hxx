@@ -19,7 +19,7 @@
 #include <vector>
 #include <cstring>
 
-#ifndef _MSC_VER
+#ifndef _WIN32
     #include <sys/unistd.h>
     #ifdef __APPLE__
         #include <unistd.h>
@@ -141,7 +141,7 @@ class CDJLTrace
                 va_start( args, format );
                 if ( !quiet )
                     fprintf( fp, "PID %6u -- ",
-#ifdef _MSC_VER
+#ifdef _WIN32
                              (unsigned) _getpid() );
 #else
                              getpid() );
@@ -181,7 +181,7 @@ class CDJLTrace
                 va_start( args, format );
                 if ( !quiet )
                     fprintf( fp, "PID %6u -- ",
-#ifdef _MSC_VER
+#ifdef _WIN32
                              _getpid() );
 #else
                              getpid() );

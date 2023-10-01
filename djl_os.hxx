@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#ifdef _MSC_VER
+#ifdef _WIN32
 
     #ifndef UNICODE
         #define UNICODE
@@ -147,7 +147,7 @@ inline const char * target_platform()
         return "amd64";
     #elif defined( _M_ARM64 )     // msft on Windows
         return "arm64";
-    #elif defined( _MSC_VER )     // msft on Windows 32-bit
+    #elif defined( _WIN32 )     // msft on Windows 32-bit
         return "x86";
     #else
         return "(other)";
@@ -169,8 +169,8 @@ inline const char * compiler_used()
 
     #if defined( __GNUC__ )
         return "g++";
-    #elif defined( _MSC_VER )
-        sprintf( acver, "msft C++ ver %u", _MSC_VER );
+    #elif defined( _WIN32 )
+        sprintf( acver, "msft C++ ver %u", _WIN32 );
         return acver;
     #elif defined( __clang__ )
         return "clang";
@@ -185,7 +185,7 @@ inline const char * build_platform()
         return "apple";
     #elif defined( __linux )
         return "linux";
-    #elif defined( _MSC_VER )
+    #elif defined( _WIN32 )
         return "windows";
     #else
         return "unknown";
