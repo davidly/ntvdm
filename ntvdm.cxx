@@ -1527,7 +1527,7 @@ void UpdateDisplayRow( uint32_t y )
                 DecodeAttributes( aAttribs[ x ], fgRGB, bgRGB, intense );
                 printf( "%c[%d;%d;%dm", 27, intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
             }
-            printf( "%c", ac[ x ] );
+            putchar( ac[ x ] );
         }
     }
     UpdateScreenCursorPosition();
@@ -2163,24 +2163,41 @@ void consume_keyboard()
                         else if ( '1' == thirdAscii ) // F5-F8
                         {
                             uint8_t fnumber = g_consoleConfig.portable_getch();
-                            tracer.Trace( "  f5-f8 fnumber: %d\n", fnumber );
+                            tracer.Trace( "    f5-f8 fnumber: %d\n", fnumber );
                             uint8_t following = g_consoleConfig.portable_getch(); // discard the following character
-                            tracer.Trace( "  following character: %d\n", following );
+                            tracer.Trace( "    following character: %d\n", following );
 
-                            if ( 59 == following ) // ALT depressed for F5-F8
+                            if ( 59 == following ) // ALT/CTRL depressed for F5-F8
                             {
-                                if ( 53 == fnumber )
-                                    kbd_buf.Add( 0, 108 );
-                                else if ( fnumber >= 55 && fnumber <= 57 )
-                                    kbd_buf.Add( 0, fnumber + 54 );
+                                int nextA = g_consoleConfig.portable_getch(); // consume yet more
+                                int nextB = g_consoleConfig.portable_getch(); // consume yet more
+                                tracer.Trace( "    nextA: %d, nextB: %d\n", nextA, nextB );
 
-                                g_consoleConfig.portable_getch(); // consume yet more
-                                g_consoleConfig.portable_getch(); // consume yet more
+                                if ( 53 == fnumber )
+                                {
+                                    if ( 53 == nextA )
+                                        kbd_buf.Add( 0, 98 ); // CTRL
+                                    else
+                                        kbd_buf.Add( 0, 108 ); // ALT
+                                }
+                                else if ( fnumber >= 55 && fnumber <= 57 )
+                                {
+                                    if ( 53 == nextA )
+                                        kbd_buf.Add( 0, fnumber + 44 ); // CTRL
+                                    else
+                                        kbd_buf.Add( 0, fnumber + 54 ); // ALT
+                                }
                             }
                             else if ( 51 == following ) // ALT depressed for F1-F4
                             {
                                 int next = g_consoleConfig.portable_getch();
                                 kbd_buf.Add( 0, next + 24 );
+                            }
+                            else if ( 53 == following ) // CTRL depressed for F1-F4
+                            {
+                                int next = g_consoleConfig.portable_getch();
+                                tracer.Trace( "    next: %d\n", next );
+                                kbd_buf.Add( 0, next + 14 );
                             }
                             else
                             {
@@ -2193,7 +2210,7 @@ void consume_keyboard()
                         else if ( '2' == thirdAscii ) // INS + F9-F12
                         {
                             uint8_t fnumber = g_consoleConfig.portable_getch();
-                            tracer.Trace( "  ins + f9-f12 fnumber: %d\n", fnumber );
+                            tracer.Trace( "    ins + f9-f12 fnumber: %d\n", fnumber );
                             if ( 126 == fnumber )
                                 kbd_buf.Add( 0, 82 ); // INS
                             else
@@ -2202,23 +2219,40 @@ void consume_keyboard()
                                 if ( fnumber < 121 )
                                     next = g_consoleConfig.portable_getch();
 
-                                tracer.Trace( "  next %d\n", next );
+                                tracer.Trace( "    next %d\n", next );
 
                                 if ( 59 == next ) // ALT is pressed
                                 {
-                                    if ( 48 == fnumber )
-                                        kbd_buf.Add( 0, 112 );
-                                    else if ( 49 == fnumber )
-                                        kbd_buf.Add( 0, 113 );
-                                    else if ( 51 == fnumber )
-                                        kbd_buf.Add( 0, 139 );
-                                    else if ( 52 == fnumber )
-                                        kbd_buf.Add( 0, 140 );
-                                    else
-                                        tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
+                                    int nextA = g_consoleConfig.portable_getch();
+                                    int nextB = g_consoleConfig.portable_getch();
+                                    tracer.Trace( "    nextA: %d, nextB: %d\n", nextA, nextB );
 
-                                    g_consoleConfig.portable_getch();
-                                    g_consoleConfig.portable_getch();
+                                    if ( 51 == nextA ) // ALT
+                                    {
+                                        if ( 48 == fnumber )
+                                            kbd_buf.Add( 0, 112 );
+                                        else if ( 49 == fnumber )
+                                            kbd_buf.Add( 0, 113 );
+                                        else if ( 51 == fnumber )
+                                            kbd_buf.Add( 0, 139 );
+                                        else if ( 52 == fnumber )
+                                            kbd_buf.Add( 0, 140 );
+                                        else
+                                            tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
+                                    }
+                                    else if ( 53 == nextA ) // CTRL
+                                    {
+                                        if ( 48 == fnumber )
+                                            kbd_buf.Add( 0, 102 );
+                                        else if ( 49 == fnumber )
+                                            kbd_buf.Add( 0, 103 );
+                                        else if ( 51 == fnumber )
+                                            kbd_buf.Add( 0, 137 );
+                                        else if ( 52 == fnumber )
+                                            kbd_buf.Add( 0, 138 );
+                                        else
+                                            tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
+                                    }
                                 }
                                 else if ( 126 == next )
                                 {
