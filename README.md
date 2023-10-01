@@ -1,5 +1,6 @@
 # ntvdm
-NT Virtual DOS Machine. Not the real one, but this one runs on 64-bit Windows (x64 and ARM64)
+NT Virtual DOS Machine. Not the real one, but this one runs on 64-bit Windows (x64 and ARM64). Initial support
+for Linux is complete; see notes below.
 
 This code emulates the i8086 and DOS well enough to run some command-line and text-mode apps. I wrote it
 so I could test my BA BASIC compiler (in the TTT repo). 
@@ -100,6 +101,7 @@ Usage information:
                    for 4.77Mhz, use -s:4770000
                    to roughly match a 4.77Mhz 8088, use -s:4500000
             -t     enable debug tracing to ntvdm.log
+            -u     (Linux-only) force all paths to be uppercase
             -z:X   applies X as a hex mask to SetProcessAffinityMask, e.g.:
                      /z:11    2 performance cores on an i7-1280P
                      /z:3000  2 efficiency cores on an i7-1280P
@@ -125,3 +127,18 @@ sample usage:
     approx ms at 4.77Mhz:          998,184  == 0 days, 0 hours, 16 minutes, 38 seconds, 184 milliseconds
     unique first opcodes:               63
     app exit code:                       0
+
+Linux notes:
+
+    * Linux support is in progress; there are known issues called out below and certainly I'll find more bugs soon.
+    * I lightly tested with all of the apps called out above and they appear to work.
+    * Command-line apps are much more likely to work well than 80x25 text-mode apps.
+    * Building and testing was done strictly on WSL2 with Ubutnu 20.04; other platforms will likely have issues.
+    * Use m.sh and mr.sh to build using g++.
+    * The code assumes VT-100 support is available in your terminal window.
+    * Linix is case-sensitive and DOS isn't. On my machine I created a new root folder for test apps where everything is 
+    UPPERCASE and I use the -u switch with NTVDM. Not doing this will lead to apps not finding files.
+    * Apps that use the Alt key generally work, but I'm looking for a better solution as it's sometimes glitchy.
+    * Keyboard handling adds some small (10ms) delays to app responsivness and app shutdown. I'm working on a fix.
+    * I use ASCII characters for Code Page 437 characters, which can be ugly. Anyone know how to use CP 437 on Linux?
+
