@@ -137,6 +137,7 @@ Linux notes:
     * I lightly tested with all of the apps called out above and they appear to work.
     * Command-line apps are much more likely to work well than 80x25 text-mode apps.
     * Building and testing was done strictly on WSL2 with Ubutnu 20.04; other platforms will likely have issues.
+    * Also built/tested on Debian running on RISC-V. mike632t has tested on Debian on x86 and x64 (thank you!).
     * Use m.sh and mr.sh to build using g++. use -fsigned-char with g++ on RISC-V and other platforms to force signed char.
     * The code assumes VT-100 support is available in your terminal window.
     * Linux is case-sensitive and DOS isn't. On my machine I created a new root folder for test apps where everything is 
