@@ -2136,9 +2136,10 @@ const uint8_t ascii_to_scancode[ 128 ] =
 // - no way to determine if keypad + is from the keypad and not the plus key (Brief is sad)
 // - linux translates ^j as ascii 0xa instead of 0x6a, so ^j output is wrong for DOS apps.
 // - no global way to track if the ALT key is currently down, so the hacks below with g_altPressedRecently.
-// - ^[ comes through as ESC with no indication that the [ key was pressed
-// - perhaps the ugliest code ever; I must refactor it.
+// - ^[ comes through as junst an ESC with no indication that the [ key was pressed
+// - this is perhaps the ugliest code ever; I must refactor it.
 // - ^; comes through as a plain ESC
+// helpful: http://www.osfree.org/docs/cmdref/cmdref.2.0476.php
 
 void consume_keyboard()
 {
@@ -2417,7 +2418,6 @@ void consume_keyboard()
 
                     // somewhat massive hack because I don't know how to tell if ALT is pressed on Linux
                     g_altPressedRecently = true;
-
                     scanCode = ascii_to_scancode[ secondAscii - 'a' + 1 ];
                     kbd_buf.Add( 0, scanCode );
                 }
@@ -2850,6 +2850,21 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         return std::regex_match( input, rgx );
     } //wildMatch
 
+    void tmTimeToDos( long sec, uint16_t & dos_time, uint16_t & dos_date )
+    {
+        struct tm lt;
+        localtime_r( &sec, &lt );
+        uint16_t _mday = lt.tm_mday;
+        uint16_t _mon = 1 + lt.tm_mon;
+        uint16_t _year = 1900 + lt.tm_year - 1980;
+        dos_date = _mday | ( _mon << 5 ) | ( _year << 9 );
+
+        uint16_t _hour = lt.tm_hour;
+        uint16_t _min = lt.tm_min; 
+        uint16_t _sec = lt.tm_sec / 2; // 2-second granularity
+        dos_time = _sec | ( _min << 5 ) | ( _hour << 11 );
+    } //tmTimeToDos
+
     bool ProcessFoundFile( DosFindFile * pff, LINUX_FIND_DATA & fd )
     {
         const char * linuxPath = DOSToLinuxPath( fd.cFileName );
@@ -2884,18 +2899,7 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         _strupr( pff->file_name );
         pff->file_size = statbuf.st_size;
         pff->file_attributes = matching_attr;
-
-        struct tm modified_localtime;
-        localtime_r( &statbuf.st_mtim.tv_sec, &modified_localtime );
-        uint16_t _mday = modified_localtime.tm_mday;
-        uint16_t _mon = 1 + modified_localtime.tm_mon;
-        uint16_t _year = 1900 + modified_localtime.tm_year - 1980;
-        pff->file_date = _mday | ( _mon << 5 ) | ( _year << 9 );
-
-        uint16_t _hour = modified_localtime.tm_hour;
-        uint16_t _min = modified_localtime.tm_min; 
-        uint16_t _sec = modified_localtime.tm_sec / 2;
-        pff->file_time = _sec | ( _min << 5 ) | ( _hour << 11 );
+        tmTimeToDos( statbuf.st_mtim.tv_sec, pff->file_time, pff->file_date );
 
         tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
         return true;
@@ -2969,18 +2973,7 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         }
 
         pfcb->fileSize = statbuf.st_size;
-
-        struct tm modified_localtime;
-        localtime_r( &statbuf.st_mtim.tv_sec, &modified_localtime );
-        uint16_t _mday = modified_localtime.tm_mday;
-        uint16_t _mon = 1 + modified_localtime.tm_mon;
-        uint16_t _year = 1900 + modified_localtime.tm_year - 1980;
-        pfcb->date = _mday | ( _mon << 5 ) | ( _year << 9 );
-
-        uint16_t _hour = modified_localtime.tm_hour;
-        uint16_t _min = modified_localtime.tm_min; 
-        uint16_t _sec = modified_localtime.tm_sec / 2;
-        pfcb->time = _sec | ( _min << 5 ) | ( _hour << 11 );
+        tmTimeToDos( statbuf.st_mtim.tv_sec, pfcb->time, pfcb->date );
 
         pfcb->TraceFirst16();
         return true;
@@ -6475,17 +6468,11 @@ void handle_int_21( uint8_t c )
                     {
                         cpu.set_ax( 0 );
                         cpu.set_carry( false );
-                        struct tm modified_localtime;
-                        localtime_r( &statbuf.st_mtim.tv_sec, &modified_localtime );
-                        uint16_t _mday = modified_localtime.tm_mday;
-                        uint16_t _mon = 1 + modified_localtime.tm_mon;
-                        uint16_t _year = 1900 + modified_localtime.tm_year - 1980;
-                        cpu.set_dx( _mday | ( _mon << 5 ) | ( _year << 9 ) );
 
-                        uint16_t _hour = modified_localtime.tm_hour;
-                        uint16_t _min = modified_localtime.tm_min; 
-                        uint16_t _sec = modified_localtime.tm_sec / 2;
-                        cpu.set_cx( _sec | ( _min << 5 ) | ( _hour << 11 ) );
+                        uint16_t the_time, the_date;
+                        tmTimeToDos( statbuf.st_mtim.tv_sec, the_time, the_date );
+                        cpu.set_cx( the_time );
+                        cpu.set_dx( the_date );
                     }
                     else
                     {
