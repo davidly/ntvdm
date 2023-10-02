@@ -137,11 +137,12 @@ Linux notes:
     * I lightly tested with all of the apps called out above and they appear to work.
     * Command-line apps are much more likely to work well than 80x25 text-mode apps.
     * Building and testing was done strictly on WSL2 with Ubutnu 20.04; other platforms will likely have issues.
-    * Use m.sh and mr.sh to build using g++.
+    * Use m.sh and mr.sh to build using g++. use -fsigned-char with g++ on RISC-V and other platforms to force signed char.
     * The code assumes VT-100 support is available in your terminal window.
     * Linux is case-sensitive and DOS isn't. On my machine I created a new root folder for test apps where everything is 
     UPPERCASE and I use the -u switch with NTVDM. Not doing this will lead to apps not finding files.
     * Apps that use the Alt key generally work, but I'm looking for a better solution as it's sometimes glitchy.
     * Keyboard handling adds some small (10ms) delays to app responsivness and app shutdown. I'm working on a fix.
     * I use ASCII characters for Code Page 437 characters, which can be ugly. Anyone know how to use CP 437 on Linux?
+    * Most DOS apps require CR/LF. Ensure your input files have this on Linux systems or apps fail in odd ways.
 
