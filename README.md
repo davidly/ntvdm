@@ -75,6 +75,9 @@ seems close. I validated the mips.com results on an actual 8088 running at 4.77M
 The msc_v3 folder contains command.c, a greatly simplified replacement for command.com that can be built
 with that compiler. It's handy for when apps like WordStar and QBX shell out to command.com.
 
+The tasm folder contains several assembly language routines for various interrupts. mint.bat generates
+the machine code in C arrays that are copied into ntvdm.cxx and loaded into DOS RAM at runtime.
+
 Folders with test apps, copyrights owned by those owners.
 
     gwbasic -- gwbasic 3.22
@@ -83,7 +86,7 @@ Folders with test apps, copyrights owned by those owners.
     turbo3dos -- Turbo Pascal 3.02A
     qbx -- Quick Basic 7.1
     wordstar -- WordStar Professional Release 4
-    task -- Turbo Assembler
+    tasm -- Turbo Assembler
 
 Usage information:
 
@@ -136,7 +139,7 @@ Linux notes:
     * Building and testing was done strictly on WSL2 with Ubutnu 20.04; other platforms will likely have issues.
     * Use m.sh and mr.sh to build using g++.
     * The code assumes VT-100 support is available in your terminal window.
-    * Linix is case-sensitive and DOS isn't. On my machine I created a new root folder for test apps where everything is 
+    * Linux is case-sensitive and DOS isn't. On my machine I created a new root folder for test apps where everything is 
     UPPERCASE and I use the -u switch with NTVDM. Not doing this will lead to apps not finding files.
     * Apps that use the Alt key generally work, but I'm looking for a better solution as it's sometimes glitchy.
     * Keyboard handling adds some small (10ms) delays to app responsivness and app shutdown. I'm working on a fix.
