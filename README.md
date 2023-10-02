@@ -144,4 +144,5 @@ Linux notes:
     * Apps that use the Alt key generally work, but I'm looking for a better solution as it's sometimes glitchy.
     * Keyboard handling adds some small (10ms) delays to app responsivness and app shutdown. I'm working on a fix.
     * I use ASCII characters for Code Page 437 characters, which can be ugly. Anyone know how to use CP 437 on Linux?
+    * Most DOS apps require CR/LF. Ensure your input files have this on Linux systems or apps fail in odd ways.
 
