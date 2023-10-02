@@ -1467,13 +1467,13 @@ uint8_t MapAsciiArt( uint8_t x )
         return ' ';
     if ( 7 == x ) // round dot for radio buttons
         return '+';
-    if ( 0xc4 == x || 0x1a == x || 0x1b == x || 0xcd == x )
+    if ( 0xc4 == x || 0x1a == x || 0x1b == x || 0xcd == x || 0x10 == x )
         return '-';
-    if ( 0xb3 == x || 0xba == x  )
+    if ( 0xb3 == x || 0xba == x || 0x17 == x || 0x18 == x || 0x19 == x )
         return '|';
     if ( 0xda == x  || 0xc3 == x || 0xb4 == x || 0xbf == x || 0xd9 == x || 0xc0 == x || 0xd5 == x || 0xb8 == x || 0xc9 == x || 0xbb == x || 0xc8 == x || 0xbc == x || 0xd4 == x || 0xbe == x )
         return '+';
-    if ( 0xb0 == x || 0xb1 == x || 0xb2 == x || 7 == x || 0xfe == x || 0x12 == x )
+    if ( 0xb0 == x || 0xb1 == x || 0xb2 == x || 4 == x || 0xfe == x || 0x12 == x )
         return ' ';
     return x;
 } //MapAsciiArt
@@ -1560,7 +1560,7 @@ bool UpdateDisplay()
                 UpdateDisplayRow( y );
         }
 
-        //traceDisplayBufferAsHex();
+        traceDisplayBufferAsHex();
         //traceDisplayBuffers();
         //cpu.trace_instructions( true );
         UpdateScreenCursorPosition(); // restore cursor position to where it was before
