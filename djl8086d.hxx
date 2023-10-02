@@ -88,7 +88,7 @@ class CDisassemble8086
             }
             else if ( 1 == _mod )
             {
-                int offset = (int) (char) _pcode[2];
+                int offset = (int) (int8_t) _pcode[2];
                 _daa( "[%s%s%d]", rm_strings[ rm_to_use ], ( offset >= 0 ) ? "+" : "", offset );
                 _bc += 1;
             }
@@ -369,7 +369,7 @@ class CDisassemble8086
                     else if ( _b0 >= 0x70 && _b0 <= 0x7f )
                     {
                         _bc = 2;
-                        _da( "%s    %d", jmp_strings[ _b0 & 0xf ], (int) (char) _b1 );
+                        _da( "%s    %d", jmp_strings[ _b0 & 0xf ], (int) (int8_t) _b1 );
                         _pcode = 0;
                     }
                     else if ( _b0 >= 0xb0 && _b0 <= 0xbf )
