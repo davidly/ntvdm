@@ -344,7 +344,7 @@ class CDisassemble8086
                 case 0xe8: _da( "call   %04xh", _b12 ); _bc = 3; _pcode = 0; break;
                 case 0xe9: _da( "jmp    far %04xh", _b12 ); _bc = 3; _pcode = 0; break;
                 case 0xea: _da( "jmp    far %04xh:%04xh", _b34, _b12 ); _bc = 5; _pcode = 0; break;
-                case 0xeb: _da( "jmp    short %d", (int) (char ) _b1 ); _bc = 2; _pcode = 0; break;
+                case 0xeb: _da( "jmp    short %d", (int) (int8_t) _b1 ); _bc = 2; _pcode = 0; break;
                 case 0xec: _da( "in     al, dx" ); break;
                 case 0xed: _da( "in     ax, dx" ); break;
                 case 0xee: _da( "out    al, dx" ); break;
