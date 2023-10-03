@@ -237,7 +237,7 @@ class CDJLTrace
                 {
                     char ch = buf[ o - offset ];
         
-                    if ( ch < ' ' || 127 == ch )
+                    if ( (int8_t) ch < ' ' || 127 == ch )
                         ch = '.';
         
                     *pline++ = ch;
