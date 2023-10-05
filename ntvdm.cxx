@@ -387,6 +387,12 @@ struct DosFindFile
 };
 #pragma pack(pop)
 
+static void version()
+{
+    printf( "%s\n", build_string() );
+    exit( 1 );
+} //about
+
 static void usage( char const * perr )
 {
     g_consoleConfig.RestoreConsole( false );
@@ -394,6 +400,7 @@ static void usage( char const * perr )
     if ( perr )
         printf( "error: %s\n", perr );
 
+#ifdef _WIN32
     printf( "NT Virtual DOS Machine: emulates an 8086 MS-DOS 3.00 runtime environment enough to run COM/EXE apps\n" );
     printf( "usage: %s [arguments] <DOS executable> [arg1] [arg2]\n", g_thisApp );
     printf( "  notes:\n" );
@@ -401,10 +408,6 @@ static void usage( char const * perr )
     printf( "                   stay in teletype/console mode.\n" );
     printf( "            -C     always set window to 80x25; don't use teletype mode.\n" );
     printf( "            -d     don't clear the display on app exit when in 80x25 mode\n" );
-#ifndef _WIN32
-    printf( "            -u     force DOS paths to be uppercase\n" );
-    printf( "            -l     force DOS paths to be lowercase\n" );    
-#endif    
     printf( "            -e     comma-separated list of environment variables. e.g. -e:include=..\\include,lib=..\\lib\n" );
     printf( "            -h     workaround for Packed File Corrupt error: load apps High, above 64k\n" );
     printf( "            -i     trace instructions as they are executed to %s.log (this is verbose!)\n", g_thisApp );
@@ -423,14 +426,43 @@ static void usage( char const * perr )
     printf( "                     /z:11    2 performance cores on an i7-1280P\n" );
     printf( "                     /z:3000  2 efficiency cores on an i7-1280P\n" );
     printf( "                     /z:11    2 random good cores on a 5950x\n" );
+    printf( "            -v     output version information and exit.\n" );
+    printf( "            -?     output this help and exit.\n" );
     printf( " [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command\n" );
     printf( "  examples:\n" );
     printf( "      %s -c -t app.com foo bar\n", g_thisApp );
-    printf( "      %s turbo.com\n", g_thisApp );
+    printf( "      %s -s:4770000 turbo.com\n", g_thisApp );
     printf( "      %s s:\\github\\MS-DOS\\v2.0\\bin\\masm small,,,small\n", g_thisApp );
     printf( "      %s s:\\github\\MS-DOS\\v2.0\\bin\\link small,,,small\n", g_thisApp );
     printf( "      %s -t b -k myfile.asm\n", g_thisApp );
-    printf( "  %s\n", build_string() );
+#else
+    printf( "Usage: %s [OPTION]... PROGRAM [ARGUMENT]...\n", g_thisApp );
+    printf( "Emulates an 8086 and MS-DOS 3.00 runtime environment.\n" );
+    printf( "\n" );
+    printf( "  -c               don't automatically change window size.\n" );
+    printf( "  -C               change text area to 80x25 (don't use tty mode).\n" );
+    printf( "  -d               don't clear the display on exit\n" );
+    printf( "  -u               force DOS paths to be uppercase\n" );
+    printf( "  -l               force DOS paths to be lowercase\n" );    
+    printf( "  -e:env,...       define environment variables.\n" );
+    printf( "  -h               load high above 64k.\n" );
+    printf( "  -i               trace instructions to %s.log.\n", g_thisApp );
+    printf( "  -t               enable debug tracing to %s.log\n", g_thisApp );
+    printf( "  -p               show performance stats on exit.\n" ); 
+#ifdef I8086_TRACK_CYCLES
+    printf( "  -s:X             set processor speed in Hz.\n" );
+    printf( "                     for 4.77 MHz 8086 use -s:4770000.\n" );
+    printf( "                     for 4.77 MHz 8088 use -s:4500000.\n" );
+#endif
+    printf( "  -v               output version information and exit.\n" );
+    printf( "  -?               output this help and exit.\n" );
+    printf( "\n" );
+    printf( "Examples:\n" );
+    printf( "  %s -u -e:include=.\\\\inc msc.exe demo.c,,\\;\n", g_thisApp );
+    printf( "  %s -u -e:lib=.\\\\lib link.exe demo,,\\;\n", g_thisApp );
+    printf( "  %s -u -e:include=.\\\\inc,lib=.\\\\lib demo.exe one two three\n", g_thisApp );
+    printf( "  %s -s:4770000 turbo.com\n", g_thisApp );
+#endif
     exit( 1 );
 } //usage
 
@@ -2136,7 +2168,7 @@ const uint8_t ascii_to_scancode[ 128 ] =
 // - no way to determine if keypad + is from the keypad and not the plus key (Brief is sad)
 // - linux translates ^j as ascii 0xa instead of 0x6a, so ^j output is wrong for DOS apps.
 // - no global way to track if the ALT key is currently down, so the hacks below with g_altPressedRecently.
-// - ^[ comes through as junst an ESC with no indication that the [ key was pressed
+// - ^[ comes through as just an ESC with no indication that the [ key was pressed
 // - this is perhaps the ugliest code ever; I must refactor it.
 // - ^; comes through as a plain ESC
 // helpful: http://www.osfree.org/docs/cmdref/cmdref.2.0476.php
@@ -7490,6 +7522,14 @@ int main( int argc, char ** argv )
                     usage( "colon required after z argument" );
             }
 #endif            
+            else if ( 'v' == ca )
+            {
+		version();
+	    }
+            else if ( '?' == ca )
+            {
+		usage(NULL);
+	    }
             else
                 usage( "invalid argument specified" );
         }

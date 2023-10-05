@@ -1,97 +1,135 @@
-# ntvdm
-NT Virtual DOS Machine. Not the real one, but this one runs on 64-bit Windows (x64 and ARM64). Initial support
-for Linux is complete; see notes below.
+## ntvdm - An NT Virtual DOS Machine. 
 
-This code emulates the i8086 and DOS well enough to run some command-line and text-mode apps. I wrote it
-so I could test my BA BASIC compiler (in the TTT repo). 
+Not the real one, but this one can be compiled and executed on both Windows 
+(x64 and ARM64) and Linux (x64 and x32).  Support for Linux is in the early
+stages of development and not everything works as it should yet.
 
-There are many better DOS emulators available, starting with DOSBOX. This one works great as a
-way to run DOS command-line apps like compilers/assemblers/linkers/etc. from a Windows CMD
-window or batch file without having to spin up a separate window or UI.
+I  wrote it so I could test my [BASIC](https://github.com/davidly/ttt/blob/main/ba.cxx) compiler and it emulates an Intel 8086
+processor  and MS-DOS 3.00 APIs well enough to be able to run some  command
+line and text mode applications. 
 
-I've tested it with:
+There  are many better DOS emulators available, including [DOSBox](https://www.dosbox.com/), but  what
+makes this one different is that it provides a way to run a DOS application
+directly from the command line or shell/batch script in the current console
+window.
 
-    Turbo Pascal 1.00A, 3.02A, 5.5, and 7.0. The apps including debugging and apps they create.
-    Masm V1.10
-    Link V2.00 and apps it creates
-    Debug.com for MS-DOS 2.0. Breakpoints and single-stepping work.
-    QuickBasic (qbx.exe) 7.1 interpreter and apps the compiler creates
-    QBasic (qbasic.exe) 1.1 interpreter
-    WordStar Professional Release 4 for DOS
-    GWBasic in both teletype and full-screen text mode
-    Brief 3.1. -k must be passed on the Brief command line to enable "compatible" keyboard handling
-    ExeHr.exe: Microsoft (R) EXE File Header Utility  Version 2.01  
-    BC.exe: Microsoft Basic compiler 7.10, part of Quick Basic.
-    Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10 
-    Mips.com Version 1.20 from Chips and Technologies.
-    Microsoft 8086 Object Linker Version 3.01 (C) Copyright Microsoft Corp 1983, 1984, 1985
-    Microsoft C Compiler V1.04 & Microsoft Object Linker V1.10 (C) Copyright 1981 by Microsoft Inc.
-    Microsoft C Compiler V2.03 & Microsoft 8086 Object Linker Version 2.40  (C) Copyright Microsoft Corp 1983
-    Microsoft C Compiler Version 3.00 (C) Copyright Microsoft Corp 1984 1985  
-    Aztec (CG65 v3.2c 10-2-89) cross-compiler for 6502. cg65 compiler, as65 assembler, lb65 librarian, ln65 linker
-    Turbo Basic 1.1 app and apps the compiler creates.
-    Turbo C 1.0 and 2.0 and apps they create. Debug breakpoints and single-stepping work.
-    Turbo Assembler Version 3.2
-    Turbo Link Version 2.0
-    Microsoft Quick C 1.0. Tested & works. Compiling, editing, breakpoints, single-stepping, etc.
-    Lotus 1-2-3 Release 1A
-    Microsoft Quick Pascal 1.0
-    Microsoft QuickC v2.01 and v2.51 work provided incremental linking is disabled. ilink.exe reads memory control blocks, which don't exist.
-    Microsoft Word 6.0 for DOS. Set view / preferences / cursor control / speed to 0 to avoid key repeats.
-    Microsoft Works 3.0.
-    
-This code implements no graphics, sound, mouse, or anything else not needed for simple text-mode apps.
+The  emulator will work with applications that hook interrupts via the  DOS
+mechanism or by directly writing to memory. This includes support for  int9
+and int0x1c in applications like Microsoft QuickBasic and Brief Editor.  
+However it does not provide support for graphics, sound, mouse, or anything
+else that is not needed for simple text-mode apps.
 
-i8086 emulation performance is similar to other C/C++ emulators; about 30% faster than DOSBOX for the
+It also includes a disassembler that is used wnen tracing program execution
+which is useful when debugging why apps don't work properly.
+
+The  performance of the 8086 processor emulation is about the same as other
+emulators  written  in C/C++, and is about 30% faster than DOSBox  for  the
 tic-tac-toe benchmark written in 8086 assembler.
 
-I validated that ntvdm works on Arm64 with both native and x64 binaries.
+I can't vouch for 100% 8086 emulation because I can't find any applications
+that perform such validation, unlike the 6502, 8080, Z80, and other earlier
+CPUs that have validation suites.  But I have done a fair bit of testing of
+different  applications  and compared instruction and register traces  with
+other emulators.
 
-Ntvdm works with apps that hook interrupts via the DOS mechanism or by directly writing to memory. This
-includes support for int 9 and int 0x1c in apps like Quick Basic and Brief.
+The emulator can simulate running at a given clock rate, however the number
+of cycles needed for each instruction varies widely between various sources
+and the code doesn't check for misaligned memory access, not get details of
+mult/div operations correct, so the results are only an aproximatiion. 
 
-I can't vouch for 100% i8086 emulation because I can't find any apps that perform such validation, unlike
-what's out there for the 6502, 8080, Z80, and other earlier CPUs. But I have done a fair bit of testing 
-with many apps and compared instruction + register traces with other emulators.
+Using mips version 1.20 (a benchmark application from 1986 written by Chips
+and Technologies) then if the clock is set to /s:4500000 (4.5 Mhz) the 8086
+emulator runs at about the same speed an actual 8088 running at 4.77Mhz.
 
-djl8086d.hxx is an 8086 disassembler that's used when tracing instructions. It's useful when debugging why
-apps don't work properly.
+Given  the  wide variability online regarding the  performance  differences
+between the 8088 and 8086 (5%-50%) this seems quite close. 
 
-Build with m.bat or mr.bat for debug and release on Windows. Or use g++ instead using mg.bat or mgr.bat.
+### Applications Tested
+
+ * Microsoft Macro Assembler Version 1.10
+ * Microsoft Link Version 2.00
+ * DEBUG 2.0 (Breakpoints and single-stepping tested).
+ * GWBASIC
+ * Microsoft QuickBasic 1.1
+ * Microsoft QuickBasic 7.1 (Including Microsoft Basic compiler 7.10)
+ * Microsoft Brief 3.1. (Requires -k to be passed on the Brief command line)
+ * WordStar Professional Release 4 for DOS
+ * Microsoft 8086 Object Linker Version 3.01 (C) Copyright Microsoft Corp 1983, 1984, 1985
+ * Microsoft C Compiler Version 1.04 & Microsoft Object Linker Version 1.10 (1981)
+ * Microsoft C Compiler Version 2.03 & Microsoft Object Linker Version 2.40 (1983)
+ * Microsoft C Compiler Version 3.00 (1984, 1985)
+ * Microsoft Segmented-Executable Linker 5.10 
+ * Aztec (CG65 Version 3.2c ) cross-compiler (1989)
+ * Turbo Pascal Version 1.00A, 3.02A, 5.5, and 7.0. (Debugger)
+ * Turbo Basic Version 1.1 
+ * Turbo C Version1.0 and 2.0 (Including debug breakpoints and single-stepping)
+ * Turbo Assembler Version 3.2
+ * Turbo Link Version 2.0
+ * Microsoft Quick C Version 1.0. (Compiling, editing, breakpoints, single-stepping, etc)
+ * Microsoft Quick C Version 2.01 and v2.51 (Incremental linking must be is disabled)
+   * ilink.exe reads memory control blocks, which don't exist.
+ * Microsoft Quick Pascal Version 1.0
+ * Microsoft Word Version 6.0 for DOS. (Set view / preferences / cursor control / speed to 0 to avoid key repeats).
+ * Microsoft Works Version 3.0 for DOS.
+ * Lotus 1-2-3 Release 1A
+
+### Software
+
+The  repository includes a several folders containing copies of old  MS-DOS
+programs that were used to test the emulator.
+
+ * *gwbasic* contains GWBasic 3.22
+ 
+ * *msc_v3* contains Microsoft C Compiler Version 3.00 and command.c, a greatly
+simplified replacement for command.com that can be built with that compiler. It's handy
+for when apps like WordStar and QBX shell out to command.com.
+
+ * *turbodos* contains Turbo Pascal 1.00A
+ 
+ * *turbo3dos* contains Turbo Pascal 3.
+ 
+ * *qbx* contains Quick Basic 7.1
+ 
+ * *wordstar* contains WordStar Professional Release 4
+ 
+ * *tasm* contains Turbo Assembler and several assembly language routines for
+various interrupts. mint.bat generates the machine code in C arrays that are copied
+into ntvdm.cxx and loaded into DOS RAM at runtime.
+
+### Tested Platforms
+
+The emulator has been compiled and tested on the following platforms:
+
+ * Windows 11, Visual Studio ??, x64
+
+ * Windows 11, Visual Studio ??, ARM64
+
+ * Debian 12 (Bookworm), g++ 12.2.0, x64
+
+ * Debian 12 (Bookworm), g++ 12.2.0, x32
+
+ * Debian 12 (Bookworm), g++ 12.2.0, RISC-V
+
+ * Debian 10 (Buster), g++ 8.3.0, x64
+
+ * Open SUSE Leap 15.4, g++ 7.5.0, x64
+ 
+ * Ubutnu 20.04, gcc 9.4.0, x64 (WSL2)
+
+### Windows
+
+Build with m.bat or mr.bat for debug and release versions on Windows. Or build with g++ instead by using mg.bat or mgr.bat.
+
 G++ versions are 20% faster than Microsoft C++ versions.
 
-Cycle counts are conditionally computed based on a #define in i8086.hxx. Using this, the emulator can
-simulate running at a given clock rate. Cycle counts vary widely between various spec docs I found online,
-and the code doesn't check for misaligned memory access, get details of mult/div correct, or otherwise
-get any closer than about 25% of what would be accurate. It's in the ballpark. I tested against a physical
-8088 running at 4.77Mhz. That CPU takes extra cycles for memory access because of the narrower bus. It runs
-about 32% slower than this simulated 8086 at 4.77Mhz, which seems reasonably close.
+#### Usage
 
-Using mips.com Version 1.20, a benchmark app from 1986 written by Chips and Technologies, if the clock
-is set to /s:4500000 (4.5 Mhz) the 8086 emulator runs at about the same speed as a 4.77Mhz 8088. Given the
-wide variability online regarding the performance differences between the 8088 and 8086 (5%-50%) this 
-seems close. I validated the mips.com results on an actual 8088 running at 4.77Mhz.
-
-The msc_v3 folder contains command.c, a greatly simplified replacement for command.com that can be built
-with that compiler. It's handy for when apps like WordStar and QBX shell out to command.com.
-
-The tasm folder contains several assembly language routines for various interrupts. mint.bat generates
-the machine code in C arrays that are copied into ntvdm.cxx and loaded into DOS RAM at runtime.
-
-Folders with test apps, copyrights owned by those owners.
-
-    gwbasic -- gwbasic 3.22
-    msc_v3 -- Microsoft C Compiler Version 3.00
-    turbodos -- Turbo Pascal 1.00A
-    turbo3dos -- Turbo Pascal 3.02A
-    qbx -- Quick Basic 7.1
-    wordstar -- WordStar Professional Release 4
-    tasm -- Turbo Assembler
-
-Usage information:
-
-    usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
-      notes:
+To display the command line options:
+```
+C:\> ntvdm -?
+NT Virtual DOS Machine: emulates an 8086 MS-DOS 3.00 runtime environment enough to run COM/EXE apps
+usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
+  notes:
             -c     don't auto-detect apps that want 80x25 then set window to that size;
                    stay in teletype/console mode.
             -C     always set window to 80x25; don't use teletype mode.
@@ -104,22 +142,29 @@ Usage information:
                    for 4.77Mhz, use -s:4770000
                    to roughly match a 4.77Mhz 8088, use -s:4500000
             -t     enable debug tracing to ntvdm.log
-            -u     (Linux-only) force all paths to be uppercase
             -z:X   applies X as a hex mask to SetProcessAffinityMask, e.g.:
                      /z:11    2 performance cores on an i7-1280P
                      /z:3000  2 efficiency cores on an i7-1280P
                      /z:11    2 random good cores on a 5950x
-     [arg1] [arg2]     arguments after the .COM/.EXE file are passed to that command
-      examples:
-          ntvdm -c -t app.com foo bar
-          ntvdm turbo.com
-          ntvdm s:\github\MS-DOS\v2.0\bin\masm small,,,small
-          ntvdm s:\github\MS-DOS\v2.0\bin\link small,,,small
-          ntvdm -t b -k myfile.asm
-          
-sample usage:
-
-    C:\>ntvdm -c -p ttt8086.com
+            -v     output version information and exit.
+            -?     output this help and exit.
+```
+To execute app.com with debuging output in ntvdm.log:
+```
+C:\>ntvdm -c -t app.com foo bar
+```
+To execute Turbo Pascal with am emulated clock speed of 4.77MHz:
+```
+C:\>ntvdm -s:4770000 turbo.com
+```
+To assemble and link a 'small' program:
+```
+C:\>ntvdm s:\github\MS-DOS\v2.0\bin\masm small,,,small
+C:\>ntvdm s:\github\MS-DOS\v2.0\bin\link small,,,small
+```
+To execute a program and show the performance information on exit:
+```
+C:\>ntvdm -c -p ttt8086.com
     3.3 seconds
     moves: 6493
     iterations: 1000
@@ -130,20 +175,116 @@ sample usage:
     approx ms at 4.77Mhz:          998,184  == 0 days, 0 hours, 16 minutes, 38 seconds, 184 milliseconds
     unique first opcodes:               63
     app exit code:                       0
+```
 
-Linux notes:
+### Linux
 
-    * Linux support is in progress; there are known issues called out below and certainly I'll find more bugs soon.
-    * I lightly tested with all of the apps called out above and they appear to work.
-    * Command-line apps are much more likely to work well than 80x25 text-mode apps.
-    * Building and testing was done strictly on WSL2 with Ubutnu 20.04; other platforms will likely have issues.
-    * Also built/tested on Debian running on RISC-V. mike632t has tested on Debian on x86 and x64 (thank you!).
-    * Use m.sh and mr.sh to build using g++. use -fsigned-char with g++ on RISC-V and other platforms to force signed char.
-    * The code assumes VT-100 support is available in your terminal window.
-    * Linux is case-sensitive and DOS isn't. On my machine I created a new root folder for test apps where everything is 
-    UPPERCASE and I use the -u switch with NTVDM. Not doing this will lead to apps not finding files.
-    * Apps that use the Alt key generally work, but I'm looking for a better solution as it's sometimes glitchy.
-    * Keyboard handling adds some small (10ms) delays to app responsivness and app shutdown. I'm working on a fix.
-    * I use ASCII characters for Code Page 437 characters, which can be ugly. Anyone know how to use CP 437 on Linux?
-    * Most DOS apps require CR/LF. Ensure your input files have this on Linux systems or apps fail in odd ways.
+Note - Linux support is work in progress.  It has only been tested lightly,
+and there are several known issues.
+
+ * Command-line apps are much more likely to work well than 80x25 text-mode
+applications.
+ 
+ * The code assumes VT-100 support is available in your terminal window and
+uses ASCII characters for instead of the MS-DOS code page 437 character set
+which can be ugly. Anyone know how to enable codepage 437 on Linux?
+ 
+ * Linux is case-sensitive and DOS isn't.  To minimize the potential issues
+this causes you can force DOS to use UPPERCASE names by using `-u`.  If you
+still  have problems use a seperate root directory for any DOS applications
+with just uppercase directory and file names.
+
+ * Apps that use the Alt key generally work, but you will need to configure
+the terminal application to disable menu access using the Alt key.
+
+ * Most DOS applications require lines to end with CR/LF.  Ensure your input
+files have this on Linux systems or appliations will fail in odd ways.
+
+Usually View - Keyboard Shortcuts
+
+![Terminal](terminal-config.png)
+ 
+ * Keyboard  handling adds some small (10ms) delays, which means  it  isn't
+possible to paste text into an application.
+
+#### Prerequisites
+
+The following packages are required to build the emulator.
+
+ * Debian : g++, libstdc++-8, libstdc++6
+
+ * SUSE : gcc-c++
+ 
+ * Ubuntu : g++, libstdc++-8, libstdc++6
+
+#### Compiling
+
+Release
+```
+g++ -ggdb -Ofast -fno-builtin -D NDEBUG -I . ntvdm.cxx i8086.cxx -o ntvdm -fopenmp
+```
+Debug 
+```
+g++ -ggdb -Og -fno-builtin -D DEBUG -I . ntvdm.cxx i8086.cxx -o ntvdm -fopenmp
+
+```
+#### Usage
+
+To display the command line options:
+```
+$ ntvdm -?
+Usage: ntvdm [OPTION]... PROGRAM [ARGUMENT]...
+Emulates an 8086 and MS-DOS 3.00 runtime environment.
+
+  -c               don't automatically change window size.
+  -C               change text area to 80x25 (don't use tty mode).
+  -d               don't clear the display on exit
+  -u               force DOS paths to be uppercase
+  -l               force DOS paths to be lowercase
+  -e:env,...       define environment variables.
+  -h               load high above 64k.
+  -i               trace instructions to ntvdm.log.
+  -t               enable debug tracing to ntvdm.log
+  -p               show performance stats on exit.
+  -s:X             set processor speed in Hz.
+                     for 4.77 MHz 8086 use -s:4770000.
+                     for 4.77 MHz 8088 use -s:4500000.
+  -v               output version information and exit.
+  -?               output this help and exit.
+```
+To compile and link the Microsoft C 3.0 demo application:
+```
+$ cd msc_v3
+$ ../ntvdm -u -e:include=.\\inc msc.exe demo.c,,\;
+$ ../ntvdm -u -e:lib=.\\lib link.exe demo,,\;
+```
+Note the use of the `-e` option to define the environment vairables used by
+the  compiler and linker and the use of a `\` to escape any `\`  characters
+in any DOS pathnames.
+
+Running  the applicatiion with the same environment vairables defined  will
+display  the application pathname, command line, arguments and  environment
+vairables used above.
+```
+$ ../ntvdm -u -e:include=.\\inc,lib=.\\lib demo.exe one two three
+C:\msc_v3\DEMO.EXE
+one
+two
+three
+COMSPEC=COMMAND.COM
+INCLUDE=.\INC
+LIB=.\LIB
+$
+```
+To run QuickBASIC.
+```
+$ cd qbx
+$ ../ntvdm -u -e:include=.\\inc msc.exe demo.c,,\;
+```
+![QuickBASIC](linux-screenshot.png)
+
+QuickBASIC is one of the applciations that has issues with lower case  path
+names (it will run but you wont be able to open files).
+
+
 
