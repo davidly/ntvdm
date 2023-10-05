@@ -86,7 +86,11 @@ using namespace std::chrono;
 // Use a separate thread to look for keyboard input and force scheduling an int9
 // This must be false when ntvdm is running in rvos because that only supports one thread
 
+#if defined( __riscv )        // only so that the rvos emulator can run ntvdm. otherwise using the kbd thread works great.
 #define NTVDM_USE_KBD_THREAD false
+#else
+#define NTVDM_USE_KBD_THREAD true
+#endif
 
 // using assembly for keyboard input enables timer interrupts while spinning for a keystroke
 
