@@ -18,6 +18,7 @@
     #include <conio.h>
     #include <direct.h>
     #include <intrin.h>
+    #include <io.h>
 
     #define not_inlined __declspec(noinline)
     #define force_inlined __forceinline
@@ -211,6 +212,14 @@ inline const char * build_string()
     #define assume_false __assume( false )
     #define assume_false_return __assume( false )
 #endif
+
+inline long portable_filelen( int descriptor )
+{
+    long current = lseek( descriptor, 0, SEEK_CUR );
+    long len = lseek( descriptor, 0, SEEK_END );
+    lseek( descriptor, current, SEEK_SET );
+    return len;
+} //portable_filelen
 
 inline long portable_filelen( FILE * fp )
 {

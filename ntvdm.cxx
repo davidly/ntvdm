@@ -83,6 +83,11 @@
 using namespace std;
 using namespace std::chrono;
 
+// Use a separate thread to look for keyboard input and force scheduling an int9
+// This must be false when ntvdm is running in rvos because that only supports one thread
+
+#define NTVDM_USE_KBD_THREAD false
+
 // using assembly for keyboard input enables timer interrupts while spinning for a keystroke
 
 #define USE_ASSEMBLY_FOR_KBD true
@@ -282,6 +287,9 @@ static bool g_altPressedRecently = false;          // hack because I can't figur
 
 bool ValidDOSFilename( char * pc )
 {
+    if ( 0 == *pc )
+        return false;
+
     if ( !strcmp( pc, "." ) )
         return false;
 
@@ -308,6 +316,17 @@ bool ValidDOSFilename( char * pc )
 
     return true;
 } //ValidDOSFilename
+
+bool ValidDOSPathname( char * pc )
+{
+    if ( !strcmp( pc, "." ) )
+        return true;
+
+    if ( !strcmp( pc, ".." ) )
+        return true;
+
+    return ValidDOSFilename( pc );
+} //ValidDOSPathname
 
 void backslash_to_slash( char * p )
 {
@@ -391,7 +410,7 @@ static void version()
 {
     printf( "%s\n", build_string() );
     exit( 1 );
-} //about
+} //version
 
 static void usage( char const * perr )
 {
@@ -587,6 +606,11 @@ bool DisplayUpdateRequired()
 
 void SleepAndScheduleInterruptCheck()
 {
+#if !NTVDM_USE_KBD_THREAD
+    if ( g_consoleConfig.portable_kbhit() )
+        g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+#endif
+
     CKbdBuffer kbd_buf;
     if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
     {
@@ -2877,6 +2901,10 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
             wc = ac;
         }
 
+        if ( !strcmp( wc.c_str(), "*.*" ) &&
+             ( !strcmp( input.c_str(), "." ) || !strcmp( input.c_str(), ".." ) ) )
+             return true;
+
         tracer.Trace( "modified wildcard from '%s' to '%s'\n", wildcard.c_str(), wc.c_str() );
         auto rgx = wildcardToRegex( wc, false );
         return std::regex_match( input, rgx );
@@ -3033,12 +3061,15 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         {
             struct dirent * pent = readdir( pdir );
             if ( 0 == pent )
+            {
+                tracer.Trace( "  readdir returned a 0 for dirent pointer. pdir is %p\n", pdir );
                 return false;
+            }
 
             // ignore files DOS just wouldn't understand
 
-            tracer.Trace( "  checking filename %s\n", pent->d_name );
-            if ( !ValidDOSFilename( pent->d_name ) )
+            tracer.Trace( "  checking filename '%s'\n", pent->d_name );
+            if ( !ValidDOSPathname( pent->d_name ) )
             {
                 tracer.Trace( "  filename isn't valid\n" );
                 continue;
@@ -3083,10 +3114,13 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
             justPattern = 1 + plast;
         }
 
-        tracer.Trace( "  opendir returned %p, errno %d\n", pdir, errno );
+        tracer.Trace( "  opendir returned %p\n", pdir );
 
         if ( 0 == pdir )
+        {
+            tracer.Trace( "  errno: %d\n", errno );
             return 0;
+        }
 
         strcpy( g_acFindFirstPattern, justPattern );
         bool found = FindNextFileLinux( pdir, fd );
@@ -5451,11 +5485,13 @@ void handle_int_21( uint8_t c )
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
                 tracer.Trace( "  read from file using handle %04x bytes at address %02x:%02x. offset just beyond: %02x\n", len, cpu.get_ds(), cpu.get_dx(), cpu.get_dx() + len );
-    
                 uint32_t cur = ftell( fp );
-                fseek( fp, 0, SEEK_END );
-                uint32_t size = ftell( fp );
-                fseek( fp, cur, SEEK_SET );
+
+                struct stat stat_val= {0};
+                uint32_t size = 0;
+                int result = fstat( fileno( fp ), &stat_val );
+                if ( 0 == result )
+                    size = (uint32_t) stat_val.st_size;
                 cpu.set_ax( 0 );
     
                 if ( cur < size )
@@ -7261,9 +7297,6 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 #ifdef _WIN32    
     GetFullPathNameA( pathToExecute, _countof( fullPath ), fullPath, 0 );
 #else
-    // can't use realpath() here because the top part of the path may be forced uppper/lowercase later.
-    // use relative paths instead, which work.
-
     char * fpath = realpath( pathToExecute, 0 );
     if ( !fpath )
     {
@@ -7523,13 +7556,9 @@ int main( int argc, char ** argv )
             }
 #endif            
             else if ( 'v' == ca )
-            {
-		version();
-	    }
+                version();
             else if ( '?' == ca )
-            {
-		usage(NULL);
-	    }
+                usage(NULL);
             else
                 usage( "invalid argument specified" );
         }
@@ -7748,7 +7777,9 @@ int main( int argc, char ** argv )
     // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
     // Note that kbhit() makes the same call interally to the same cross-process API. It's no faster.
 
+#if NTVDM_USE_KBD_THREAD
     CSimpleThread peekKbdThread( PeekKeyboardThreadProc );
+#endif
     uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
     high_resolution_clock::time_point tStart = high_resolution_clock::now();
@@ -7778,7 +7809,13 @@ int main( int argc, char ** argv )
         {
             // if the keyboard peek thread has detected a keystroke, process it with an int 9.
             // don't plumb through port 60 since apps work without that.
-    
+
+
+#if !NTVDM_USE_KBD_THREAD
+            if ( g_consoleConfig.portable_kbhit() )
+                g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+#endif
+
             if ( g_KbdPeekAvailable )
             {
                 tracer.Trace( "%llu main loop: scheduling an int 9\n", time_since_last() );
@@ -7811,7 +7848,9 @@ int main( int argc, char ** argv )
 
     high_resolution_clock::time_point tDone = high_resolution_clock::now();
 
+#if NTVDM_USE_KBD_THREAD
     peekKbdThread.EndThread();
+#endif
 
     g_consoleConfig.RestoreConsole( clearDisplayOnExit );
 #ifdef _WIN32

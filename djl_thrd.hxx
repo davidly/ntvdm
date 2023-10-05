@@ -56,7 +56,7 @@ class CSimpleThread
                 tracer.Trace( "signaling the thread to complete\n" );
                 shutdown_flag = true;
                 pthread_cond_signal( & the_condition );
-                tracer.Trace( "joining the keyboard tread\n" );
+                tracer.Trace( "joining the keyboard thread\n" );
                 pthread_join( the_thread, 0 );
                 the_thread = 0; 
                 tracer.Trace( "destroying keyboard thread resources\n" );
