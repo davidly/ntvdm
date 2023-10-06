@@ -100,9 +100,9 @@ into ntvdm.cxx and loaded into DOS RAM at runtime.
 
 The emulator has been compiled and tested on the following platforms:
 
- * Windows 11, Visual Studio ??, x64
+ * Windows 11, Visual Studio 2022, x64
 
- * Windows 11, Visual Studio ??, ARM64
+ * Windows 11, Visual Studio 2022, ARM64
 
  * Debian 12 (Bookworm), g++ 12.2.0, x64
 
@@ -263,7 +263,7 @@ the  compiler and linker and the use of a `\` to escape any `\`  characters
 in any DOS pathnames.
 
 Running  the applicatiion with the same environment vairables defined  will
-display  the application pathname, command line, arguments and  environment
+display  the application pathname, command line, arguments and environment
 vairables used above.
 ```
 $ ../ntvdm -u -e:include=.\\inc,lib=.\\lib demo.exe one two three
@@ -283,8 +283,11 @@ $ ../ntvdm -u -e:include=.\\inc msc.exe demo.c,,\;
 ```
 ![QuickBASIC](linux-screenshot.png)
 
-QuickBASIC is one of the applciations that has issues with lower case  path
-names (it will run but you wont be able to open files).
+QuickBASIC is one of the applciations that has issues with lower case path
+names (it will run but you wont be able to open files). The work-around is
+to create a folder off the root with all uppercase characters, copy the
+app to that folder, ensure all filenames are uppercase, and use the '-u'
+switch with ntvdm. Then it'll work.
 
 
 
