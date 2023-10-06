@@ -136,6 +136,18 @@ template <class T> inline T get_min( T a, T b )
     return b;
 } //get_min
 
+template <class T> inline T round_up( T x, uint64_t multiple )
+{
+    if ( 0 == multiple )
+       return x;
+
+    T remainder = x % multiple;
+    if ( 0 == remainder )
+        return x;
+
+    return x + multiple - remainder;
+} //round_up
+
 inline const char * target_platform()
 {
     #if defined( __riscv )        // g++ on linux
@@ -171,7 +183,7 @@ inline const char * compiler_used()
     #if defined( __GNUC__ )
         return "g++";
     #elif defined( _WIN32 )
-        sprintf( acver, "msft C++ ver %u", _WIN32 );
+        sprintf( acver, "msft C++ ver %u", _MSC_VER );
         return acver;
     #elif defined( __clang__ )
         return "clang";

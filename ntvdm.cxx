@@ -83,15 +83,6 @@
 using namespace std;
 using namespace std::chrono;
 
-// Use a separate thread to look for keyboard input and force scheduling an int9
-// This must be false when ntvdm is running in rvos because that only supports one thread
-
-#if defined( __riscv )        // only so that the rvos emulator can run ntvdm. otherwise using the kbd thread works great.
-#define NTVDM_USE_KBD_THREAD false
-#else
-#define NTVDM_USE_KBD_THREAD true
-#endif
-
 // using assembly for keyboard input enables timer interrupts while spinning for a keystroke
 
 #define USE_ASSEMBLY_FOR_KBD true
@@ -282,6 +273,7 @@ static vector<IntCalled> g_InterruptsCalled;       // track interrupt usage
 static high_resolution_clock::time_point g_tAppStart; // system time at app start
 static uint8_t g_bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
 static CKeyStrokes g_keyStrokes;                   // read or write keystrokes between kslog.txt and the app
+static bool g_UseOneThread = false;                // true if no keyboard thread should be used
 
 #ifndef _WIN32
 static bool g_forcePathsUpper = false;             // helpful for Linux
@@ -610,10 +602,11 @@ bool DisplayUpdateRequired()
 
 void SleepAndScheduleInterruptCheck()
 {
-#if !NTVDM_USE_KBD_THREAD
-    if ( g_consoleConfig.portable_kbhit() )
-        g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
-#endif
+    if ( g_UseOneThread )
+    {
+        if ( g_consoleConfig.portable_kbhit() )
+            g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+    }
 
     CKbdBuffer kbd_buf;
     if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
@@ -7445,8 +7438,11 @@ uint32_t GetBiosDailyTimer()
     return (uint32_t) ( diff / 54925100 );
 } //GetBiosDailyTimer
 
-int main( int argc, char ** argv )
+int main( int argc, char * argv[], char * envp[] )
 {
+    bool runningInRVOS = ( envp && envp[ 0 ] && !strcmp( envp[ 0 ], "OS=RVOS" ) );
+    g_UseOneThread = runningInRVOS;
+
     g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
     g_tAppStart = high_resolution_clock::now();    
 
@@ -7590,6 +7586,8 @@ int main( int argc, char ** argv )
     tracer.Enable( trace, logFile, true );
     tracer.SetQuiet( true );
     cpu.trace_instructions( traceInstructions );
+
+    tracer.Trace( "Use one thread: %d\n", g_UseOneThread );
 
     if ( 0 == pcAPP )
     {
@@ -7781,9 +7779,8 @@ int main( int argc, char ** argv )
     // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
     // Note that kbhit() makes the same call interally to the same cross-process API. It's no faster.
 
-#if NTVDM_USE_KBD_THREAD
-    CSimpleThread peekKbdThread( PeekKeyboardThreadProc );
-#endif
+    unique_ptr<CSimpleThread> peekKbdThread( g_UseOneThread ? 0 : new CSimpleThread( PeekKeyboardThreadProc ) );
+
     uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
     CPUCycleDelay delay( clockrate );
     high_resolution_clock::time_point tStart = high_resolution_clock::now();
@@ -7814,11 +7811,8 @@ int main( int argc, char ** argv )
             // if the keyboard peek thread has detected a keystroke, process it with an int 9.
             // don't plumb through port 60 since apps work without that.
 
-
-#if !NTVDM_USE_KBD_THREAD
-            if ( g_consoleConfig.portable_kbhit() )
+            if ( g_UseOneThread && g_consoleConfig.portable_kbhit() )
                 g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
-#endif
 
             if ( g_KbdPeekAvailable )
             {
@@ -7852,9 +7846,8 @@ int main( int argc, char ** argv )
 
     high_resolution_clock::time_point tDone = high_resolution_clock::now();
 
-#if NTVDM_USE_KBD_THREAD
-    peekKbdThread.EndThread();
-#endif
+    if ( !g_UseOneThread )
+        peekKbdThread->EndThread();
 
     g_consoleConfig.RestoreConsole( clearDisplayOnExit );
 #ifdef _WIN32
