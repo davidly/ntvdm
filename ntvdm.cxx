@@ -1979,7 +1979,7 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
         else if ( fctrl ) { scancode = 0x76; asciiChar = 0; }
         else if ( fshift ) { asciiChar = 0x33; }
     }
-    else if ( 0x52 == sc ) // Home
+    else if ( 0x52 == sc ) // INS
     {
         if ( falt ) { scancode = 0xa2; asciiChar = 0; }
         else if ( fctrl ) { scancode = 0x92; asciiChar = 0; }
@@ -2167,6 +2167,7 @@ void consume_keyboard()
 {
     const uint8_t CTRL_DOWN = 53;
     const uint8_t ALT_DOWN = 51;
+    const uint8_t SHIFT_DOWN = 50;
     const uint8_t MODIFIER_DOWN = 59;
     CKbdBuffer kbd_buf;
     g_altPressedRecently = false;
@@ -2206,11 +2207,12 @@ void consume_keyboard()
                             if ( MODIFIER_DOWN == following ) // ALT/CTRL depressed for F5-F8
                             {
                                 int nextA = g_consoleConfig.portable_getch(); // consume yet more
-                                int nextB = g_consoleConfig.portable_getch(); // consume yet more
-                                tracer.Trace( "    nextA: %d, nextB: %d\n", nextA, nextB );
+                                tracer.Trace( "    nextA: %d\n", nextA );
 
                                 if ( 53 == fnumber )
                                 {
+                                    int nextB = g_consoleConfig.portable_getch(); // consume yet more
+                                    tracer.Trace( "    nextB: %d\n", nextB );
                                     if ( CTRL_DOWN == nextA )
                                         kbd_buf.Add( 0, 98 ); // CTRL
                                     else if ( ALT_DOWN == nextA )
@@ -2218,9 +2220,12 @@ void consume_keyboard()
                                         kbd_buf.Add( 0, 108 ); // ALT
                                         g_altPressedRecently = true;
                                     }
+                                    else if ( SHIFT_DOWN == nextA )
+                                        kbd_buf.Add( 0, 88 ); // F5
                                 }
                                 else if ( fnumber >= 55 && fnumber <= 57 )
                                 {
+                                    int nextB = g_consoleConfig.portable_getch(); // consume yet more
                                     if ( CTRL_DOWN == nextA )
                                         kbd_buf.Add( 0, fnumber + 44 ); // CTRL
                                     else if ( ALT_DOWN == nextA )
@@ -2228,6 +2233,8 @@ void consume_keyboard()
                                         kbd_buf.Add( 0, fnumber + 54 ); // ALT
                                         g_altPressedRecently = true;
                                     }
+                                    else if ( SHIFT_DOWN == nextA )
+                                        kbd_buf.Add( 0, fnumber + 34 ); // SHIFT
                                 }
                             }
                             else if ( ALT_DOWN == following ) // ALT depressed for F1-F4, HOME, etc.
@@ -2270,6 +2277,25 @@ void consume_keyboard()
                                     kbd_buf.Add( 0, 117 );
                                 else if ( next >= 80 && next <= 83) // F1-F4
                                     kbd_buf.Add( 0, next + 14 );
+                            }
+                            else if ( SHIFT_DOWN == following ) // SHIFT pressed for F1-F4, etc.
+                            {
+                                int next = g_consoleConfig.portable_getch();
+                                tracer.Trace( "    next: %d\n", next );
+                                if ( 68 == next ) // left
+                                    kbd_buf.Add( 52, 75 );
+                                else if ( 66 == next ) // down
+                                    kbd_buf.Add( 50, 80 );
+                                else if ( 67 == next ) // right
+                                    kbd_buf.Add( 54, 77 );
+                                else if ( 65 == next ) // up
+                                    kbd_buf.Add( 56, 72 );
+                                else if ( 72 == next ) // home
+                                    kbd_buf.Add( 55, 71 );
+                                else if ( 70 == next ) // end
+                                    kbd_buf.Add( 49, 79 );
+                                else if ( next >= 80 && next <= 83) // F1-F4
+                                    kbd_buf.Add( 0, next + 4 );
                             }
                             else
                             {
@@ -2326,6 +2352,19 @@ void consume_keyboard()
                                         else
                                             tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
                                     }
+                                    else if (SHIFT_DOWN == nextA )
+                                    {
+                                        if ( 48 == fnumber )
+                                            kbd_buf.Add( 0, 92 );
+                                        else if ( 49 == fnumber )
+                                            kbd_buf.Add( 0, 93 );
+                                        else if ( 51 == fnumber )
+                                            kbd_buf.Add( 0, 135 );
+                                        else if ( 52 == fnumber )
+                                            kbd_buf.Add( 0, 136 );
+                                        else
+                                            tracer.Trace( "unknown ESC [ 2 escape sequence %d\n", fnumber );
+                                    }
                                 }
                                 else if ( 51 == next )
                                 {
@@ -2373,6 +2412,8 @@ void consume_keyboard()
                                 }
                                 else if ( CTRL_DOWN == nextB )
                                     kbd_buf.Add( 0, 147 ); // CTRL + DEL
+                                else if ( SHIFT_DOWN == nextB )
+                                    kbd_buf.Add( 46, 83 );
                             }
                             else if ( 126 == nextA )
                                 kbd_buf.Add( 0, 83 );
@@ -2395,6 +2436,8 @@ void consume_keyboard()
                                     kbd_buf.Add( 0, 153 ); // ALT + pgup
                                     g_altPressedRecently = true;
                                 }
+                                else if ( SHIFT_DOWN == nextB )
+                                    kbd_buf.Add( 57, 73 );
                             }
                             else
                                 kbd_buf.Add( 0, 73 );
@@ -2415,6 +2458,8 @@ void consume_keyboard()
                                     kbd_buf.Add( 0, 161 ); // ALT + pgdown
                                     g_altPressedRecently = true;
                                 }
+                                else if ( SHIFT_DOWN == nextB )
+                                    kbd_buf.Add( 51, 81 );
                             }
                             else
                                 kbd_buf.Add( 0, 81 );
@@ -2479,6 +2524,11 @@ void consume_keyboard()
                     kbd_buf.Add( 0, 131 ); // ALT '='
                     g_altPressedRecently = true;
                 }
+                else if ( '*' == secondAscii )
+                {
+                    kbd_buf.Add( 0, 55 ); // ALT '*'
+                    g_altPressedRecently = true;
+                }
                 else if ( 127 == secondAscii ) // ALT + DEL
                 {
                     kbd_buf.Add( 0, 14 );
@@ -2520,6 +2570,9 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
 {
     if ( g_consoleConfig.portable_kbhit() )
     {
+        if ( g_UseOneThread )
+            g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+
         asciiChar = 'a'; // not sure how to read and not consume on linux, so lie
         scancode = 30;
         return true;

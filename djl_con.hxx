@@ -16,6 +16,9 @@ class ConsoleConfiguration
             CONSOLE_CURSOR_INFO oldCursorInfo;
             int16_t setWidth;
             UINT oldOutputCP;
+            static const size_t longestEscapeSequence = 10; // probably overkill
+            static const size_t maxToRead = 10;
+            char aReady[ 1 + maxToRead * longestEscapeSequence ];
         #else
 #ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
             struct termios orig_termios;
@@ -23,6 +26,216 @@ class ConsoleConfiguration
         #endif
 
         bool inputEstablished, outputEstablished;
+
+#ifdef _WIN32
+        bool process_key_event( INPUT_RECORD & rec, char * pout )
+        {
+            *pout = 0;
+
+            if ( KEY_EVENT != rec.EventType )
+                return false;
+        
+            if ( !rec.Event.KeyEvent.bKeyDown )
+                return false;
+        
+            const uint8_t asc = rec.Event.KeyEvent.uChar.AsciiChar;
+            const uint8_t sc = (uint8_t) rec.Event.KeyEvent.wVirtualScanCode;
+        
+            // don't pass back just an Alt/ctrl/shift/capslock without another character
+            if ( ( 0 == asc ) && ( 0x38 == sc || 0x1d == sc || 0x2a == sc || 0x3a == sc || 0x36 == sc ) )
+                return false;
+        
+            bool fshift = ( 0 != ( rec.Event.KeyEvent.dwControlKeyState & SHIFT_PRESSED ) );
+            bool fctrl = ( 0 != ( rec.Event.KeyEvent.dwControlKeyState & ( LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED ) ) );
+            bool falt = ( 0 != ( rec.Event.KeyEvent.dwControlKeyState & ( LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED ) ) );
+        
+            tracer.Trace( "    process key event sc/asc %02x%02x, shift %d, ctrl %d, alt %d\n", sc, asc, fshift, fctrl, falt );
+            printf( "    process key event sc/asc %02x%02x, shift %d, ctrl %d, alt %d\n", sc, asc, fshift, fctrl, falt );
+        
+            // control+ 1, 3-5, and 7-0 should be swallowed. 2 and 6 are allowed.
+            if ( fctrl && ( 2 == sc || 4 == sc || 5 == sc || 6 == sc || 8 == sc || 9 == sc || 0xa == sc || 0xb == sc ) )
+                return false;
+        
+            // control+ =, ;, ', `, ,, ., / should be swallowed
+            if ( fctrl && ( 0x0d == sc || 0x27 == sc || 0x28 == sc || 0x29 == sc || 0x33 == sc || 0x34 == sc || 0x35 == sc ) )
+                return false;
+        
+            // alt+ these characters has no meaning
+            if ( falt && ( '\'' == asc || '`' == asc || ',' == asc || '.' == asc || '/' == asc || 0x4c == sc ) )
+                return false;
+
+            pout[ 0 ] = asc;
+            pout[ 1 ] = 0;
+
+            if ( falt && asc >= ' ' && asc <= 0x7f )
+            {
+                sprintf( pout, "\033%c", asc );
+            }
+            else if ( 0x01 == sc ) // ESC
+            {
+                if ( falt ) ; // can't test on windows
+            }
+            else if ( 0x0f == sc ) // Tab
+            {
+                if ( falt ) ; // can't test on windows
+                else if ( fctrl ) ; // can't test on windows
+                else if ( fshift ) strcpy( pout, "\033[Z" );
+            }
+            else if ( 0x35 == sc ) // keypad /
+            {
+                if ( falt ) strcpy( pout, "\033/" );
+                else if ( fctrl ) *pout = 31;
+            }
+            else if ( 0x37 == sc ) // keypad *
+            {
+                if ( falt ) strcpy( pout, "\033*" );
+                else if ( fctrl ) *pout = 10;
+            }
+            else if ( sc >= 0x3b && sc <= 0x44 ) // F1 - F10
+            {
+                if ( falt )
+                {
+                    if ( sc >= 0x3b && sc <= 0x3e )
+                        sprintf( pout, "\033[1;3%c", sc - 0x3b + 80 );
+                    else if ( sc == 0x3f )
+                        strcpy( pout, "\033[15;3~" );
+                    else if ( sc >= 0x40 && sc <= 0x42 )
+                        sprintf( pout, "\033[1%c;3~", 55 + sc - 0x40 );
+                    else if ( sc >= 0x43 && sc <= 0x44 )
+                        sprintf( pout, "\033[2%c;3~", 48 + sc - 0x43 );
+                }
+                else if ( fctrl )
+                {
+                    if ( sc >= 0x3b && sc <= 0x3e )
+                        sprintf( pout, "\033[1;5%c", sc - 0x3b + 80 );
+                    else if ( sc == 0x3f )
+                        strcpy( pout, "\033[15;5~" );
+                    else if ( sc >= 0x40 && sc <= 0x42 )
+                        sprintf( pout, "\033[2%c;5~", 55 + sc - 0x40 );
+                    else if ( sc >= 0x43 && sc <= 0x44 )
+                        sprintf( pout, "\033[2%c;5~", 48 + sc - 0x43 );
+                }
+                else if ( fshift )
+                {
+                    if ( sc >= 0x3b && sc <= 0x3e )
+                        sprintf( pout, "\033[1;2%c", sc - 0x3b + 80 );
+                    else if ( sc == 0x3f )
+                        strcpy( pout, "\033[15;2~" );
+                    else if ( sc >= 0x40 && sc <= 0x42 )
+                        sprintf( pout, "\033[1%c;2~", 55 + sc - 0x40 );
+                    else if ( sc >= 0x43 && sc <= 0x44 )
+                        sprintf( pout, "\033[2%c;2~", 48 + sc - 0x43 );
+                }
+                else
+                {
+                    if ( sc >= 0x3b && sc <= 0x3e )
+                        sprintf( pout, "\033O%c", 80 + sc - 0x3b );
+                    else if ( sc == 0x3f )
+                        strcpy( pout, "\033[15~" );
+                    else if ( sc >= 0x40 && sc <= 0x42 )
+                        sprintf( pout, "\033[1%c~", 55 + sc - 0x40 );
+                    else
+                        sprintf( pout, "\033[2%c~", 48 + sc - 0x43 );
+                }
+            }
+            else if ( 0x47 == sc ) // Home
+            {
+                if ( falt ) strcpy( pout, "\033[1;3H" );
+                else if ( fctrl ) strcpy( pout, "\033[1;5H" );
+                else if ( fshift ) strcpy( pout, "\033[1;2H" );
+                else strcpy( pout, "\033[H" );
+            }
+            else if ( 0x48 == sc ) // up arrow
+            {
+                if ( falt ) strcpy( pout, "\033[1;3A" );
+                else if ( fctrl ) strcpy( pout, "\033[1;5A" );
+                else if ( fshift ) strcpy( pout, "\033[1;2A" );
+                else strcpy( pout, "\033[A" );
+            }
+            else if ( 0x49 == sc ) // page up
+            {
+                if ( falt ) strcpy( pout, "\033[5;3~" );
+                else if ( fctrl ) strcpy( pout, "\033[5;5~" );
+                else if ( fshift ) strcpy( pout, "\033[5;2~" );
+                else strcpy( pout, "\033[5~" );
+            }
+            else if ( 0x4a == sc ) // keypad -
+            {
+                if ( falt ) strcpy( pout, "\033-" );
+                else if ( fctrl ) ; // can't test on Windows
+            }
+            else if ( 0x4b == sc ) // left arrow
+            {
+                if ( falt ) strcpy( pout, "\033[1;3D" );
+                else if ( fctrl ) strcpy( pout, "\033[1;5D" );
+                else if ( fshift ) strcpy( pout, "\033[1;2D" );
+                else strcpy( pout, "\033[D" );
+            }
+            else if ( 0x4c == sc ) // keypad 5
+            {
+                if ( fctrl ) ; // no output on Linux
+                else if ( fshift ) ; // no output on Linux
+            }
+            else if ( 0x4d == sc ) // right arrow
+            {
+                if ( falt ) strcpy( pout, "\033[1;3C" );
+                else if ( fctrl ) strcpy( pout, "\033[1;5C" );
+                else if ( fshift ) strcpy( pout, "\033[1;2C" );
+                else strcpy( pout, "\033[C" );
+            }
+            else if ( 0x4e == sc ) // keypad +
+            {
+                if ( falt ) strcpy( pout, "\033+" );
+                else if ( fshift ) *pout = 43;
+                else if ( fctrl ) *pout = 43;
+                else *pout = 43;
+            }
+            else if ( 0x4f == sc ) // End
+            {
+                if ( falt ) strcpy( pout, "\033[1;3F" );
+                else if ( fctrl ) strcpy( pout, "\033[1;5F" );
+                else if ( fshift ) strcpy( pout, "\033[1;2F" );
+                else strcpy( pout, "\033[F" );
+            }
+            else if ( 0x50 == sc ) // down arrow
+            {
+                if ( falt ) strcpy( pout, "\033[1;3B" );
+                else if ( fctrl ) strcpy( pout, "\033[1;5B" );
+                else if ( fshift ) strcpy( pout, "\033[1;2B" );
+                else strcpy( pout, "\033[B" );
+            }
+            else if ( 0x51 == sc ) // page down
+            {
+                if ( falt ) strcpy( pout, "\033[6;3~" );
+                else if ( fctrl ) strcpy( pout, "\033[6;5~" );
+                else if ( fshift ) strcpy( pout, "\033[6;2~" );
+                else strcpy( pout, "\033[6~" );
+            }
+            else if ( 0x52 == sc ) // INS
+            {
+                if ( falt ) strcpy( pout, "\033[2;3~" );
+                else if ( fctrl ) strcpy( pout, "\033[2;5~" );
+                else if ( fshift ) ; // can't repro on windows
+                else strcpy( pout, "\033[2~" );
+            }
+            else if ( 0x53 == sc ) // Del
+            {
+                if ( falt ) strcpy( pout, "\033[3;3~" );
+                else if ( fctrl ) strcpy( pout, "\033[3;5~" );
+                else if ( fshift ) strcpy( pout, "\033[3;2~" );
+                else strcpy( pout, "\033[3~" );
+            }
+            else if ( 0x57 == sc || 0x58 == sc ) // F11 - F12
+            {
+                if ( falt ) sprintf( pout, "\033[2%c;3~", sc - 0x57 + 51 );
+                else if ( fctrl ) sprintf( pout, "\033[2%c;5~", sc - 0x57 + 51 );
+                else if ( fshift ) sprintf( pout, "\033[2%c;2~", sc - 0x57 + 51 );
+                else sprintf( pout, "\033[2%c~", 51 + sc - 0x57 );
+            }
+
+            return true;
+        } //process_key_event
+#endif
 
     public:
         #ifdef _WIN32
@@ -38,6 +251,8 @@ class ConsoleConfiguration
                 consoleInputHandle = GetStdHandle( STD_INPUT_HANDLE );
 
                 EstablishConsoleInput();
+
+                memset( aReady, 0, sizeof( aReady ) );
             } //ConsoleConfiguration
         #else
             ConsoleConfiguration() : inputEstablished( false ), outputEstablished( false )
@@ -266,11 +481,13 @@ class ConsoleConfiguration
             #endif
         } //ClearScreen
 
-        static int portable_kbhit()
+        int portable_kbhit()
         {
             int result = 0;
 
             #ifdef _WIN32
+                if ( 0 != aReady[ 0 ] )
+                    return true;
                 result = _kbhit();
             #else
                 fd_set set;
@@ -282,6 +499,56 @@ class ConsoleConfiguration
 
             return result;
         } //portable_kbhit
+
+#ifdef _WIN32
+        // behave like getch() on linux -- extended characters have escape sequences
+
+        int linux_getch()
+        {
+            size_t cReady = strlen( aReady );
+            if ( 0 != cReady )
+            {
+                int result = aReady[ 0 ];
+                memmove( & aReady[ 0 ], & aReady[ 1 ], cReady ); // may just be the null termination
+                return result;
+            }
+
+            HANDLE hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
+
+            do
+            {
+                DWORD available = 0;
+                BOOL ok = GetNumberOfConsoleInputEvents( hConsoleInput, &available );
+                if ( ok && ( 0 != available ) )
+                {
+                    INPUT_RECORD records[ maxToRead ];
+                    uint32_t toRead = get_min( (size_t) available, maxToRead );
+                    DWORD numRead = 0;
+                    ok = ReadConsoleInput( hConsoleInput, records, 1, &numRead );
+                    if ( ok )
+                    {
+                        for ( DWORD x = 0; x < numRead; x++ )
+                        {
+                            char acSequence[ longestEscapeSequence ] = {0};
+                            bool used = process_key_event( records[ x ], acSequence );
+                            if ( !used )
+                                continue;
+                    
+                            strcat( aReady, acSequence );
+                            tracer.Trace( "    consumed sequence of length %zd, total cached len %zd\n", strlen( acSequence ), strlen( aReady ) );
+                        }
+                    }
+                }
+
+                if ( 0 != aReady[ 0 ] )
+                    return linux_getch();
+            } while( true );
+
+            tracer.Trace( "  bug in linux_getch; returning nothing\n" );
+            assert( false );
+            return 0;
+        } //linux_getch
+#endif
 
         static int portable_getch()
         {
@@ -298,7 +565,7 @@ class ConsoleConfiguration
             #endif
         } //portable_getch
 
-        static bool throttled_kbhit()
+        bool throttled_kbhit()
         {
             // _kbhit() does device I/O in Windows, which sleeps for a tiny amount waiting for a reply, so 
             // compute-bound mbasic.com apps run 10x slower than they should because mbasic polls for keyboard input.
