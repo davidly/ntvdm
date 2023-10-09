@@ -17,8 +17,7 @@ class ConsoleConfiguration
             int16_t setWidth;
             UINT oldOutputCP;
             static const size_t longestEscapeSequence = 10; // probably overkill
-            static const size_t maxToRead = 10;
-            char aReady[ 1 + maxToRead * longestEscapeSequence ];
+            char aReady[ 1 + longestEscapeSequence ];
         #else
 #ifndef OLDGCC      // the several-years-old Gnu C compiler for the RISC-V development boards
             struct termios orig_termios;
@@ -72,13 +71,13 @@ class ConsoleConfiguration
             }
             else if ( 0x01 == sc ) // ESC
             {
-                if ( falt ) ; // can't test on windows
+                // can't test on Windows if ( falt ) ;
             }
             else if ( 0x0f == sc ) // Tab
             {
-                if ( falt ) ; // can't test on windows
-                else if ( fctrl ) ; // can't test on windows
-                else if ( fshift ) strcpy( pout, "\033[Z" );
+                // can't test on Windows if ( falt ) ;
+                // can't test on Windows else if ( fctrl ) ;
+                if ( fshift ) strcpy( pout, "\033[Z" );
             }
             else if ( 0x35 == sc ) // keypad /
             {
@@ -161,7 +160,7 @@ class ConsoleConfiguration
             else if ( 0x4a == sc ) // keypad -
             {
                 if ( falt ) strcpy( pout, "\033-" );
-                else if ( fctrl ) ; // can't test on Windows
+                // can't test on Windows else if ( fctrl ) ;
             }
             else if ( 0x4b == sc ) // left arrow
             {
@@ -172,8 +171,8 @@ class ConsoleConfiguration
             }
             else if ( 0x4c == sc ) // keypad 5
             {
-                if ( fctrl ) ; // no output on Linux
-                else if ( fshift ) ; // no output on Linux
+                // no output on Linux if ( fctrl ) ;
+                // no output on Linux else if ( fshift ) ;
             }
             else if ( 0x4d == sc ) // right arrow
             {
@@ -520,8 +519,7 @@ class ConsoleConfiguration
                 BOOL ok = GetNumberOfConsoleInputEvents( hConsoleInput, &available );
                 if ( ok && ( 0 != available ) )
                 {
-                    INPUT_RECORD records[ maxToRead ];
-                    uint32_t toRead = get_min( (size_t) available, maxToRead );
+                    INPUT_RECORD records[ 1 ];
                     DWORD numRead = 0;
                     ok = ReadConsoleInput( hConsoleInput, records, 1, &numRead );
                     if ( ok )

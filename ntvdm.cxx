@@ -274,6 +274,7 @@ static high_resolution_clock::time_point g_tAppStart; // system time at app star
 static uint8_t g_bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
 static CKeyStrokes g_keyStrokes;                   // read or write keystrokes between kslog.txt and the app
 static bool g_UseOneThread = false;                // true if no keyboard thread should be used
+static uint64_t g_msAtStart = 0;                   // milliseconds since epoch at app start
 
 #ifndef _WIN32
 static bool g_forcePathsUpper = false;             // helpful for Linux
@@ -571,11 +572,8 @@ bool DisplayUpdateRequired()
 
 void SleepAndScheduleInterruptCheck()
 {
-    if ( g_UseOneThread )
-    {
-        if ( g_consoleConfig.portable_kbhit() )
+    if ( g_UseOneThread && g_consoleConfig.throttled_kbhit() )
             g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
-    }
 
     CKbdBuffer kbd_buf;
     if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
@@ -2573,7 +2571,7 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
         if ( g_UseOneThread )
             g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
 
-        asciiChar = 'a'; // not sure how to read and not consume on linux, so lie
+        asciiChar = 'a'; // not sure how to peek and not consume the character on linux, so lie
         scancode = 30;
         return true;
     }
@@ -5507,10 +5505,7 @@ void handle_int_21( uint8_t c )
                 uint32_t cur = ftell( fp );
 
                 struct stat stat_val= {0};
-                uint32_t size = 0;
-                int result = fstat( fileno( fp ), &stat_val );
-                if ( 0 == result )
-                    size = (uint32_t) stat_val.st_size;
+                uint32_t size = portable_filelen( fp );
                 cpu.set_ax( 0 );
     
                 if ( cur < size )
@@ -6772,12 +6767,14 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 #ifdef _WIN32
             ULONGLONG milliseconds = GetTickCount64();
 #else
-            struct timeval tv;
+            struct timeval tv = {0};
             gettimeofday( &tv, NULL );
-            uint64_t milliseconds = tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+            uint64_t milliseconds = ( (uint64_t) tv.tv_sec * 1000ULL ) + ( (uint64_t) tv.tv_usec / 1000ULL );
 #endif            
-            milliseconds *= 1821;
-            milliseconds /= 100000;
+
+            milliseconds -= g_msAtStart;
+            milliseconds *= 18206ULL;
+            milliseconds /= 1000000ULL;
             cpu.set_al( 0 );
 
             #if false // useful for creating logs that can be compared to fix bugs
@@ -7270,7 +7267,7 @@ void * PeekKeyboardThreadProc( void * param )
         if ( thread.shutdown_flag )
             break;
 
-        sleep_ms( 100 );
+        sleep_ms( 10 );
 
         if ( g_consoleConfig.portable_kbhit() )
         {
@@ -7467,6 +7464,14 @@ int main( int argc, char * argv[], char * envp[] )
 
     g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
     g_tAppStart = high_resolution_clock::now();    
+
+#ifdef _WIN32
+    g_msAtStart = GetTickCount64(); // struct timeval not availabe on Win32
+#else
+    struct timeval tv = {0};
+    gettimeofday( &tv, NULL );
+    g_msAtStart = tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+#endif
 
 #ifndef _WIN32
     tzset(); // or localtime_r won't work correctly
@@ -7833,7 +7838,7 @@ int main( int argc, char * argv[], char * envp[] )
             // if the keyboard peek thread has detected a keystroke, process it with an int 9.
             // don't plumb through port 60 since apps work without that.
 
-            if ( g_UseOneThread && g_consoleConfig.portable_kbhit() )
+            if ( g_UseOneThread && g_consoleConfig.throttled_kbhit() )
                 g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
 
             if ( g_KbdPeekAvailable )
