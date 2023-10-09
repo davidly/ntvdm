@@ -7787,7 +7787,9 @@ int main( int argc, char * argv[], char * envp[] )
     // turbo pascal v3 doesn't give a good indication that it wants 80x25.
     // word for DOS 6.0 is the same -- hard code it
 
-    if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) || ends_with( g_acApp, "turbo.com" ) || ends_with( g_acApp, "word.exe" ) )
+    if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) ||
+         ends_with( g_acApp, "turbo.com" ) || ends_with( g_acApp, "word.exe" ) ||
+         ends_with( g_acApp, "bc.exe" ) )
     {
         if ( !g_forceConsole )
             force80x25 = true;
