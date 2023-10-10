@@ -18,8 +18,10 @@
 #include <memory>
 #include <vector>
 #include <cstring>
+#include <djl_os.hxx>
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(WATCOM)
+
     #include <sys/unistd.h>
     #ifdef __APPLE__
         #include <unistd.h>
@@ -32,7 +34,9 @@ class CDJLTrace
 {
     private:
         FILE * fp;
+#ifndef WATCOM
         std::mutex mtx;
+#endif
         bool quiet; // no pid
         bool flush; // flush after each write
 
@@ -135,7 +139,9 @@ class CDJLTrace
         {
             if ( NULL != fp )
             {
+#ifndef WATCOM
                 lock_guard<mutex> lock( mtx );
+#endif
 
                 va_list args;
                 va_start( args, format );
@@ -159,8 +165,9 @@ class CDJLTrace
         {
             if ( NULL != fp )
             {
+#ifndef WATCOM
                 lock_guard<mutex> lock( mtx );
-
+#endif
                 va_list args;
                 va_start( args, format );
                 vfprintf( fp, format, args );
@@ -175,7 +182,9 @@ class CDJLTrace
             #ifdef DEBUG
             if ( NULL != fp && condition )
             {
+#ifndef WATCOM
                 lock_guard<mutex> lock( mtx );
+#endif
 
                 va_list args;
                 va_start( args, format );
@@ -192,8 +201,10 @@ class CDJLTrace
                     fflush( fp );
             }
             #else
+#ifndef WATCOM
             condition; // unused
             format; // unused
+#endif
             #endif
         } //TraceDebug
 

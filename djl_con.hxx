@@ -1,5 +1,23 @@
 #pragma once
 
+#ifdef WATCOM
+
+#include <conio.h>
+
+class ConsoleConfiguration
+{
+    public:
+        ConsoleConfiguration() {}
+        ~ConsoleConfiguration() {}
+        void EstablishConsoleOutput( int16_t width = 80, int16_t height = 24 ) {}
+        int portable_kbhit() { return kbhit(); }
+        int portable_getch() { return getch(); }
+        static char * portable_gets_s( char * buf, size_t bufsize ) { return gets( buf ); }
+        void RestoreConsole( bool clearScreen = true ) {}
+};
+
+#else
+
 #include <chrono>
 using namespace std;
 using namespace std::chrono;
@@ -619,3 +637,4 @@ class ConsoleConfiguration
         } //portable_gets_s
 }; //ConsoleConfiguration
 
+#endif

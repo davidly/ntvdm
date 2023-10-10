@@ -38,6 +38,32 @@
         SetProcessAffinityMask( (HANDLE) -1, processAffinityMask );
     }
 
+#elif defined( WATCOM )
+
+    #include <io.h>
+    #define MAX_PATH 255
+    #define not_inlined
+    #define force_inlined __inline
+
+    inline void sleep_ms( uint64_t ms ) {}
+
+    inline bool file_exists( char const * pfile )
+    {
+        FILE * fp = fopen( pfile, "r" );
+        bool exists = false;
+        if ( fp )
+        {
+            fclose( fp );
+            exists = true;
+        }
+        return exists;
+    } //file_exists
+
+    inline void bump_thread_priority() {}
+    inline void set_process_affinity( uint64_t processAffinityMask ) {}
+    inline int getpid() { return 0; }
+    #define _countof( X ) ( sizeof( X ) / sizeof( X[0] ) )
+
 #else // Linux, MacOS, etc.
 
     #ifndef OLDGCC
