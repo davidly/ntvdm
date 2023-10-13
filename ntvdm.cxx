@@ -275,6 +275,7 @@ static uint8_t g_bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check fo
 static CKeyStrokes g_keyStrokes;                   // read or write keystrokes between kslog.txt and the app
 static bool g_UseOneThread = false;                // true if no keyboard thread should be used
 static uint64_t g_msAtStart = 0;                   // milliseconds since epoch at app start
+static bool g_SendControlCInt = false;             // set to TRUE when/if a ^C is detected and an interrupt should be sent
 
 #ifndef _WIN32
 static bool g_forcePathsUpper = false;             // helpful for Linux
@@ -573,7 +574,7 @@ bool DisplayUpdateRequired()
 void SleepAndScheduleInterruptCheck()
 {
     if ( g_UseOneThread && g_consoleConfig.throttled_kbhit() )
-            g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+        g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
 
     CKbdBuffer kbd_buf;
     if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
@@ -1580,7 +1581,7 @@ bool UpdateDisplay()
                 UpdateDisplayRow( y );
         }
 
-        traceDisplayBufferAsHex();
+        //traceDisplayBufferAsHex();
         //traceDisplayBuffers();
         //cpu.trace_instructions( true );
         UpdateScreenCursorPosition(); // restore cursor position to where it was before
@@ -1610,31 +1611,22 @@ void ClearDisplay()
 } //ClearDisplay
 
 #ifdef _WIN32
-BOOL WINAPI ControlHandlerProc( DWORD fdwCtrlType )
-{
-    // this happens in a third thread, which is implicitly created
-
-    if ( CTRL_C_EVENT == fdwCtrlType )
+    BOOL WINAPI ControlHandlerProc( DWORD fdwCtrlType )
     {
-        // for 80x25 apps, ^c is often a valid character for page down, etc.
-        // for command-line apps, terminate execution.
-        tracer.Trace( "ControlHandlerProc received a CTRL_C_EVENT\n" );
-
-        if ( !g_use80x25 )
+        // this happens in a third thread, which is implicitly created
+    
+        if ( CTRL_C_EVENT == fdwCtrlType )
         {
-            g_haltExecution = true;
-            cpu.end_emulation();
-        }
-        else
+            tracer.Trace( "ControlHandlerProc is incrementing the ^c count\n ");
             InterlockedIncrement( &g_injectedControlC );
-
-        return TRUE;
-    }
-
-    return FALSE;
-} //ControlHandlerProc
+            g_SendControlCInt = true;
+            return TRUE;
+        }
+    
+        return FALSE;
+    } //ControlHandlerProc
 #else
-void ControlHandlerProc( void ) {}
+    void ControlHandlerProc( int signal ) {}
 #endif
 
 struct IntInfo
@@ -2557,7 +2549,11 @@ void consume_keyboard()
         else if ( 127 == asciiChar )
             kbd_buf.Add( 8, 14 ); // swap backspace with ^backspace
         else
+        {
+            if ( 0x3 == asciiChar && 0x2e == scanCode )
+                g_SendControlCInt = true;
             kbd_buf.Add( asciiChar, scanCode );
+        }
     }
 
     uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
@@ -3779,6 +3775,7 @@ void HandleAppExit()
     }
     else
     {
+        tracer.Trace( "ending emulation\n" );
         cpu.end_emulation();
         g_haltExecution = true;
     }
@@ -4876,7 +4873,7 @@ void handle_int_21( uint8_t c )
                         uint32_t askedBytes = pfcb->recSize * cRecords;
                         memset( GetDiskTransferAddress(), 0, askedBytes );
                         uint32_t toRead = get_min( pfcb->fileSize - seekOffset, askedBytes );
-                        size_t numRead = fread( GetDiskTransferAddress(), toRead, 1, fp );
+                        size_t numRead = fread( GetDiskTransferAddress(), 1, toRead, fp );
                         if ( numRead )
                         {
                             if ( toRead == askedBytes )
@@ -5398,7 +5395,7 @@ void handle_int_21( uint8_t c )
                         FILE * fp = RemoveFileEntry( handle );
                         if ( fp )
                         {
-                            tracer.Trace( "  close file handle %04x\n", handle );
+                            tracer.Trace( "  close file handle %04x, fp %p\n", handle, fp );
                             fclose( fp );
                             cpu.set_carry( false );
                         }
@@ -5501,23 +5498,34 @@ void handle_int_21( uint8_t c )
             {
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
-                tracer.Trace( "  read from file using handle %04x bytes at address %02x:%02x. offset just beyond: %02x\n", len, cpu.get_ds(), cpu.get_dx(), cpu.get_dx() + len );
+                tracer.Trace( "  read from file using handle %u fp %p %04x bytes at address %02x:%02x. offset just beyond: %02x\n",
+                              cpu.get_bx(), fp, len, cpu.get_ds(), cpu.get_dx(), cpu.get_dx() + len );
                 uint32_t cur = ftell( fp );
-
-                struct stat stat_val= {0};
                 uint32_t size = portable_filelen( fp );
                 cpu.set_ax( 0 );
+                tracer.Trace( "  cur: %u, size %u\n", cur, size );
+
+                cur = ftell( fp );
+                tracer.Trace( "  latest cur: %u\n", cur );
     
                 if ( cur < size )
                 {
                     uint32_t toRead = get_min( (uint32_t) len, size - cur );
                     memset( p, 0, toRead );
-                    size_t numRead = fread( p, toRead, 1, fp );
+                    tracer.Trace( "  attempting to read %u bytes \n", toRead );
+                    size_t numRead = fread( p, 1, toRead, fp );
                     if ( numRead )
                     {
                         cpu.set_ax( (uint16_t) toRead );
                         tracer.Trace( "  successfully read %04x (%u) bytes\n", toRead, toRead );
                         tracer.TraceBinaryData( p, toRead, 4 );
+                    }
+                    else
+                    {
+                        if ( feof( fp ) )
+                            tracer.Trace( "  ERROR: can't read because we're at the end of the file\n" );
+                        else
+                            tracer.Trace( "  ERROR: failed to read fp %p, error %d = %s\n", fp, errno, strerror( errno ) );
                     }
                 }
                 else
@@ -6840,8 +6848,11 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     else if ( 0x23 == interrupt_num ) // control "C" exit address
     {
         DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
-        if ( psp && ( firstAppTerminateAddress != psp->int22TerminateAddress ) )
+        if ( psp )
+        {
+            printf( "^C" );
             HandleAppExit();
+        }
 
         return;
     }
@@ -7842,6 +7853,14 @@ int main( int argc, char * argv[], char * envp[] )
 
             if ( g_UseOneThread && g_consoleConfig.throttled_kbhit() )
                 g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+
+            if ( g_SendControlCInt )
+            {
+                tracer.Trace( "control C interrupt being scheduled\n" );
+                g_SendControlCInt = false;
+                cpu.external_interrupt( 0x23 );
+                continue;
+            }
 
             if ( g_KbdPeekAvailable )
             {

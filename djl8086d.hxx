@@ -235,6 +235,7 @@ class CDisassemble8086
 
          ~CDisassemble8086() {}
         uint8_t BytesConsumed() { return _bc; } // can be called after Disassemble
+        void ClearLastIP() { _pcode = 0; } // jumps and interrupts make instruction length assert invalid
 
         const char * Disassemble( uint8_t * pcode )
         {

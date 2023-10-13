@@ -3,17 +3,31 @@
 #ifdef WATCOM
 
 #include <conio.h>
+#include <graph.h>
 
 class ConsoleConfiguration
 {
+    private:
+        bool outputEstablished;
     public:
-        ConsoleConfiguration() {}
+        ConsoleConfiguration() : outputEstablished( false ) {}
         ~ConsoleConfiguration() {}
-        void EstablishConsoleOutput( int16_t width = 80, int16_t height = 24 ) {}
-        int portable_kbhit() { return kbhit(); }
-        int portable_getch() { return getch(); }
+
+        void EstablishConsoleOutput( int16_t width = 80, int16_t height = 24 )
+        {
+            if ( outputEstablished )
+                return;
+
+            outputEstablished = true;
+            _setvideomode( 3 ); // 80x25 color text
+        } //EstablishConsoleOutput
+
+        static int portable_kbhit() { return kbhit(); }
+        static int throttled_kbhit() { return kbhit(); }
+        static int portable_getch() { return getch(); }
         static char * portable_gets_s( char * buf, size_t bufsize ) { return gets( buf ); }
         void RestoreConsole( bool clearScreen = true ) {}
+        bool IsOutputEstablished() { return outputEstablished; }
 };
 
 #else

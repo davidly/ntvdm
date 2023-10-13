@@ -63,6 +63,7 @@
     inline void set_process_affinity( uint64_t processAffinityMask ) {}
     inline int getpid() { return 0; }
     #define _countof( X ) ( sizeof( X ) / sizeof( X[0] ) )
+    inline void swap( uint8_t & a, uint8_t & b ) { uint8_t c = a; a = b; b = c; }
 
 #else // Linux, MacOS, etc.
 
@@ -246,6 +247,9 @@ inline const char * build_string()
 #if defined( __GNUC__ ) || defined( __clang__ )
     #define assume_false return( 0 )   // clearly terrible, but this code will never execute. ever.
     #define assume_false_return return // clearly terrible, but this code will never execute. ever.
+#elif defined( WATCOM )
+    #define assume_false return( 0 )   // clearly terrible, but this code will never execute. ever.
+    #define __assume( x )
 #else
     #define assume_false __assume( false )
     #define assume_false_return __assume( false )

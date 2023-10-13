@@ -105,6 +105,11 @@ class CDJLTrace
                 }
                 else
                 {
+#ifdef WATCOM // workaround for WATCOM, which doesn't delete the file with "w+t" in spite of its documentation claiming otherwise
+                    if ( !strcmp( mode, "w+t" ) )
+                        remove( pcLogFile );
+#endif
+
                     fp = fopen( pcLogFile, mode );
                 }
             }
