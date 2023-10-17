@@ -1,10 +1,9 @@
 ## ntvdm - An NT Virtual DOS Machine. 
 
 Not the real one, but this one can be compiled and executed on both Windows 
-(x64 and ARM64) and Linux (x64 and x32).  Support for Linux is in the early
-stages of development and not everything works as it should yet.
+(x64 and ARM64) and Linux (x64 and x32).
 
-I  wrote it so I could test my [BASIC](https://github.com/davidly/ttt/blob/main/ba.cxx) compiler and it emulates an Intel 8086
+I wrote it so I could test my [BASIC](https://github.com/davidly/ttt/blob/main/ba.cxx) compiler and it emulates an Intel 8086
 processor  and MS-DOS 3.00 APIs well enough to be able to run some  command
 line and text mode applications. 
 
