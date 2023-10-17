@@ -6941,7 +6941,7 @@ bool IsBinaryCOM( const char * app )
             return true;
 
         char ac[2];
-        bool ok = ( 0 != fread( ac, _countof( ac ), 1, fp ) );
+        bool ok = ( 0 != fread( ac, 1, _countof( ac ), fp ) );
         fclose( fp );
 
         if ( !ok )
