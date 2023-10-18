@@ -137,6 +137,7 @@ usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
             -h     workaround for Packed File Corrupt error: load apps High, above 64k
             -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
             -p     show performance information
+            -r:X   X is a folder that is mapped to C:\
             -s:X   speed in Hz. Default is to run as fast as possible.
                    for 4.77Mhz, use -s:4770000
                    to roughly match a 4.77Mhz 8088, use -s:4500000
@@ -178,12 +179,6 @@ C:\>ntvdm -c -p ttt8086.com
 
 ### Linux
 
-Note - Linux support is work in progress.  It has only been tested lightly,
-and there are several known issues.
-
- * Command-line apps are much more likely to work well than 80x25 text-mode
-applications.
- 
  * The code assumes VT-100 support is available in your terminal window and
 uses ASCII characters for instead of the MS-DOS code page 437 character set
 which can be ugly. Anyone know how to enable codepage 437 on Linux?
@@ -191,7 +186,8 @@ which can be ugly. Anyone know how to enable codepage 437 on Linux?
  * Linux is case-sensitive and DOS isn't.  To minimize the potential issues
 this causes you can force DOS to use UPPERCASE names by using `-u`.  If you
 still  have problems use a seperate root directory for any DOS applications
-with just uppercase directory and file names.
+with just uppercase directory and file names. The '-r' argument can be used
+to specify a folder that maps to C:\. e.g. -r:. or -r:.. or -r:/this/that
 
  * Apps that use the Alt key generally work, but you will need to configure
 the terminal application to disable menu access using the Alt key.
@@ -245,6 +241,7 @@ Emulates an 8086 and MS-DOS 3.00 runtime environment.
   -i               trace instructions to ntvdm.log.
   -t               enable debug tracing to ntvdm.log
   -p               show performance stats on exit.
+  -r:X   X is a folder that is mapped to C:\
   -s:X             set processor speed in Hz.
                      for 4.77 MHz 8086 use -s:4770000.
                      for 4.77 MHz 8088 use -s:4500000.
@@ -282,11 +279,7 @@ $ ../ntvdm -u -e:include=.\\inc msc.exe demo.c,,\;
 ```
 ![QuickBASIC](linux-screenshot.png)
 
-QuickBASIC is one of the applciations that has issues with lower case path
-names (it will run but you wont be able to open files). The work-around is
-to create a folder off the root with all uppercase characters, copy the
-app to that folder, ensure all filenames are uppercase, and use the '-u'
-switch with ntvdm. Then it'll work.
+QuickBASIC, like other apps, works best with -r:. and -u flags.
 
 
 
