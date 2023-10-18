@@ -452,7 +452,7 @@ static void usage( char const * perr )
     printf( "  -i               trace instructions to %s.log.\n", g_thisApp );
     printf( "  -t               enable debug tracing to %s.log\n", g_thisApp );
     printf( "  -p               show performance stats on exit.\n" );
-    printf( "  -r:root          root folder that maps to C:\n" );
+    printf( "  -r:root          root folder that maps to C:\\\n" );
 #ifdef I8086_TRACK_CYCLES
     printf( "  -s:X             set processor speed in Hz.\n" );
     printf( "                     for 4.77 MHz 8086 use -s:4770000.\n" );
