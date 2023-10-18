@@ -479,7 +479,7 @@ static void usage( char const * perr )
     printf( "  %s -u -e:include=.\\\\inc msc.exe demo.c,,\\\\;\n", g_thisApp );
     printf( "  %s -u -e:lib=.\\\\lib link.exe demo,,\\\\;\n", g_thisApp );
     printf( "  %s -u -e:include=.\\\\inc,lib=.\\\\lib demo.exe one two three\n", g_thisApp );
-    printf( "  %s -r:. -u QBX\n" );
+    printf( "  %s -r:. -u QBX\n", g_thisApp );
 #endif
     printf( "  %s -s:4770000 turbo.com\n", g_thisApp );
     exit( 1 );
