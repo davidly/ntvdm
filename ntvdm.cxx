@@ -258,8 +258,10 @@ static bool g_use80x25 = false;                    // true to force 80x25 with c
 static bool g_forceConsole = false;                // true to force teletype mode, with no cursor positioning
 static bool g_int16_1_loop = false;                // true if an app is looping to get keyboard input. don't busy loop.
 static bool g_KbdPeekAvailable = false;            // true when peek on the keyboard sees keystrokes
+static bool g_int9_pending = false;                // true if an int9 was scheduled but not yet invoked
 static long g_injectedControlC = 0;                // # of control c events to inject
 static int g_appTerminationReturnCode = 0;         // when int 21 function 4c is invoked to terminate an app, this is the app return code
+static char g_acRoot[ MAX_PATH ];                  // host folder ending in slash/backslash that maps to DOS "C:\"
 static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
 static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0]), likely NTVDM
 static char g_lastLoadedApp[ MAX_PATH ] = {0};     // path of most recenly loaded program (though it may have terminated)
@@ -359,27 +361,49 @@ void cr_to_zero( char * p )
     }
 } //cr_to_zero
 
-const char * DOSToLinuxPath( const char * p )
+const char * DOSToHostPath( const char * p )
 {
-#ifdef _WIN32
-    return p;
-#else        
-    static char linux_path[ MAX_PATH ];
+    char dos_path[ MAX_PATH ];
+    strcpy( dos_path, p );
+    slash_to_backslash( dos_path ); // DOS lets apps use forward slashes (Brief does this)
+    p = dos_path;
+
+    static char host_path[ MAX_PATH ];
     if ( ':' == p[1] )
-        strcpy( linux_path, p + 2 );
+    {
+        strcpy( host_path, g_acRoot );
+        if ( '\\' == p[2] )
+            strcat( host_path, p + 3 ); // the whole path
+        else
+            strcpy( host_path, p + 2 ); // just the filename assumed to be in the current directory
+    }
+    else if ( '\\' == p[0] )
+    {
+        strcpy( host_path, g_acRoot );
+        strcat( host_path, p + 1 );
+    }
     else
-        strcpy( linux_path, p );
+        strcpy( host_path, p );
 
-    backslash_to_slash( linux_path );
-    cr_to_zero( linux_path );
+#ifndef _WIN32
+    backslash_to_slash( host_path );
+    cr_to_zero( host_path );
 
+    char * start = host_path;
+    if ( '/' == host_path[0] )
+        start += strlen( g_acRoot );
     if ( g_forcePathsLower )
-        strlwr( linux_path );
+        strlwr( start );
     else if ( g_forcePathsUpper )
-        strupr( linux_path );
-    return linux_path;
-#endif    
-} //DOSToLinuxPath
+        strupr( start );
+#endif
+
+    tracer.Trace( "  translated dos path '%s' to host path '%s'\n", p, host_path );
+    assert( !strstr( host_path, "//" ) );
+    assert( !strstr( host_path, "\\\\" ) );
+
+    return host_path;
+} //DOSToHostPath
 
 #ifdef _WIN32
 static HANDLE g_hConsoleOutput = 0;                // the Windows console output handle
@@ -427,7 +451,8 @@ static void usage( char const * perr )
     printf( "  -h               load high above 64k.\n" );
     printf( "  -i               trace instructions to %s.log.\n", g_thisApp );
     printf( "  -t               enable debug tracing to %s.log\n", g_thisApp );
-    printf( "  -p               show performance stats on exit.\n" ); 
+    printf( "  -p               show performance stats on exit.\n" );
+    printf( "  -r:root          root folder that maps to C:\n" );
 #ifdef I8086_TRACK_CYCLES
     printf( "  -s:X             set processor speed in Hz.\n" );
     printf( "                     for 4.77 MHz 8086 use -s:4770000.\n" );
@@ -445,9 +470,17 @@ static void usage( char const * perr )
     printf( "  -?               output this help and exit.\n" );
     printf( "\n" );
     printf( "Examples:\n" );
-    printf( "  %s -u -e:include=.\\\\inc msc.exe demo.c,,\\;\n", g_thisApp );
-    printf( "  %s -u -e:lib=.\\\\lib link.exe demo,,\\;\n", g_thisApp );
+#ifdef _WIN32
+    printf( "  %s -u -e:include=.\\inc msc.exe demo.c,,\\;\n", g_thisApp );
+    printf( "  %s -u -e:lib=.\\lib link.exe demo,,\\;\n", g_thisApp );
+    printf( "  %s -u -e:include=.\\inc,lib=.\\lib demo.exe one two three\n", g_thisApp );
+    printf( "  %s -r:. QBX\n", g_thisApp );
+#else
+    printf( "  %s -u -e:include=.\\\\inc msc.exe demo.c,,\\\\;\n", g_thisApp );
+    printf( "  %s -u -e:lib=.\\\\lib link.exe demo,,\\\\;\n", g_thisApp );
     printf( "  %s -u -e:include=.\\\\inc,lib=.\\\\lib demo.exe one two three\n", g_thisApp );
+    printf( "  %s -r:. -u QBX\n" );
+#endif
     printf( "  %s -s:4770000 turbo.com\n", g_thisApp );
     exit( 1 );
 } //usage
@@ -1322,7 +1355,7 @@ const char * GetCurrentAppPath()
     return penv;
 } //GetCurrentAppPath
 
-bool GetDOSFilename( DOSFCB &fcb, char * filename )
+bool GetDOSFilenameFromFCB( DOSFCB &fcb, char * filename )
 {
     char * orig = filename;
 
@@ -1354,7 +1387,7 @@ bool GetDOSFilename( DOSFCB &fcb, char * filename )
 #endif    
 
     return ( 0 != *orig && '.' != *orig );
-} //GetDOSFilename
+} //GetDOSFilenameFromFCB
 
 void ClearLastUpdateBuffer()
 {
@@ -2654,7 +2687,7 @@ uint8_t i8086_invoke_in_al( uint16_t port )
     }
     else if ( 0x60 ==  port ) // keyboard data
     {
-        tracer.Trace( "invoke_al_in port 60 keyboard data\n" );
+        tracer.Trace( "  invoke_in_al port 60 keyboard data\n" );
         uint8_t asciiChar, scancode;
         if ( peek_keyboard( asciiChar, scancode ) )
         {
@@ -2684,6 +2717,9 @@ uint16_t i8086_invoke_in_ax( uint16_t port )
 void i8086_invoke_out_al( uint16_t port, uint8_t val )
 {
     tracer.Trace( "invoke_out_al port %#x, val %#x\n", port, val );
+
+    if ( 0x20 == port && 0x20 == val ) // End Of Interrupt to 8259A PIC. Enable subsequent interrupts
+        g_int9_pending = false;
 } //i8086_invoke_out_al
 
 void i8086_invoke_out_ax( uint16_t port, uint16_t val )
@@ -2695,6 +2731,21 @@ void i8086_invoke_halt()
 {
     g_haltExecution = true;
 } // i8086_invoke_halt
+
+bool starts_with( const char * str, const char * start )
+{
+    size_t len = strlen( str );
+    size_t lenstart = strlen( start );
+
+    if ( len < lenstart )
+        return false;
+
+    for ( int i = 0; i < lenstart; i++ )
+        if ( toupper( str[ i ] ) != toupper( start[ i ] ) )
+            return false;
+
+    return true;
+} //starts_with
 
 #ifdef _WIN32
 void FileTimeToDos( FILETIME & ftSystem, uint16_t & dos_time, uint16_t & dos_date )
@@ -2846,21 +2897,6 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         char cFileName[ MAX_PATH ];
     };
 
-    bool starts_with( const char * str, const char * start )
-    {
-        int len = strlen( str );
-        int lenstart = strlen( start );
-
-        if ( len < lenstart )
-            return false;
-
-        for ( int i = 0; i < lenstart; i++ )
-            if ( toupper( str[ i ] ) != toupper( start[ i ] ) )
-                return false;
-
-        return true;
-    } //starts_with
-
     // regex code found on stackoverflow from pooya13
 
     std::regex wildcardToRegex( const std::string& wildcard, bool caseSensitive = true )
@@ -2918,7 +2954,7 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
              ( !strcmp( input.c_str(), "." ) || !strcmp( input.c_str(), ".." ) ) )
              return true;
 
-        tracer.Trace( "modified wildcard from '%s' to '%s'\n", wildcard.c_str(), wc.c_str() );
+        tracer.Trace( "  modified wildcard from '%s' to '%s'\n", wildcard.c_str(), wc.c_str() );
         auto rgx = wildcardToRegex( wc, false );
         return std::regex_match( input, rgx );
     } //wildMatch
@@ -2940,7 +2976,7 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
 
     bool ProcessFoundFile( DosFindFile * pff, LINUX_FIND_DATA & fd )
     {
-        const char * linuxPath = DOSToLinuxPath( fd.cFileName );
+        const char * linuxPath = fd.cFileName;
         struct stat statbuf;
         int ret = stat( linuxPath, & statbuf );
         if ( 0 != ret )
@@ -2984,7 +3020,7 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         // non-extended FCBs will have attr = 0
 
         attr &= ~ ( 8 ); // remove the volume label bit if set
-        const char * linuxPath = DOSToLinuxPath( fd.cFileName );
+        const char * linuxPath = fd.cFileName;
         struct stat statbuf;
         int ret = stat( linuxPath, & statbuf );
         if ( 0 != ret )
@@ -4228,7 +4264,7 @@ void handle_int_21( uint8_t c )
     
             cpu.set_al( 0xff );
             char filename[ DOS_FILENAME_SIZE ];
-            if ( GetDOSFilename( *pfcb, filename ) )
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
                 tracer.Trace( "  opening %s\n", filename );
                 pfcb->SetFP( 0 );
@@ -4299,8 +4335,8 @@ void handle_int_21( uint8_t c )
             }
 
             pfcb->TraceFirst16();
-            char search_string[ 20 ];
-            bool ok = GetDOSFilename( *pfcb, search_string );
+            char search_string[ DOS_FILENAME_SIZE ];
+            bool ok = GetDOSFilenameFromFCB( *pfcb, search_string );
             if ( ok )
             {
                 tracer.Trace( "  searching for pattern '%s'\n", search_string );
@@ -4336,7 +4372,7 @@ void handle_int_21( uint8_t c )
 #else
                 LINUX_FIND_DATA lfd = {0};
                 tracer.TraceBinaryData( (uint8_t *) search_string, strlen( search_string ), 4 );
-                const char * linuxSearch = DOSToLinuxPath( search_string );
+                const char * linuxSearch = DOSToHostPath( search_string );
                 tracer.Trace( "  linux search string: '%s'\n", linuxSearch );
                 tracer.TraceBinaryData( (uint8_t *) linuxSearch, strlen( linuxSearch ), 4 );
                 g_FindFirst = FindFirstFileLinux( linuxSearch, lfd );
@@ -4477,7 +4513,7 @@ void handle_int_21( uint8_t c )
     
             cpu.set_al( 0xff );
             char filename[ DOS_FILENAME_SIZE ];
-            if ( GetDOSFilename( *pfcb, filename ) )
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
                 tracer.Trace( "  deleting %s\n", filename );
     
@@ -4594,7 +4630,7 @@ void handle_int_21( uint8_t c )
                 pfcb->drive = get_current_drive();
     
             char filename[ DOS_FILENAME_SIZE ];
-            if ( GetDOSFilename( *pfcb, filename ) )
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
                 tracer.Trace( "  creating '%s'\n", filename );
                 pfcb->SetFP( 0 );
@@ -4633,10 +4669,10 @@ void handle_int_21( uint8_t c )
             DOSFCB * pfcbNew = (DOSFCB * ) ( 0x10 + (uint8_t *) pfcb );
     
             char oldFilename[ DOS_FILENAME_SIZE ] = {0};
-            if ( GetDOSFilename( *pfcb, oldFilename ) )
+            if ( GetDOSFilenameFromFCB( *pfcb, oldFilename ) )
             {
                 char newFilename[ DOS_FILENAME_SIZE ] = {0};
-                if ( GetDOSFilename( *pfcbNew, newFilename ) )
+                if ( GetDOSFilenameFromFCB( *pfcbNew, newFilename ) )
                 {
                     tracer.Trace( "rename old name '%s', new name '%s'\n", oldFilename, newFilename );
     
@@ -5210,7 +5246,7 @@ void handle_int_21( uint8_t c )
         {
             // create directory ds:dx asciiz directory name. cf set on error with code in ax
             char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            const char * path = DOSToLinuxPath( pathOriginal );            
+            const char * path = DOSToHostPath( pathOriginal );            
             tracer.Trace( "  create directory '%s'\n", path );
 
 #ifdef _WIN32
@@ -5233,7 +5269,7 @@ void handle_int_21( uint8_t c )
         {
             // remove directory ds:dx asciiz directory name. cf set on error with code in ax
             char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            const char * path = DOSToLinuxPath( pathOriginal );
+            const char * path = DOSToHostPath( pathOriginal );
             tracer.Trace( "  remove directory '%s'\n", path );
 
 #ifdef _WIN32
@@ -5256,7 +5292,7 @@ void handle_int_21( uint8_t c )
         {
             // change directory ds:dx asciiz directory name. cf set on error with code in ax
             char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            const char * path = DOSToLinuxPath( pathOriginal );
+            const char * path = DOSToHostPath( pathOriginal );
             tracer.Trace( "  change directory to '%s'. original path '%s'\n", path, pathOriginal );
 
 #ifdef _WIN32
@@ -5280,7 +5316,7 @@ void handle_int_21( uint8_t c )
             // create file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
             char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            const char * path = DOSToLinuxPath( original_path );
+            const char * path = DOSToHostPath( original_path );
             tracer.Trace( "  create file '%s'\n", path );
             cpu.set_ax( 3 );
     
@@ -5314,7 +5350,7 @@ void handle_int_21( uint8_t c )
             // open file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
             char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            const char * path = DOSToLinuxPath( original_path );
+            const char * path = DOSToHostPath( original_path );
             tracer.TraceBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "  open file '%s'\n", path );
             uint8_t openmode = cpu.al();
@@ -5337,7 +5373,9 @@ void handle_int_21( uint8_t c )
             {
                 bool readOnly = ( 0 == openmode );
 
-                if ( !_stricmp( path, "CON" ) || !_stricmp( path, "\\DEV\\CON" ) || !_stricmp( path, "/dev/con" ) )
+                if ( !_stricmp( original_path, "CON" ) ||
+                     !_stricmp( original_path, "\\DEV\\CON" ) ||
+                     !_stricmp( original_path, "/dev/con" ) )
                 {
                     cpu.set_ax( readOnly ? 0 : 1 );
                     cpu.set_carry( false );
@@ -5662,7 +5700,7 @@ void handle_int_21( uint8_t c )
             // return: cf set on error, ax = error code
     
             char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            const char * pfile = DOSToLinuxPath( original_path );
+            const char * pfile = DOSToHostPath( original_path );
             tracer.Trace( "  deleting file '%s'\n", pfile );
             trace_all_open_files();
 
@@ -5708,7 +5746,7 @@ void handle_int_21( uint8_t c )
             FILE * fp = FindFileEntry( handle );
             if ( fp )
             {
-                uint32_t offset = ( ( (uint32_t) cpu.get_cx() ) << 16 ) | cpu.get_dx();
+                int32_t offset = ( ( (int32_t) cpu.get_cx() ) << 16 ) | cpu.get_dx();
                 uint8_t origin = cpu.al();
                 if ( origin > 2 )
                 {
@@ -5718,7 +5756,7 @@ void handle_int_21( uint8_t c )
                     return;
                 }
     
-                tracer.Trace( "  move file pointer using handle %04x to %u bytes from %s\n", handle, offset,
+                tracer.Trace( "  move file pointer using handle %04x to %d bytes from %s\n", handle, offset,
                               0 == origin ? "end" : 1 == origin ? "current" : "end" );
     
                 uint32_t cur = ftell( fp );
@@ -5759,12 +5797,13 @@ void handle_int_21( uint8_t c )
     
             char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  get/put file attributes on file '%s'\n", pfile );
+            const char * hostPath = DOSToHostPath( pfile );
             cpu.set_carry( true );
     
             if ( 0 == cpu.al() ) // get
             {
 #ifdef _WIN32                
-                uint32_t attr = GetFileAttributesA( pfile );
+                uint32_t attr = GetFileAttributesA( hostPath );
                 if ( INVALID_FILE_ATTRIBUTES != attr )
                 {
                     cpu.set_carry( false );
@@ -5775,9 +5814,8 @@ void handle_int_21( uint8_t c )
                 else
                     cpu.set_ax( (uint16_t) GetLastError() ); // most errors map OK (file not found, path not found, etc.)
 #else
-                const char * linuxPath = DOSToLinuxPath( pfile );
                 struct stat statbuf;
-                int ret = stat( linuxPath, & statbuf );
+                int ret = stat( hostPath, & statbuf );
                 if ( 0 == ret )
                 {
                     cpu.set_carry( false );
@@ -5790,16 +5828,16 @@ void handle_int_21( uint8_t c )
                 }
                 else
                 {
-                    tracer.Trace( "unable to get file attributes on linux path '%s'\n", linuxPath );
+                    tracer.Trace( "  ERROR: unable to get file attributes on linux path '%s'\n", hostPath );
                     cpu.set_ax( 2 ); // file not found
                 }
 #endif                
             }
             else
             {
-                tracer.Trace( "  put file attributes on '%s' to %04x\n", pfile, cpu.get_cx() );
+                tracer.Trace( "  put file attributes on '%s' to %04x\n", hostPath, cpu.get_cx() );
 #ifdef _WIN32                
-                BOOL ok = SetFileAttributesA( pfile, cpu.get_cx() );
+                BOOL ok = SetFileAttributesA( hostPath, cpu.get_cx() );
                 cpu.set_carry( !ok );
 #endif                
             }
@@ -5972,6 +6010,18 @@ void handle_int_21( uint8_t c )
 #ifdef _WIN32            
             if ( GetCurrentDirectoryA( sizeof( cwd ), cwd ) )
             {
+                tracer.Trace( "  cwd '%s', g_acRoot '%s'\n", cwd, g_acRoot );
+                size_t len_cur = strlen( cwd );
+                size_t len_root = strlen( g_acRoot );
+                if ( !strncmp( cwd, g_acRoot, len_root - 1 ) )
+                {
+                    assert( len_cur >= ( len_root - 1 ) );
+                    size_t to_copy = 1 + len_cur - ( len_root - 1 );
+                    assert( to_copy >= 1 );
+                    memcpy( cwd + 3, cwd + get_min( len_cur, len_root ), to_copy );
+                    tracer.Trace( "  removed root from current directory: '%s'\n", cwd );
+                }
+
                 char * past_start = cwd + 3; // result does not contain drive or initial backslash 'x:\'
                 if ( strlen( past_start ) <= 63 )
                 {
@@ -5986,11 +6036,24 @@ void handle_int_21( uint8_t c )
             char acCurDir[ MAX_PATH ];
             if ( getcwd( acCurDir, sizeof( acCurDir ) ) )            
             {
+                tracer.Trace( "  acCurDir '%s', g_acRoot '%s'\n", acCurDir, g_acRoot );
+                size_t len_cur = strlen( acCurDir );
+                size_t len_root = strlen( g_acRoot );
+                if ( !memcmp( acCurDir, g_acRoot, len_root - 1 ) )
+                {
+                    assert( len_cur >= ( len_root - 1 ) );
+                    size_t to_copy = 1 + len_cur - ( len_root - 1 );
+                    assert( to_copy >= 1 );
+                    tracer.Trace( "  len_root %d, len_cur %d, to_copy %d\n", len_root, len_cur, to_copy );
+                    memcpy( acCurDir + 1, acCurDir + get_min( len_cur, len_root ), to_copy );
+                    tracer.Trace( "  removed root from current directory: '%s'\n", acCurDir );
+                }
+
                 slash_to_backslash( acCurDir );
                 strcpy( cwd, "C:" );
                 strcat( cwd, acCurDir );
                 tracer.Trace( "  cwd: '%s'\n", cwd );                
-                char * past_start = acCurDir + 1; // result does not contain drive or initial backslash 'c:\'
+                char * past_start = cwd + 3; // result does not contain drive or initial backslash 'x:\'
                 if ( strlen( past_start ) <= 63 )
                 {
                     strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), past_start );
@@ -6148,7 +6211,7 @@ void handle_int_21( uint8_t c )
             uint16_t save_ss = cpu.get_ss();
 
             const char * originalPath = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            const char * pathToExecute = DOSToLinuxPath( originalPath );
+            const char * pathToExecute = DOSToHostPath( originalPath );
             tracer.Trace( "  CreateProcess mode %u path to execute: '%s'\n", mode, pathToExecute );
 
             char acCommandPath[ MAX_PATH ];
@@ -6276,15 +6339,16 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             char * psearch_string = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * hostSearch = DOSToHostPath( psearch_string );
             pff->search_attributes = cpu.get_cx() & 0x1e; // only directory, system, volume, and hidden are honored
             assert( 0x15 == offsetof( DosFindFile, file_attributes ) );
-            tracer.Trace( "  Find First Asciiz for pattern '%s' attributes %#x\n", psearch_string, pff->search_attributes );
+            tracer.Trace( "  Find First Asciiz for pattern '%s' host '%s' attributes %#x\n", psearch_string, hostSearch, pff->search_attributes );
 
             CloseFindFirst();
 
 #ifdef _WIN32
             WIN32_FIND_DATAA fd = {0};
-            g_hFindFirst = FindFirstFileA( psearch_string, &fd );
+            g_hFindFirst = FindFirstFileA( hostSearch, &fd );
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
                 do
@@ -6315,11 +6379,7 @@ void handle_int_21( uint8_t c )
 #else
 
             LINUX_FIND_DATA lfd = {0};
-            tracer.TraceBinaryData( (uint8_t *) psearch_string, strlen( psearch_string ), 4 );
-            const char * linuxSearch = DOSToLinuxPath( psearch_string );
-            tracer.Trace( "  linux search string: '%s'\n", linuxSearch );
-            tracer.TraceBinaryData( (uint8_t *) linuxSearch, strlen( linuxSearch ), 4 );
-            g_FindFirst = FindFirstFileLinux( linuxSearch, lfd );
+            g_FindFirst = FindFirstFileLinux( hostSearch, lfd );
             if ( 0 != g_FindFirst )
             {
                 do
@@ -6489,16 +6549,14 @@ void handle_int_21( uint8_t c )
             char * poldname = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
             char * pnewname = (char *) GetMem( cpu.get_es(), cpu.get_di() );
 
-#ifndef _WIN32
             char acOld[ MAX_PATH ];
-            const char * pfile = DOSToLinuxPath( poldname );
+            const char * pfile = DOSToHostPath( poldname );
             strcpy( acOld, pfile );
             poldname = acOld;
             char acNew[ MAX_PATH ];
-            pfile = DOSToLinuxPath( pnewname );
+            pfile = DOSToHostPath( pnewname );
             strcpy( acNew, pfile );
             pnewname = acNew;
-#endif            
     
             tracer.Trace( "renaming file '%s' to '%s', pointers are %p to %p\n", poldname, pnewname, poldname, pnewname );
             int renameok = ( 0 == rename( poldname, pnewname ) );
@@ -6530,13 +6588,14 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true );
             uint16_t handle = cpu.get_bx();
             const char * path = FindFileEntryPath( handle );
+            const char * hostPath = DOSToHostPath( path );
             if ( path )
             {
                 if ( 0 == cpu.al() )
                 {
 #ifdef _WIN32                    
                     WIN32_FILE_ATTRIBUTE_DATA fad = {0};
-                    if ( GetFileAttributesExA( path, GetFileExInfoStandard, &fad ) )
+                    if ( GetFileAttributesExA( hostPath, GetFileExInfoStandard, &fad ) )
                     {
                         cpu.set_ax( 0 );
                         cpu.set_carry( false );
@@ -6551,9 +6610,8 @@ void handle_int_21( uint8_t c )
                         cpu.set_ax( 1 );
                     }
 #else
-                    const char * linuxPath = DOSToLinuxPath( path );
                     struct stat statbuf;
-                    int ret = stat( linuxPath, & statbuf );
+                    int ret = stat( hostPath, & statbuf );
                     if ( 0 == ret )
                     {
                         cpu.set_ax( 0 );
@@ -6735,6 +6793,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     else if ( 9 == interrupt_num )
     {
         consume_keyboard();
+        g_int9_pending = false;
         return;
     }
     else if ( 0x10 == interrupt_num )
@@ -7318,6 +7377,51 @@ void * PeekKeyboardThreadProc( void * param )
 } //PeekKeyboardThreadProc
 #endif
 
+bool linux_same( char a, char b )
+{
+    bool aslash = ( a == '\\' || a == '/' );
+    bool bslash = ( b == '\\' || b == '/' );
+    return ( ( toupper( a ) == toupper( b ) ) || ( aslash && bslash ) );
+} //linux_same
+
+bool linux_starts_with( const char * str, const char * start )
+{
+    size_t len = strlen( str );
+    size_t lenstart = strlen( start );
+
+    if ( len < lenstart )
+        return false;
+
+    for ( int i = 0; i < lenstart; i++ )
+        if ( !linux_same( str[ i ], start[ i ] ) )
+            return false;
+
+    return true;
+} //linux_starts_with
+
+void SquashDOSFullPathToRoot( char * fullPath )
+{
+    tracer.Trace( "squash starting with '%s'\n", fullPath );
+#ifdef _WIN32
+    if ( starts_with( fullPath, g_acRoot ) )
+    {
+        size_t len_root = strlen( g_acRoot );
+        size_t len_full = strlen( fullPath );
+        size_t to_move = len_full - len_root;
+        memmove( fullPath + 3, fullPath + len_root, to_move + 1 );
+    }
+#else
+    if ( linux_starts_with( fullPath + 2, g_acRoot ) )
+    {
+        size_t len_root = strlen( g_acRoot );
+        size_t len_full = strlen( fullPath );
+        size_t to_move = len_full - len_root;
+        memmove( fullPath + 3, fullPath + len_root + 2, to_move + 1 );
+    }
+#endif
+    tracer.Trace( "squash ending with '%s'\n", fullPath );
+} //SquashDOSFullPathToRoot
+
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv )
 {
     char fullPath[ MAX_PATH ];
@@ -7335,8 +7439,10 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     slash_to_backslash( fpath );
     strcpy( fullPath + 2, fpath );
     free( fpath );
+#endif
+
+    SquashDOSFullPathToRoot( fullPath );
     tracer.Trace( "full path of binary: '%s'\n", fullPath );
-#endif    
 
     const char * pComSpec = "COMSPEC=COMMAND.COM";
     const char * pBriefFlags = "BFLAGS=-kzr -mDJL";
@@ -7523,9 +7629,14 @@ int main( int argc, char * argv[], char * envp[] )
     bool force80x25 = false;
     bool clearDisplayOnExit = true;
     char * penvVars = 0;
+    static char acRootArg[ MAX_PATH ];
 #ifdef _WIN32
+    strcpy( acRootArg, "\\" );
     DWORD_PTR dwProcessAffinityMask = 0; // by default let the OS decide
+#else
+    strcpy( acRootArg, "/" );
 #endif
+
     CKeyStrokes::KeystrokeMode keystroke_mode = CKeyStrokes::KeystrokeMode::ksm_None;
 
     for ( int i = 1; i < argc; i++ )
@@ -7584,6 +7695,12 @@ int main( int argc, char * argv[], char * envp[] )
                 else
                     usage( "invalid keystroke mode" );
             }
+            else if ( 'r' == ca )
+            {
+                if ( ':' != parg[2] )
+                    usage( "colon required after r argument" );
+                strcpy( acRootArg, parg + 3 );
+            }
 #ifdef _WIN32            
             else if ( 'z' == ca )
             {
@@ -7627,6 +7744,34 @@ int main( int argc, char * argv[], char * envp[] )
 
     tracer.Trace( "Use one thread: %d\n", g_UseOneThread );
 
+#ifdef _WIN32    
+    GetFullPathNameA( acRootArg, _countof( g_acRoot ), g_acRoot, 0 );
+    DWORD attr = GetFileAttributesA( g_acRoot );
+    if ( ( INVALID_FILE_ATTRIBUTES == attr ) || ( 0 == ( attr & FILE_ATTRIBUTE_DIRECTORY ) ) )
+        usage( "/r root argument isn't a folder" );
+    size_t len = strlen( g_acRoot );
+    if ( 0 == len )
+        usage( "error parsing /r argument. does the folder exist?" );
+    if ( '\\' != g_acRoot[ len - 1 ] )
+        strcat( g_acRoot, "\\" );
+#else
+    char * fpath = realpath( acRootArg, 0 );
+    if ( !fpath )
+        usage( "error parsing /r argument" );
+    strcpy( g_acRoot, fpath );
+    free( fpath );
+    size_t len = strlen( g_acRoot );
+    if ( 0 == len )
+        usage( "error parsing /r argument. does the folder exist?" );
+    if ( '/' != g_acRoot[ len - 1 ] )
+        strcat( g_acRoot, "/" );
+    struct stat statbuf;
+    int ret = stat( g_acRoot, & statbuf );
+    if ( !S_ISDIR( statbuf.st_mode ) )
+        usage( "/r root argument isn't a folder" );
+#endif
+    tracer.Trace( "root full path: '%s'\n", g_acRoot );
+
     if ( 0 == pcAPP )
     {
         usage( "no command specified" );
@@ -7637,7 +7782,7 @@ int main( int argc, char * argv[], char * envp[] )
 #ifdef _WIN32    
     _strupr( g_acApp );
 #else
-    const char * pLinuxPath = DOSToLinuxPath( g_acApp );
+    const char * pLinuxPath = DOSToHostPath( g_acApp );
     strcpy( g_acApp, pLinuxPath );
 #endif    
 
@@ -7856,16 +8001,17 @@ int main( int argc, char * argv[], char * envp[] )
 
             if ( g_SendControlCInt )
             {
-                tracer.Trace( "control C interrupt being scheduled\n" );
+                tracer.Trace( "scheduling an int x23 -- control C\n" );
                 g_SendControlCInt = false;
                 cpu.external_interrupt( 0x23 );
                 continue;
             }
 
-            if ( g_KbdPeekAvailable )
+            if ( g_KbdPeekAvailable && !g_int9_pending )
             {
-                tracer.Trace( "%llu main loop: scheduling an int 9\n", time_since_last() );
+                tracer.Trace( "%llu main loop: scheduling an int 9 -- keyboard\n", time_since_last() );
                 cpu.external_interrupt( 9 );
+                g_int9_pending = true;
                 g_KbdPeekAvailable = false;
                 continue;
             }
@@ -7877,7 +8023,7 @@ int main( int argc, char * argv[], char * envp[] )
             {
                 // on my machine this is invoked about every 72 million total_cycles if no throttle sleeping happened (tens of thousands if so)
     
-                tracer.Trace( "sending an int 8, dt: %#x, total_cycles %llu\n", dt, total_cycles );
+                tracer.Trace( "scheduling an int 8 -- timer, dt: %#x, total_cycles %llu\n", dt, total_cycles );
                 cpu.external_interrupt( 8 );
                 continue;
             }
