@@ -2577,8 +2577,10 @@ void consume_keyboard()
                 kbd_buf.Add( asciiChar, 1 ); // plain old escape character
             }
         }
+#if 0
         else if ( 8 == asciiChar ) // swap backspace with ^backspace
             kbd_buf.Add( 127, 14 );
+#endif
         else if ( 127 == asciiChar )
             kbd_buf.Add( 8, 14 ); // swap backspace with ^backspace
         else
