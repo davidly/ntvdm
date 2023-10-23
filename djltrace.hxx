@@ -206,7 +206,7 @@ class CDJLTrace
                     fflush( fp );
             }
             #else
-#ifndef WATCOM
+#if !defined( WATCOM ) && !defined( __APPLE__ )
             condition; // unused
             format; // unused
 #endif

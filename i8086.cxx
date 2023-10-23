@@ -72,7 +72,7 @@ void i8086::trace_state()
 
 // base cycle count per opcode; will be higher for multi-byte instructions, memory references,
 // ea calculations, jumps taken, loops taken, rotate cl-times, and reps
-const uint8_t i8086_cycles[ 256 ]
+const uint8_t i8086_cycles[ 256 ] =
 {
     /*00*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14,  0,
     /*10*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14, 12,

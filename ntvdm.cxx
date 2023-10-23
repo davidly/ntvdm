@@ -2903,7 +2903,7 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
 
     std::regex wildcardToRegex( const std::string& wildcard, bool caseSensitive = true )
     {
-        std::string regexString{ wildcard };
+        std::string regexString( wildcard );
         regexString = std::regex_replace( regexString, std::regex("\\\\"), "\\\\" );
         regexString = std::regex_replace( regexString, std::regex("\\^"), "\\^" );
         regexString = std::regex_replace( regexString, std::regex("\\."), "\\." );
@@ -2957,7 +2957,7 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
              return true;
 
         tracer.Trace( "  modified wildcard from '%s' to '%s'\n", wildcard.c_str(), wc.c_str() );
-        auto rgx = wildcardToRegex( wc, false );
+        std::regex rgx = wildcardToRegex( wc, false );
         return std::regex_match( input, rgx );
     } //wildMatch
 
@@ -3010,8 +3010,11 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         _strupr( pff->file_name );
         pff->file_size = statbuf.st_size;
         pff->file_attributes = matching_attr;
+#ifdef __APPLE__
+        tmTimeToDos( statbuf.st_mtimespec.tv_sec, pff->file_time, pff->file_date );
+#else
         tmTimeToDos( statbuf.st_mtim.tv_sec, pff->file_time, pff->file_date );
-
+#endif
         tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
         return true;
     } //ProcessFoundFile
@@ -3084,8 +3087,11 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         }
 
         pfcb->fileSize = statbuf.st_size;
+#ifdef __APPLE__
+        tmTimeToDos( statbuf.st_mtimespec.tv_sec, pfcb->time, pfcb->date );
+#else
         tmTimeToDos( statbuf.st_mtim.tv_sec, pfcb->time, pfcb->date );
-
+#endif
         pfcb->TraceFirst16();
         return true;
     } //ProcessFoundFileFCB
@@ -6620,7 +6626,11 @@ void handle_int_21( uint8_t c )
                         cpu.set_carry( false );
 
                         uint16_t the_time, the_date;
+#ifdef __APPLE__
+                        tmTimeToDos( statbuf.st_mtimespec.tv_sec, the_time, the_date );
+#else
                         tmTimeToDos( statbuf.st_mtim.tv_sec, the_time, the_date );
+#endif
                         cpu.set_cx( the_time );
                         cpu.set_dx( the_date );
                     }
@@ -7639,7 +7649,7 @@ int main( int argc, char * argv[], char * envp[] )
     strcpy( acRootArg, "/" );
 #endif
 
-    CKeyStrokes::KeystrokeMode keystroke_mode = CKeyStrokes::KeystrokeMode::ksm_None;
+    CKeyStrokes::KeystrokeMode keystroke_mode = CKeyStrokes::ksm_None; //CKeyStrokes::KeystrokeMode::ksm_None;
 
     for ( int i = 1; i < argc; i++ )
     {
@@ -7691,9 +7701,9 @@ int main( int argc, char * argv[], char * envp[] )
             {
                 char cmode = (char) tolower( parg[2] );
                 if ( 'w' == cmode )
-                    keystroke_mode = CKeyStrokes::KeystrokeMode::ksm_Write;
+                    keystroke_mode = CKeyStrokes::ksm_Write;
                 else if ( 'r' == cmode )
-                    keystroke_mode = CKeyStrokes::KeystrokeMode::ksm_Read;
+                    keystroke_mode = CKeyStrokes::ksm_Read;
                 else
                     usage( "invalid keystroke mode" );
             }

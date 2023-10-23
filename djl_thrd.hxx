@@ -40,10 +40,10 @@ class CSimpleThread
         }
 #else        
         CSimpleThread( void *(*start_routine)(void *) ) : the_thread( 0  ), 
-                                                          the_condition( PTHREAD_COND_INITIALIZER ), 
-                                                          the_mutex( PTHREAD_MUTEX_INITIALIZER ), 
                                                           shutdown_flag( false )
         {
+            the_condition = (pthread_cond_t) PTHREAD_COND_INITIALIZER;
+            the_mutex = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
             int ret = pthread_create( & the_thread, 0, start_routine, (void *) this );  
             tracer.Trace( "return value from pthread_create: %d\n", ret );
             pthread_cond_init( & the_condition, 0 );   

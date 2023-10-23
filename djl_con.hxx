@@ -4,13 +4,17 @@
 
 #include <conio.h>
 #include <graph.h>
+#include <dos.h>
 
 class ConsoleConfiguration
 {
     private:
         bool outputEstablished;
+        void (__interrupt __far * prev_int_23)();
+        static void __interrupt __far controlc_routine() {}
+        
     public:
-        ConsoleConfiguration() : outputEstablished( false ) {}
+        ConsoleConfiguration() : outputEstablished( false ), prev_int_23( 0 ) {}
         ~ConsoleConfiguration() {}
 
         void EstablishConsoleOutput( int16_t width = 80, int16_t height = 24 )
@@ -20,13 +24,25 @@ class ConsoleConfiguration
 
             outputEstablished = true;
             _setvideomode( 3 ); // 80x25 color text
+
+            // hook the ^C interrupt so the default handler doesn't terminate the app
+
+            prev_int_23 = _dos_getvect( 0x23 );
+            _dos_setvect( 0x23, controlc_routine );
         } //EstablishConsoleOutput
 
         static int portable_kbhit() { return kbhit(); }
         static int throttled_kbhit() { return kbhit(); }
         static int portable_getch() { return getch(); }
         static char * portable_gets_s( char * buf, size_t bufsize ) { return gets( buf ); }
-        void RestoreConsole( bool clearScreen = true ) {}
+        void RestoreConsole( bool clearScreen = true )
+        {
+            if ( 0 != prev_int_23 )
+            {
+                _dos_setvect( 0x23, prev_int_23 );
+                prev_int_23 = 0;
+            }
+        } //RestoreConsole
         bool IsOutputEstablished() { return outputEstablished; }
 };
 

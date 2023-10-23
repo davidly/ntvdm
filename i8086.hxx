@@ -1,5 +1,8 @@
 #pragma once
 
+#include <bitset>
+using namespace std;
+
 // when this (undefined) opcode is executed, i8086_invoke_interrupt will be called
 const uint8_t i8086_opcode_interrupt = 0x69;
 
@@ -198,6 +201,8 @@ struct i8086
     {
 #ifdef _M_AMD64
         return ( ! ( __popcnt16( x ) & 1 ) ); // less portable, but faster
+#elif defined( __APPLE__ )
+        return ( ! ( std::bitset<8>( x ).count() & 1 ) );
 #else
         return ( ( ~ ( x ^= ( x ^= ( x ^= x >> 4 ) >> 2 ) >> 1 ) ) & 1 );
 #endif
