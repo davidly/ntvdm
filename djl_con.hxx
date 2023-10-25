@@ -603,8 +603,13 @@ class ConsoleConfiguration
                 int r;
                 unsigned char c;
 
-                if ( ( r = read( 0, &c, sizeof( c ) ) ) < 0 )
-                    return r;
+                do
+                {
+                    if ( ( r = read( 0, &c, sizeof( c ) ) ) < 0 )
+                        return r;
+                    if ( 0 != r )
+                        break;
+                } while( true );
 
                 return c;
             #endif
