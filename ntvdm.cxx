@@ -511,14 +511,18 @@ class CKbdBuffer
                 g_keyStrokes.Append( stroke );
             }
 
-            assert( !IsFull() );
-            pbiosdata[ *ptail ] = asciiChar;
-            (*ptail)++;
-            pbiosdata[ *ptail ] = scancode;
-            (*ptail)++;
-            if ( *ptail >= 0x3e )
-                *ptail = 0x1e;
-            tracer.Trace( "    added asciichar %02x scancode %02x, new head = %04x, tail: %04x\n", asciiChar, scancode, *phead, *ptail );
+            if ( IsFull() )
+                tracer.Trace( "  dropping keystroke on the flooer because the DOS buffer is full\n" );
+            else
+            {
+                pbiosdata[ *ptail ] = asciiChar;
+                (*ptail)++;
+                pbiosdata[ *ptail ] = scancode;
+                (*ptail)++;
+                if ( *ptail >= 0x3e )
+                    *ptail = 0x1e;
+                tracer.Trace( "    added asciichar %02x scancode %02x, new head = %04x, tail: %04x\n", asciiChar, scancode, *phead, *ptail );
+            }
         } //Add
 
         uint8_t CurAsciiChar()
