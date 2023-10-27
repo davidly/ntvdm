@@ -5347,7 +5347,10 @@ void handle_int_21( uint8_t c )
             else
             {
                 tracer.Trace( "  ERROR: create file sz failed with error %d = %s\n", errno, strerror( errno ) );
-                cpu.set_ax( 2 );
+                if ( 1 == errno || 13 == errno ) // permission denied
+                    cpu.set_ax( 5 );
+                else
+                    cpu.set_ax( 2 ); // file not found
                 cpu.set_carry( true );
             }
     
@@ -5885,7 +5888,7 @@ void handle_int_21( uint8_t c )
                                 cpu.set_dx( 0x81 );
                             else if ( 1 == handle ) //stdout
                                 cpu.set_dx( 0x82 );
-                            else if ( handle < 10 ) // stderr, etc.
+                            else // stderr, etc.
                                 cpu.set_dx( 0x80 );
                         }
                         else
@@ -5894,7 +5897,7 @@ void handle_int_21( uint8_t c )
                                 cpu.set_dx( 0x1 );
                             else if ( 1 == handle ) //stdout
                                 cpu.set_dx( 0x2 );
-                            else if ( handle < 10 ) // stderr, etc.
+                            else // stderr, etc.
                                 cpu.set_dx( 0x0 );
                         }
                     }
@@ -6789,7 +6792,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     // try to figure out if an app is looping looking for keyboard input
 
     if ( ! ( ( 0x28 == interrupt_num ) ||
-             ( ( 0x16 == interrupt_num ) && ( 1 == c || 2 == c ) ) ) )
+             ( ( 0x16 == interrupt_num ) && ( 1 == c || 2 == c || 0x11 == c ) ) ) )
         g_int16_1_loop = false;
 
     if ( 0 == interrupt_num )
