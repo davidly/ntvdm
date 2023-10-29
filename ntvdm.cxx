@@ -361,8 +361,34 @@ void cr_to_zero( char * p )
     }
 } //cr_to_zero
 
+int ends_with( const char * str, const char * end )
+{
+    size_t len = strlen( str );
+    size_t lenend = strlen( end );
+
+    if ( len < lenend )
+        return false;
+
+    return !_stricmp( str + len - lenend, end );
+} //ends_with
+
+int begins_with( const char * str, const char * start )
+{
+    while ( *str && *start )
+    {
+        if ( tolower( *str ) != tolower( *start ) )
+            return false;
+
+        str++;
+        start++;
+    }
+
+    return true;
+} //begins_with
+
 const char * DOSToHostPath( const char * p )
 {
+    const char * poriginal = p;
     char dos_path[ MAX_PATH ];
     strcpy( dos_path, p );
     slash_to_backslash( dos_path ); // DOS lets apps use forward slashes (Brief does this)
@@ -379,8 +405,11 @@ const char * DOSToHostPath( const char * p )
     }
     else if ( '\\' == p[0] )
     {
-        strcpy( host_path, g_acRoot );
-        strcat( host_path, p + 1 );
+        if ( ! begins_with( poriginal, g_acRoot ) )
+        {
+            strcpy( host_path, g_acRoot );
+            strcat( host_path, p + 1 );
+        }
     }
     else
         strcpy( host_path, p );
@@ -627,31 +656,6 @@ void SleepAndScheduleInterruptCheck()
     }
     cpu.exit_emulate_early(); // fall out of the instruction loop early to check for a timer or keyboard interrupt
 } //SleepAndScheduleInterruptCheck
-
-int ends_with( const char * str, const char * end )
-{
-    size_t len = strlen( str );
-    size_t lenend = strlen( end );
-
-    if ( len < lenend )
-        return false;
-
-    return !_stricmp( str + len - lenend, end );
-} //ends_with
-
-int begins_with( const char * str, const char * start )
-{
-    while ( *str && *start )
-    {
-        if ( tolower( *str ) != tolower( *start ) )
-            return false;
-
-        str++;
-        start++;
-    }
-
-    return true;
-} //begins_with
 
 bool isFilenameChar( char c )
 {
@@ -6643,7 +6647,7 @@ void handle_int_21( uint8_t c )
                     }
                     else
                     {
-                        tracer.Trace( "  ERROR: can't get/set file date and time; getfileattributesex failed %d\n", errno );
+                        tracer.Trace( "  ERROR: can't get/set file date and time; stat failed %d\n", errno );
                         cpu.set_ax( 1 );
                     }
 #endif                    

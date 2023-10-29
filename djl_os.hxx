@@ -191,6 +191,8 @@ inline const char * target_platform()
         return "x86";
     #elif defined( _M_IX86 )      // WATCOM for 8086
         return "8086";
+    #elif defined( __ARM_32BIT_STATE )
+        return "arm32";
     #else
         return "(other)";
     #endif

@@ -281,7 +281,7 @@ class ConsoleConfiguration
 
             return true;
         } //process_key_event
-#endif
+#endif // _WIN32
 
     public:
         #ifdef _WIN32
@@ -593,7 +593,7 @@ class ConsoleConfiguration
             assert( false );
             return 0;
         } //linux_getch
-#endif
+#endif // _WIN32
 
         static int portable_getch()
         {
@@ -607,8 +607,10 @@ class ConsoleConfiguration
                 {
                     if ( ( r = read( 0, &c, sizeof( c ) ) ) < 0 )
                         return r;
-                    if ( 0 != r )
+                    if ( 0 != r )  // Linux platforms I tested wait for a char to be available. MacOS returns 0 immediately.
                         break;
+                    //tracer.Trace( "  sleeping in portable_getch()\n" );
+                    sleep_ms( 1 );
                 } while( true );
 
                 return c;
@@ -672,4 +674,4 @@ class ConsoleConfiguration
         } //portable_gets_s
 }; //ConsoleConfiguration
 
-#endif
+#endif // WATCOM
