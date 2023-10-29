@@ -7319,85 +7319,81 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
 } //LoadBinary
 
 #ifdef _WIN32
-DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
-{
-    HANDLE aHandles[ 2 ];
-    aHandles[ 0 ] = (HANDLE) param;    // the stop/shutdown event
-    aHandles[ 1 ] = g_hConsoleInput;
-
-    do
+    DWORD WINAPI PeekKeyboardThreadProc( LPVOID param )
     {
-        DWORD ret = WaitForMultipleObjects( 2, aHandles, FALSE, 20 );
-        if ( WAIT_OBJECT_0 == ret )
-            break;
+        HANDLE aHandles[ 2 ];
+        aHandles[ 0 ] = (HANDLE) param;    // the stop/shutdown event
+        aHandles[ 1 ] = g_hConsoleInput;
 
-        if ( !g_KbdPeekAvailable )
+        do
         {
-            uint8_t asciiChar, scancode;
-            if ( peek_keyboard( asciiChar, scancode ) )
+            DWORD ret = WaitForMultipleObjects( 2, aHandles, FALSE, 20 );
+            if ( WAIT_OBJECT_0 == ret )
+                break;
+
+            if ( !g_KbdPeekAvailable )
             {
-                tracer.Trace( "%llu async thread (woken via %s) noticed that a keystroke is available: %02x%02x == '%c'\n",
-                              time_since_last(), ( 1 == ret ) ? "console input" : "timeout", scancode, asciiChar, printable( asciiChar ) );
-                g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
-                SetEvent( g_heventKeyStroke ); // if the main thread is sleeping waiting for input, wake it.
-                cpu.exit_emulate_early(); // no time to lose processing the keystroke
+                uint8_t asciiChar, scancode;
+                if ( peek_keyboard( asciiChar, scancode ) )
+                {
+                    tracer.Trace( "%llu async thread (woken via %s) noticed that a keystroke is available: %02x%02x == '%c'\n",
+                                time_since_last(), ( 1 == ret ) ? "console input" : "timeout", scancode, asciiChar, printable( asciiChar ) );
+                    g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+                    SetEvent( g_heventKeyStroke ); // if the main thread is sleeping waiting for input, wake it.
+                    cpu.exit_emulate_early(); // no time to lose processing the keystroke
+                }
             }
-        }
-    } while( true );
+        } while( true );
 
-    return 0;
-} //PeekKeyboardThreadProc
+        return 0;
+    } //PeekKeyboardThreadProc
 #else
-void * PeekKeyboardThreadProc( void * param )
-{
-    tracer.Trace( "in peekkeyboardthreadproc for linux\n" );
-    CSimpleThread & thread = * (CSimpleThread *) param;
-
-    pthread_mutex_lock( & thread.the_mutex );
-
-    do
+    void * PeekKeyboardThreadProc( void * param )
     {
-        if ( thread.shutdown_flag )
-            break;
+        tracer.Trace( "in peekkeyboardthreadproc for linux\n" );
+        CSimpleThread & thread = * (CSimpleThread *) param;
+        pthread_mutex_lock( & thread.the_mutex );
 
-        sleep_ms( 10 );
-
-        if ( g_consoleConfig.portable_kbhit() )
+        do
         {
-            tracer.Trace( "async thread noticed that a keystroke is available\n" );
-            g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
-            cpu.exit_emulate_early();  // no time to lose processing the keystroke
-        }
+            struct timespec to;
+            clock_gettime( CLOCK_REALTIME, &to );
+            to.tv_nsec += ( 20 * 1000000 ); // 20 milliseconds
+            if ( to.tv_nsec >= 1000000000 ) // overflow
+            {
+                to.tv_sec += 1;
+                to.tv_nsec -= 1000000000;
+            }
 
-#if 0        
-        //struct pthread_timestruc_t to;
-        struct timespec to;
-        to.tv_sec = 1;
-        to.tv_nsec = 100000000; // 100ms
+            int err = pthread_cond_timedwait( & thread.the_condition, & thread.the_mutex, & to );
+            if ( ETIMEDOUT == err )
+            {
+                // too chatty tracer.Trace( "peekkeyboardthreadproc timed out in the wait\n" );
+                // check for keyboard input below
+            }
+            else if ( 0 == err )
+            {
+                tracer.Trace( "peekkeyboardthreadproc condition was signaled\n" );
+                break;
+            }
+            else
+            {
+                tracer.Trace( "peekkeyboardthreadproc error on cond_timewait: %d\n", err );
+                break;
+            }
 
-        int err = pthread_cond_timedwait( & thread.the_condition, & thread.the_mutex, & to );
-        if ( ETIMEDOUT == err )
-        {
-            tracer.Trace( "peekkeyboardthreadproc timed out in the wait\n" );
-            // check for keyboard input here
-        }
-        else if ( 0 == err )
-        {
-            tracer.Trace( "peekkeyboardthreadproc condition was signaled\n" );
-            break;
-        }
-        else
-        {
-            tracer.Trace( "peekkeyboardthreadproc error on cond_timewait: %d\n", err );
-            break;
-        }
-#endif        
-    } while( true );
+            if ( g_consoleConfig.portable_kbhit() )
+            {
+                tracer.Trace( "async thread noticed that a keystroke is available\n" );
+                g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+                cpu.exit_emulate_early();  // no time to lose processing the keystroke
+            }
+        } while( true );
 
-    pthread_mutex_unlock( & thread.the_mutex );
-    tracer.Trace( "falling out of peekkeyboardthreadproc for linux\n" );
-    return 0;
-} //PeekKeyboardThreadProc
+        pthread_mutex_unlock( & thread.the_mutex );
+        tracer.Trace( "falling out of peekkeyboardthreadproc for linux\n" );
+        return 0;
+    } //PeekKeyboardThreadProc
 #endif
 
 bool linux_same( char a, char b )
