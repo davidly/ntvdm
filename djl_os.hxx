@@ -187,11 +187,11 @@ inline const char * target_platform()
         return "amd64";
     #elif defined( _M_ARM64 )     // msft on Windows
         return "arm64";
-    #elif defined( _WIN32 )       // msft on Windows 32-bit
-        return "x86";
-    #elif defined( _M_IX86 )      // WATCOM for 8086
+    #elif defined( WATCOM )       // WATCOM for 8086
         return "8086";
-    #elif defined( __ARM_32BIT_STATE )
+    #elif defined( _M_IX86 )      // msft on Windows 32-bit
+        return "x86";
+    #elif defined( __ARM_32BIT_STATE ) // ARM32 on Raspberry PI (and more)
         return "arm32";
     #else
         return "(other)";
@@ -213,7 +213,7 @@ inline const char * compiler_used()
 
     #if defined( __GNUC__ )
         return "g++";
-    #elif defined( _WIN32 )
+    #elif defined( _MSC_VER )
         sprintf( acver, "msft C++ ver %u", _MSC_VER );
         return acver;
     #elif defined( __clang__ )
@@ -247,8 +247,9 @@ inline const char * build_string()
                  "License CC0 1.0 Universal <https://creativecommons.org/publicdomain/zero/1.0/>.\n"\
                  "This is free software: you are free to change and redistribute it.\n"\
                  "There is NO WARRANTY, to the extent permitted by law.\n"\
-                 "Built for %s %s on %c %c%c%c %s %s by %s on %s\n", &__DATE__[7] ,target_platform(), build_type(),\
-                  __DATE__[5],__DATE__[0], __DATE__[1], __DATE__[2], &__DATE__[9], __TIME__, compiler_used(), build_platform() );
+                 "Built for %s %s on %c%c %c%c%c %s %s by %s on %s\n",
+                 &__DATE__[7] ,target_platform(), build_type(), __DATE__[4], __DATE__[5],
+                 __DATE__[0], __DATE__[1], __DATE__[2], &__DATE__[9], __TIME__, compiler_used(), build_platform() );
     return bs;
 } //build_string
 
