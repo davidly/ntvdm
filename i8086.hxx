@@ -200,7 +200,7 @@ struct i8086
     bool is_parity_even8( uint8_t x ) // unused by apps and expensive to compute.
     {
 #ifdef _M_AMD64
-        return ( ! ( __popcnt16( x ) & 1 ) ); // less portable, but faster
+        return ( ! ( __popcnt16( x ) & 1 ) ); // less portable, but faster. Not on Q9650 CPU
 #elif defined( __APPLE__ )
         return ( ! ( std::bitset<8>( x ).count() & 1 ) );
 #else
