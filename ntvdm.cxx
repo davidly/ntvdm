@@ -89,7 +89,7 @@ using namespace std::chrono;
 
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
-                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip );
+                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad );
 uint16_t LoadOverlay( const char * app, uint16_t segLoadAddress, uint16_t segmentRelocationFactor );
 
 uint16_t round_up_to( uint16_t x, uint16_t multiple )
@@ -473,6 +473,7 @@ static void usage( char const * perr )
     printf( "Usage: %s [OPTION]... PROGRAM [ARGUMENT]...\n", g_thisApp );
     printf( "Emulates an 8086 and MS-DOS 3.30 runtime environment.\n" );
     printf( "\n" );
+    printf( "  -b               load/run program as the boot sector at 07c0:0000\n" );
     printf( "  -c               don't automatically change window size.\n" );
     printf( "  -C               change text area to 80x25 (don't use tty mode).\n" );
     printf( "  -d               don't clear the display on exit\n" );
@@ -1729,6 +1730,7 @@ const IntInfo interrupt_list[] =
     { 0x10, 0x08, "read attributes+character at cursor position" },
     { 0x10, 0x09, "output character" },
     { 0x10, 0x0a, "output character only" },
+    { 0x10, 0x0e, "write text in teletype mode" },
     { 0x10, 0x0f, "get video mode" },
     { 0x10, 0x10, "set palette registers" },
     { 0x10, 0x11, "character generator ega" },
@@ -1742,6 +1744,8 @@ const IntInfo interrupt_list[] =
     { 0x10, 0xef, "hercules -- get video adapter type and mode" },
     { 0x10, 0xfa, "ega register interface library" },
     { 0x12, 0x00, "get memory size" },
+    { 0x14, 0x01, "serial i/o transmit character" },
+    { 0x14, 0x02, "serial i/o receive character" },
     { 0x16, 0x00, "get character" },
     { 0x16, 0x01, "keyboard status" },
     { 0x16, 0x02, "keyboard - get shift status" },
@@ -3545,6 +3549,82 @@ void handle_int_10( uint8_t c )
                     pbuf[ offset ] = ch;
 
                 UpdateDisplayRow( row );
+            }
+            else
+            {
+                if ( 0xd != ch )
+                {
+                    printf( "%c", ch );
+                    fflush( stdout );
+                }
+            }
+
+            return;
+        }
+        case 0xe:
+        {
+            // write text in teletype mode.
+            // al == ascii character, bh = video page number, bl = foreground pixel color (graphics mode only)
+            // advanced cursor. BEL(7), BS(8), LF(A), and CR(D) are honored
+
+            GetCursorPosition( row, col );
+            tracer.Trace( "  write text in teletype mode %#x, page %#x, row %u, col %u\n", cpu.al(), cpu.bh(), row, col );
+
+            char ch = cpu.al();
+            if ( 0x1b == ch ) // escape should be a left arrow, but it just confuses the console
+                ch = ' ';
+
+            uint8_t page = cpu.bh();
+            if ( page > 3 )
+                page = 0;
+
+            if ( g_use80x25 )
+            {
+                uint8_t curPage = GetActiveDisplayPage();
+                SetActiveDisplayPage( page );
+                uint8_t * pbuf = GetVideoMem();
+
+                if ( 0x0a == ch ) // LF
+                {
+                    col = 0;
+                    SetCursorPosition( row, col );
+                    tracer.Trace( "  linefeed, setting column to 0\n" );
+                }
+                else if ( 0x0d == ch ) // CR
+                {
+                    if ( row >= ScreenRowsM1 )
+                    {
+                        tracer.Trace( "  carriage scrolling up a line\n"  );
+                        scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
+                    }
+                    else
+                    {
+                        tracer.Trace( "  carriage return, moving to next row\n" );
+                        row++;
+                        SetCursorPosition( row, col );
+                    }
+                }
+                else if ( 0x08 == ch ) // backspace
+                {
+                    if ( col > 0 )
+                    {
+                        col--;
+                        SetCursorPosition( row, col );
+                    }
+                }
+                else
+                {
+                    uint32_t offset = row * 2 * ScreenColumns + col * 2;
+                    pbuf[ offset ] = ch;
+                    UpdateDisplayRow( row );
+
+                    col++;
+                    if ( col > ScreenColumns )
+                        col = 1;
+                    SetCursorPosition( row, col );
+                }
+
+                SetActiveDisplayPage( curPage ); // restore the original page
             }
             else
             {
@@ -6289,7 +6369,7 @@ void handle_int_21( uint8_t c )
             if ( 0 != segChildEnv )
             {
                 uint16_t seg_psp = LoadBinary( acCommandPath, acTail, segChildEnv, ( 0 == mode ),
-                                               & pae->func1SS, & pae->func1SP, & pae->func1CS, & pae->func1IP );
+                                               & pae->func1SS, & pae->func1SP, & pae->func1CS, & pae->func1IP, false );
                 if ( 0 != seg_psp )
                 {
                     if ( 1 == mode )
@@ -6838,6 +6918,35 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         cpu.set_ax( 0x280 ); // 640K conventional RAM
         return;
     }
+    else if ( 0x14 == interrupt_num )
+    {
+        tracer.Trace( "serial I/O interrupt\n" );
+        // serial I/O
+
+        if ( 1 == cpu.ah() ) // transmit
+        {
+
+        }
+        else if ( 2 == cpu.ah() ) // receive
+        {
+            char ch = 0;
+            int result = read( 0, &ch, 1 );
+            tracer.Trace( "  result of read: %d, ch %02x = '%c'\n", result, ch, printable( ch ) );
+            if ( 1 != result )
+            {
+                cpu.set_ah( 0x87 );
+                cpu.set_al( 0 );
+            }
+            else
+            {
+                cpu.set_ah( 0 );
+                cpu.set_al( ch );
+            }
+        }
+        else
+            tracer.Trace( "  unhandled serial I/O command AH %#02x\n", cpu.ah() );
+        return;
+    }
     else if ( 0x16 == interrupt_num )
     {
         handle_int_16( c );
@@ -7135,9 +7244,67 @@ uint16_t LoadOverlay( const char * app, uint16_t segCode, uint16_t segRelocation
     return 0;
 } //LoadOverlay
 
-uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment, bool setupRegs,
-                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip )
+uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint16_t segEnvironment )
 {
+    // create a dummy PSP
+    uint16_t paragraphs_free = 0;
+    uint16_t BSSegment = AllocateMemory( 0x1000, paragraphs_free );
+    if ( 0 == BSSegment )
+    {
+        tracer.Trace( "  insufficient ram available RAM to load boot sector, in paragraphs: %04x required, %04x available\n", 0x1000, paragraphs_free );
+        return 0;
+    }
+
+    tracer.Trace( "  loading boot sector, BSSegment is %04x\n", BSSegment );
+    InitializePSP( BSSegment, acAppArgs, segEnvironment );
+
+    FILE * fp = fopen( acApp, "rb" );
+    if ( 0 == fp )
+    {
+        tracer.Trace( "open boot sector file, error %d\n", errno );
+        FreeMemory( BSSegment );
+        return 0;
+    }
+    
+    fseek( fp, 0, SEEK_END );
+    long file_size = ftell( fp );
+    fseek( fp, 0, SEEK_SET );
+    size_t blocks_read = fread( GetMem( 0x7c0, 0 ), get_min( 512L, file_size ), 1, fp );
+    fclose( fp );
+
+    if ( 1 != blocks_read )
+    {
+        tracer.Trace( "can't read boot sector file into RAM, error %d\n", errno );
+        FreeMemory( BSSegment );
+        return 0;
+    }
+    
+    if ( 512 != file_size )
+    {
+        tracer.Trace( "error: boot sector file isn't 512 bytes\n" );
+        FreeMemory( BSSegment );
+        return 0;
+    }
+    
+    // prepare to execute the boot sector
+
+    cpu.set_cs( 0x7c0 );
+    cpu.set_ss( 0x7c0 );
+    cpu.set_sp( 0xffff );
+    cpu.set_ip( 0 );
+    cpu.set_ds( 0x7c0 );
+    cpu.set_es( 0x7c0 );
+    tracer.Trace( "  loaded %s, app segment %04x, ip %04x, sp %04x\n", acApp, cpu.get_cs(), cpu.get_ip(), cpu.get_sp() );
+
+    return BSSegment;
+} //LoadAsBootSector
+
+uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment, bool setupRegs,
+                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad )
+{
+    if ( bootSectorLoad )
+        return LoadAsBootSector( acApp, acAppArgs, segEnvironment );
+
     uint16_t psp = 0;
     bool isCOM = IsBinaryCOM( acApp );
 
@@ -7147,16 +7314,15 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
 
         uint16_t paragraphs_free = 0;
         uint16_t ComSegment = AllocateMemory( 0x1000, paragraphs_free );
-        psp = ComSegment;
-        InitializePSP( ComSegment, acAppArgs, segEnvironment );
-
-        tracer.Trace( "  loading com, ComSegment is %04x\n", ComSegment );
-
         if ( 0 == ComSegment )
         {
             tracer.Trace( "  insufficient ram available RAM to load .com, in paragraphs: %04x required, %04x available\n", 0x1000, paragraphs_free );
             return 0;
         }
+
+        psp = ComSegment;
+        InitializePSP( ComSegment, acAppArgs, segEnvironment );
+        tracer.Trace( "  loading com, ComSegment is %04x\n", ComSegment );
 
         FILE * fp = fopen( acApp, "rb" );
         if ( 0 == fp )
@@ -7169,12 +7335,19 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         fseek( fp, 0, SEEK_END );
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
-        size_t blocks_read = fread( GetMem( ComSegment, 0x100 ), file_size, 1, fp );
+        size_t blocks_read = fread( GetMem( ComSegment, 0x100 ), get_min( 65536L - 0x100, file_size ), 1, fp );
         fclose( fp );
 
         if ( 1 != blocks_read )
         {
             tracer.Trace( "can't read .com file into RAM, error %d\n", errno );
+            FreeMemory( ComSegment );
+            return 0;
+        }
+
+        if ( file_size > ( 65536 - 0x100) )
+        {
+            tracer.Trace( "can't read .com file into RAM -- it's too big!\n" );
             FreeMemory( ComSegment );
             return 0;
         }
@@ -7208,11 +7381,14 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         uint16_t DataSegment = AllocateMemory( 0xffff, paragraphs_free );
         assert( 0 == DataSegment );
         DataSegment = AllocateMemory( paragraphs_free, paragraphs_remaining );
-        tracer.Trace( "  loading exe, DataSegment is %04x\n", DataSegment );
 
         if ( 0 == DataSegment )
-            i8086_hard_exit( "  0 ram available RAM to load .exe\n", 0 );
+        {
+            tracer.Trace( "  insufficient RAM to load data segment for .exe\n" );
+            return 0;
+        }
 
+        tracer.Trace( "  loading exe, DataSegment is %04x\n", DataSegment );
         psp = DataSegment;
         InitializePSP( DataSegment, acAppArgs, segEnvironment );
 
@@ -7421,7 +7597,7 @@ bool linux_starts_with( const char * str, const char * start )
 
 void SquashDOSFullPathToRoot( char * fullPath )
 {
-    tracer.Trace( "squash starting with '%s'\n", fullPath );
+    tracer.Trace( "  squash starting with '%s'\n", fullPath );
 #ifdef _WIN32
     if ( starts_with( fullPath, g_acRoot ) )
     {
@@ -7439,7 +7615,7 @@ void SquashDOSFullPathToRoot( char * fullPath )
         memmove( fullPath + 3, fullPath + len_root + 2, to_move + 1 );
     }
 #endif
-    tracer.Trace( "squash ending with '%s'\n", fullPath );
+    tracer.Trace( "  squash ending with '%s'\n", fullPath );
 } //SquashDOSFullPathToRoot
 
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv )
@@ -7462,7 +7638,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 #endif
 
     SquashDOSFullPathToRoot( fullPath );
-    tracer.Trace( "full path of binary: '%s'\n", fullPath );
+    tracer.Trace( "  full path of binary: '%s'\n", fullPath );
 
     const char * pComSpec = "COMSPEC=COMMAND.COM";
     const char * pBriefFlags = "BFLAGS=-kzr -mDJL";
@@ -7648,6 +7824,7 @@ int main( int argc, char * argv[], char * envp[] )
     bool traceInstructions = false;
     bool force80x25 = false;
     bool clearDisplayOnExit = true;
+    bool bootSectorLoad = false;
     char * penvVars = 0;
     static char acRootArg[ MAX_PATH ];
 #ifdef _WIN32
@@ -7668,7 +7845,9 @@ int main( int argc, char * argv[], char * envp[] )
         {
             char ca = (char) tolower( parg[1] );
 
-            if ( 's' == ca )
+            if ( 'b' == ca )
+                bootSectorLoad = true;
+            else if ( 's' == ca )
             {
                 if ( ':' == parg[2] )
                     clockrate = strtoull( parg + 3 , 0, 10 );
@@ -7955,7 +8134,7 @@ int main( int argc, char * argv[], char * envp[] )
     if ( 0 == segEnvironment )
         i8086_hard_exit( "unable to create environment for the app\n", 0 );
 
-    g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment, true, 0, 0, 0, 0 );
+    g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment, true, 0, 0, 0, 0, bootSectorLoad );
     if ( 0 == g_currentPSP )
         i8086_hard_exit( "unable to load executable\n", 0 );
 
