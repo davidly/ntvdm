@@ -238,6 +238,7 @@ const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt r
 const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
 const uint16_t SegmentListOfLists = 0x50;
 const uint16_t OffsetListOfLists = 0xb0;
+const uint64_t OffsetDeviceControlBlock = 0xe0;
 #if 0
 const uint16_t OffsetSystemFileTable = 0xf0;
 #endif
@@ -1514,12 +1515,12 @@ void DecodeAttributes( uint8_t a, uint8_t & fg, uint8_t & bg, bool & intense )
     intense = ( 0 != ( a & 8 ) );
 } //DecodeAttributes
 
-const uint8_t FGColorMap[ 8 ] =
+static const uint8_t FGColorMap[ 8 ] =
 {
     30, 34, 32, 36, 31, 35, 33, 37,
 };
 
-const uint8_t BGColorMap[ 8 ] =
+static const uint8_t BGColorMap[ 8 ] =
 {
     40, 44, 42, 46, 41, 45, 43, 47,
 };
@@ -1624,9 +1625,9 @@ bool UpdateDisplay()
                 UpdateDisplayRow( y );
         }
 
-        traceDisplayBufferAsHex();
+        //if ( tracer.IsEnabled() )
+        //    traceDisplayBufferAsHex();
         //traceDisplayBuffers();
-        //cpu.trace_instructions( true );
         UpdateScreenCursorPosition(); // restore cursor position to where it was before
         return true;
     }
@@ -3564,6 +3565,7 @@ void handle_int_10( uint8_t c )
         case 0xe:
         {
             // write text in teletype mode.
+            // I've found no real-world app that uses this, so while I tested it I'm not sure if it's correct.
             // al == ascii character, bh = video page number, bl = foreground pixel color (graphics mode only)
             // advanced cursor. BEL(7), BS(8), LF(A), and CR(D) are honored
 
@@ -3619,8 +3621,8 @@ void handle_int_10( uint8_t c )
                     UpdateDisplayRow( row );
 
                     col++;
-                    if ( col > ScreenColumns )
-                        col = 1;
+                    if ( col >= ScreenColumns )
+                        col = 0;
                     SetCursorPosition( row, col );
                 }
 
@@ -5740,8 +5742,8 @@ void handle_int_21( uint8_t c )
                                     pbuf[ offset + 1 ] = DefaultVideoAttribute;
 
                                 col++;
-                                if ( col > ScreenColumns )
-                                    col = 1;
+                                if ( col >= ScreenColumns )
+                                    col = 0;
                                 SetCursorPosition( row, col );
                             }
                         }
@@ -7841,7 +7843,11 @@ int main( int argc, char * argv[], char * envp[] )
         char *parg = argv[i];
         char c = *parg;
 
-        if ( ( 0 == pcAPP ) && ( '-' == c || '/' == c ) )
+        if ( ( 0 == pcAPP ) && ( '-' == c
+#if defined( WATCOM ) || defined( _WIN32 )
+            || '/' == c
+#endif
+           ) )
         {
             char ca = (char) tolower( parg[1] );
 
@@ -7912,7 +7918,7 @@ int main( int argc, char * argv[], char * envp[] )
             else if ( 'v' == ca )
                 version();
             else if ( '?' == ca )
-                usage(NULL);
+                usage( 0 );
             else
                 usage( "invalid argument specified" );
         }
@@ -8050,8 +8056,8 @@ int main( int argc, char * argv[], char * envp[] )
     * (uint8_t *) ( GetMem( 0xffff, 0xe ) ) = 0xff;       // original pc
 
 #if 0
-    // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table
-    // make that pointer point to an empty system file table
+    // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table.
+    // make that pointer point to an empty system file table.
 
     * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetListOfLists + 4 ) ) = OffsetSystemFileTable;
     * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetListOfLists + 6 ) ) = SegmentListOfLists;
@@ -8059,6 +8065,13 @@ int main( int argc, char * argv[], char * envp[] )
     * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetSystemFileTable + 2 ) ) = 0xffff;
     * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetSystemFileTable + 4 ) ) = 0x30; // lots of files available
 #endif
+
+    // put dummy values in the list of lists
+    uint16_t * pListOfLists = (uint16_t *) GetMem( SegmentListOfLists, OffsetListOfLists );
+    pListOfLists[ 2 ] = OffsetDeviceControlBlock; // low dword of first drive parameter block (ffff is end of list)
+    pListOfLists[ 3 ] = SegmentListOfLists;       // high "
+    uint16_t * pDeviceControlBlock = (uint16_t *) GetMem( SegmentListOfLists, OffsetDeviceControlBlock );
+    *pDeviceControlBlock = 0xffff; // end of list
 
     // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
     // routines starting at InterruptRoutineSegment. The routines are almost all the same -- fake opcode, interrupt #, retf 2
