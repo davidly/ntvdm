@@ -71,6 +71,7 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * Microsoft Word Version 6.0 for DOS. (Set view / preferences / cursor control / speed to 0 to avoid key repeats).
  * Microsoft Works Version 3.0 for DOS.
  * Lotus 1-2-3 Release 1A
+ * PC-LISP V3.00
 
 ### Software
 
