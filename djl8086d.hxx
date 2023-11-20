@@ -239,10 +239,12 @@ class CDisassemble8086
 
         const char * Disassemble( uint8_t * pcode )
         {
-            if ( 0 != _pcode && ( _abs64( (uint64_t) pcode - (uint64_t) _pcode ) < 8 ) )
+            // 0x69 is a fake opcode used by ntvdm for syscall interrupts
+
+            if ( 0 != _pcode && ( 0x69 != *pcode ) && ( _abs64( (uint64_t) pcode - (uint64_t) _pcode ) < 8 ) )
             {
                 if ( pcode != ( _pcode + _bc ) )
-                    tracer.Trace( "pcode %p, _pcode %p, _bc %02x\n", pcode, _pcode, _bc );
+                    tracer.Trace( "pcode %p, _pcode %p, _bc %02x, *pcode %02x\n", pcode, _pcode, _bc, *pcode );
                 assert( pcode == ( _pcode + _bc ) );
             }
 
@@ -423,8 +425,8 @@ class CDisassemble8086
                                 {
                                     _bc++;
                                     _daa( "%s, ", getrm( _rm ) );
-                                    if ( 0x83 == _b0 ) // low bit is on, but it's an 8-bit immediate value
-                                        _daa( "%02xh", pcode[ immoffset ] );
+                                    if ( 0x83 == _b0 ) // low bit is on, but it's an 8-bit immediate value sign-extended to 16 bits
+                                        _daa( "%04xh", (uint16_t) (int16_t) (int8_t) pcode[ immoffset ] );
                                     else
                                     {
                                         _daa( "%04xh", ( (uint32_t) pcode[ immoffset ] + ( pcode[ 1 + immoffset ] << 8 ) ) );
