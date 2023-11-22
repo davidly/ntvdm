@@ -6,7 +6,7 @@ using namespace std;
 // when this (undefined) opcode is executed, i8086_invoke_interrupt will be called
 const uint8_t i8086_opcode_interrupt = 0x69;
 
-extern uint8_t memory[ 1024 * 1024 ]; // includes > 640k for CGA and more
+extern uint8_t memory[ 0x10fff0 ]; // the 8086 can address ffff:ffff bytes, which is 0..0x10ffef
 
 // tracking cycles slows execution by >6%
 #define I8086_TRACK_CYCLES

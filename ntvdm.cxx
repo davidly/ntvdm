@@ -647,10 +647,10 @@ void SleepAndScheduleInterruptCheck()
     CKbdBuffer kbd_buf;
     if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
     {
-        tracer.Trace( "sleeping in SleepAndScheduleInterruptCheck. g_KbdPeekAvailable %d\n", g_KbdPeekAvailable );
+        tracer.Trace( "  sleeping in SleepAndScheduleInterruptCheck. g_KbdPeekAvailable %d\n", g_KbdPeekAvailable );
 #ifdef _WIN32
         DWORD dw = WaitForSingleObject( g_heventKeyStroke, 1 );
-        tracer.Trace( "sleep woke up due to %s\n", ( 0 == dw ) ? "keystroke event signaled" : "timeout" );
+        tracer.Trace( "  sleep woke up due to %s\n", ( 0 == dw ) ? "keystroke event signaled" : "timeout" );
 #else
         sleep_ms( 10 );
 #endif
@@ -1142,7 +1142,7 @@ bool keyState( int vkey )
 
 void UpdateScreenCursorPosition( uint8_t row, uint8_t col )
 {
-    tracer.Trace( "updating screen cursor position to %d %d\n", row, col );
+    tracer.Trace( "  updating screen cursor position to %d %d\n", row, col );
     assert( g_use80x25 );
 #ifdef _WIN32    
     COORD pos = { col, row };
@@ -3503,7 +3503,6 @@ void handle_int_10( uint8_t c )
 
             if ( g_use80x25 )
             {
-                ch = printable( ch );
                 uint8_t * pbuf = GetVideoMem();
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
 
@@ -4150,12 +4149,15 @@ void handle_int_21( uint8_t c )
         {
             // direct console character I/O
             // DL = 0xff means get input into AL if available and set ZF to 0. Set ZF to 1 if no character is available
+            //      no echo is produced
+            //      return 0 for extended keystroke, then on subsequent call return the scancode
+            //      ignore ctrl+break and ctrl+prtsc
             // DL = !0xff means output the character
     
             if ( 0xff == cpu.dl() )
             {
                 // input. don't block if nothing is available
-                // Multiplan (v2) is the only app I've found that uses this function for input.
+                // Multiplan (v2) is the only app I've found that uses this function for input. Microsoft LISP uses it too.
 
                 CKbdBuffer kbd_buf;
                 InjectKeystrokes();
@@ -4192,7 +4194,13 @@ void handle_int_21( uint8_t c )
                 else
                 {
                     cpu.set_zero( true );
-                    SleepAndScheduleInterruptCheck(); // Multiplan v2 has a busy loop with this interrupt waiting for input
+                    cpu.set_al( 0 ); // this isn't documented, but DOS does this and mulisp will go into an infinite loop otherwise
+
+                    // Multiplan v2 has a busy loop with this interrupt waiting for input
+                    // mulisp calls this from many contexts that are hard to differentiate
+
+                    if ( !ends_with( g_acApp, "mulisp.com" ) )
+                        SleepAndScheduleInterruptCheck();
                 }
             }
             else
@@ -4975,7 +4983,7 @@ void handle_int_21( uint8_t c )
             uint32_t cRecords = cpu.get_cx();
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "random block read using FCBs\n" );
+            tracer.Trace( "  random block read using FCBs\n" );
             pfcb->Trace();
             uint32_t seekOffset = pfcb->recNumber * pfcb->recSize;
 
@@ -5011,16 +5019,19 @@ void handle_int_21( uint8_t c )
                         size_t numRead = fread( GetDiskTransferAddress(), 1, toRead, fp );
                         if ( numRead )
                         {
-                            if ( toRead == askedBytes )
+                            tracer.Trace( "  numRead: %zd, toRead %zd, askedBytes %u\n", numRead, toRead, askedBytes );
+                            if ( numRead == askedBytes )
                                 cpu.set_al( 0 );
                             else
                                 cpu.set_al( 3 ); // eof encountered, last record is partial
     
                             cpu.set_cx( (uint16_t) ( toRead / pfcb->recSize ) );
-                            tracer.Trace( "  successfully read %u bytes, CX set to %u:\n", toRead, cpu.get_cx() );
+                            tracer.Trace( "  successfully read %u bytes, CX set to %u, al set to %u:\n", toRead, cpu.get_cx(), cpu.al() );
                             tracer.TraceBinaryData( GetDiskTransferAddress(), toRead, 4 );
-                            pfcb->curRecord += (uint8_t) cRecords;
                             pfcb->recNumber += (uint32_t) cRecords;
+                            pfcb->curBlock = (uint8_t) ( pfcb->recNumber * pfcb->recSize / 128 ); // updated on random reads like this but just used for sequential reads
+                            tracer.Trace( "  fcb after random block read using FCBs\n" );
+                            pfcb->Trace();
                         }
                         else
                             tracer.Trace( "  ERROR random block read using FCBs failed to read, error %d = %s\n", errno, strerror( errno ) );
@@ -5519,7 +5530,7 @@ void handle_int_21( uint8_t c )
             uint16_t handle = cpu.get_bx();
             if ( handle <= 4 )
             {
-                tracer.Trace( "close of built-in handle ignored\n" );
+                tracer.Trace( "  close of built-in handle ignored\n" );
                 cpu.set_carry( false );
             }
             else
@@ -7117,6 +7128,52 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     strcpy( (char *) psp->commandTail, acAppArgs );
     psp->commandTail[ len ] = 0x0d;           // DOS has 0x0d at the end of the command tail, not a null
     psp->segEnvironment = segEnvironment;
+    memset( 1 + (char *) & ( psp->firstFCB ), ' ', 11 );
+    memset( 1 + (char *) & ( psp->secondFCB ), ' ', 11 );
+
+    // put the first argument in the first fcb if it looks like it may be an 8.3 filename
+
+    if ( acAppArgs && acAppArgs[0] )
+    {
+        const char * pFirstArg = acAppArgs;
+        while ( ' ' == *pFirstArg )
+            pFirstArg++;
+    
+        if ( pFirstArg[ 0 ] )
+        {
+            tracer.Trace( "app arguments: '%s'\n", pFirstArg );
+            const char * pEnd = pFirstArg + strlen( pFirstArg );
+            const char * pSpace = strchr( pFirstArg, ' ' );
+            if ( pSpace )
+                pEnd = pSpace;
+    
+            size_t full_len = ( pEnd - pFirstArg );
+    
+            if ( full_len <= 12 ) // 8.3
+            {
+                size_t name_len = full_len;
+                size_t ext_len = 0;
+                const char * pDot = strchr( pFirstArg, '.' );
+                if ( pDot && ( pDot < pEnd ) )
+                {
+                    name_len = ( pDot - pFirstArg );
+                    ext_len = full_len - name_len - 1;
+                }
+                tracer.Trace( "first fcb filename info: full_len %zd, name_len %zd, ext_len %zd\n", full_len, name_len, ext_len );
+
+                if ( name_len <= 8 )
+                {
+                    DOSFCB * pfirstFCB = (DOSFCB *) psp->firstFCB;
+                    for ( size_t i = 0; i < name_len; i++ )
+                        pfirstFCB->name[ i ] = (char) toupper( pFirstArg[ i ] );
+
+                    if ( ext_len )
+                        for ( size_t i = 0; i < ext_len; i++ )
+                            pfirstFCB->ext[ i ] = (char) toupper( pDot[ 1 + i ] );
+                }
+            }
+        }
+    }
 
     psp->Trace();
 } //InitializePSP
@@ -8053,7 +8110,12 @@ int main( int argc, char * argv[], char * envp[] )
     * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer start
     * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
     * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
-    * (uint8_t *) ( GetMem( 0xffff, 0xe ) ) = 0xff;       // original pc
+    * (uint8_t *)  ( GetMem( 0xf000, 0xfff0 ) ) = 0xea;   // power on entry point (used by mulisp to detect if it's a standard PC) ea = jmp far
+    * (uint8_t *)  ( GetMem( 0xf000, 0xfff1 ) ) = 0xc0;   // "
+    * (uint8_t *)  ( GetMem( 0xf000, 0xfff2 ) ) = 0x12;   // "
+    * (uint8_t *)  ( GetMem( 0xf000, 0xfff3 ) ) = 0x00;   // "
+    * (uint8_t *)  ( GetMem( 0xf000, 0xfff4 ) ) = 0xf0;   // "
+    * (uint8_t *)  ( GetMem( 0xffff, 0xe ) ) = 0xff;      // original pc
 
 #if 0
     // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table.
@@ -8157,7 +8219,7 @@ int main( int argc, char * argv[], char * envp[] )
 
     if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) ||
          ends_with( g_acApp, "turbo.com" ) || ends_with( g_acApp, "word.exe" ) ||
-         ends_with( g_acApp, "bc.exe" ) )
+         ends_with( g_acApp, "bc.exe" )  || ends_with( g_acApp, "mulisp.com" ) )
     {
         if ( !g_forceConsole )
             force80x25 = true;

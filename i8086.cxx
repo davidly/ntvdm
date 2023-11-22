@@ -23,7 +23,7 @@ using namespace std;
 
 #include "i8086.hxx"
 
-uint8_t memory[ 1024 * 1024 ];
+uint8_t memory[ 0x10fff0 ]; // the 8086 can address ffff:ffff bytes, which is 0..0x10ffef. mulisp assumes RAM above 1m is available
 i8086 cpu;
 static CDisassemble8086 g_Disassembler;
 static uint32_t g_State = 0;
@@ -56,6 +56,7 @@ void i8086::unhandled_instruction()
 
 void i8086::trace_state()
 {
+//    tracer.Trace( "1af4:fe7ah %04x\n", mword( 0x1af4, 0xfe7a ) );
 //    tracer.Trace( "es: [di+8] 309c: [8] " ); tracer.TraceBinaryData( memory + flatten( 0x309c, 8 ), 2, 0 );
 //    tracer.Trace( "bp-2 1f13:ad04-2 " ); tracer.TraceBinaryData( memory + flatten( 0x1f13, 0xad04 - 2 ), 2, 0 );
 //    tracer.Trace( "x594 + 24: " ); tracer.TraceBinaryData( memory + flatten( 0x3c9b, 0x594 + 24 ), 4, 0 );
