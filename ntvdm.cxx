@@ -121,11 +121,6 @@ uint64_t int21_3f_code[] = {
 }; 
 // end of machine code 
 
-uint8_t * GetMem( uint16_t seg, uint16_t offset )
-{
-    return memory + ( ( ( (uint32_t) seg ) << 4 ) + offset );
-} //GetMem
-
 uint16_t GetSegment( uint8_t * p )
 {
     uint64_t ptr = (uint64_t) p;
@@ -441,7 +436,7 @@ static HANDLE g_hConsoleInput = 0;                 // the Windows console input 
 static HANDLE g_heventKeyStroke;
 #endif
 
-uint8_t * GetDiskTransferAddress() { return GetMem( g_diskTransferSegment, g_diskTransferOffset ); }
+uint8_t * GetDiskTransferAddress() { return cpu.flat_address8( g_diskTransferSegment, g_diskTransferOffset ); }
 
 #pragma pack( push, 1 )
 struct DosFindFile
@@ -526,7 +521,7 @@ class CKbdBuffer
     public:
         CKbdBuffer()
         {
-            pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+            pbiosdata = cpu.flat_address8( 0x40, 0 );
             phead = (uint16_t *) ( pbiosdata + 0x1a );
             ptail = (uint16_t *) ( pbiosdata + 0x1c );
         }
@@ -618,7 +613,7 @@ uint64_t time_since_last()
 
 uint8_t GetActiveDisplayPage()
 {
-    uint8_t activePage = * GetMem( 0x40, 0x62 );
+    uint8_t activePage = * cpu.flat_address8( 0x40, 0x62 );
     assert( activePage <= 3 );
     return activePage;
 } //GetActiveDisplayPage
@@ -626,12 +621,12 @@ uint8_t GetActiveDisplayPage()
 void SetActiveDisplayPage( uint8_t page )
 {
     assert( page <= 3 );
-    * GetMem( 0x40, 0x62 ) = page;
+    * cpu.flat_address8( 0x40, 0x62 ) = page;
 } //SetActiveDisplayPage
 
 uint8_t * GetVideoMem()
 {
-    return GetMem( ScreenBufferSegment, 0x1000 * GetActiveDisplayPage() );
+    return cpu.flat_address8( ScreenBufferSegment, 0x1000 * GetActiveDisplayPage() );
 } //GetVideoMem
 
 bool DisplayUpdateRequired()
@@ -883,7 +878,7 @@ static void trace_all_allocations()
     for ( size_t i = 0; i < cEntries; i++ )
     {
         DosAllocation & da = g_allocEntries[i];
-        DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( da.segment - 1, 0 );
+        DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) cpu.flat_address( da.segment - 1, 0 );
 
         tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x, (MCB %04x - %04x)  header %c, psp %04x, paras %04x\n", i,
                       da.seg_process, da.segment, da.para_length, da.segment - 1, da.segment - 1 + da.para_length - 1,
@@ -927,7 +922,7 @@ void reset_mcb_tags()
     for ( size_t i = 0; i < g_allocEntries.size(); i++ )
     {
         DosAllocation & da = g_allocEntries[i];
-        DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( da.segment - 1, 0 );
+        DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) cpu.flat_address( da.segment - 1, 0 );
         
         if ( i == ( g_allocEntries.size() - 1 ) )
         {
@@ -944,7 +939,7 @@ void reset_mcb_tags()
 
 void initialize_mcb( uint16_t segMCB, uint16_t paragraphs )
 {
-    DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( segMCB, 0 );
+    DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) cpu.flat_address( segMCB, 0 );
 
     pmcb->header = 'M'; // mark as not the last in the chain
     pmcb->psp = ( 0 == g_currentPSP ) ? 8 : g_currentPSP; // this is what's expected
@@ -954,7 +949,7 @@ void initialize_mcb( uint16_t segMCB, uint16_t paragraphs )
 
 void update_mcb_length( uint16_t segMCB, uint16_t paragraphs )
 {
-    DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) GetMem( segMCB, 0 );
+    DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) cpu.flat_address( segMCB, 0 );
     pmcb->paras = paragraphs;
 } //update_mcb_length
 
@@ -1007,7 +1002,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
         // update the entry in the "list of lists" of the first memory control block
 
-        uint16_t *pFirstBlockInListOfLists = (uint16_t *) GetMem( SegmentListOfLists, OffsetListOfLists - 2 );
+        uint16_t *pFirstBlockInListOfLists = cpu.flat_address16( SegmentListOfLists, OffsetListOfLists - 2 );
         *pFirstBlockInListOfLists = allocatedSeg;
         tracer.Trace( "wrote segment of first allocation %04x to list of lists - 2 at %04x:%04x\n", allocatedSeg, SegmentListOfLists, OffsetListOfLists - 2 );
     }
@@ -1155,7 +1150,7 @@ void UpdateScreenCursorPosition( uint8_t row, uint8_t col )
 
 void GetCursorPosition( uint8_t & row, uint8_t & col )
 {
-    uint8_t * cursordata = GetMem( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
+    uint8_t * cursordata = cpu.flat_address8( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
 
     col = cursordata[ 0 ];
     row = cursordata[ 1 ];
@@ -1163,7 +1158,7 @@ void GetCursorPosition( uint8_t & row, uint8_t & col )
 
 void SetCursorPosition( uint8_t row, uint8_t col )
 {
-    uint8_t * cursordata = GetMem( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
+    uint8_t * cursordata = cpu.flat_address8( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
 
     cursordata[ 0 ] = col;
     cursordata[ 1 ] = row;
@@ -1264,7 +1259,7 @@ struct DOSPSP
         tracer.Trace( "  segEnvironment: %04x\n", segEnvironment );
         if ( 0 != segEnvironment )
         {
-            const char * penv = (char *) GetMem( segEnvironment, 0 );
+            const char * penv = (char *) cpu.flat_address( segEnvironment, 0 );
             tracer.TraceBinaryData( (uint8_t *) penv, 0x100, 4 );
         }
     }
@@ -1351,8 +1346,8 @@ struct DOSEXFCB
 
 const char * GetCurrentAppPath()
 {
-    DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
-    const char * penv = (char *) GetMem( psp->segEnvironment, 0 );
+    DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
+    const char * penv = (char *) cpu.flat_address( psp->segEnvironment, 0 );
 
     size_t len = strlen( penv );
     while ( 0 != len )
@@ -1409,7 +1404,7 @@ void traceDisplayBuffers()
     for ( int i = 0; i < 2; i++ )
     {
         tracer.Trace( "cga memory buffer %d\n", i );
-        uint8_t * pbuf = GetMem( ScreenBufferSegment, (uint16_t) ( 0x1000 * i ) );
+        uint8_t * pbuf = cpu.flat_address8( ScreenBufferSegment, (uint16_t) ( 0x1000 * i ) );
         for ( size_t y = 0; y < ScreenRows; y++ )
         {
             size_t yoffset = y * ScreenColumns * 2;
@@ -2605,7 +2600,7 @@ void consume_keyboard()
         }
     }
 
-    uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+    uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
     pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
 } //consume_keyboard
 
@@ -3270,7 +3265,7 @@ void handle_int_10( uint8_t c )
             if ( 2 == mode || 3 == mode ) // only 80x25 is supported with buffer address 0xb8000
             {
                 g_videoMode = 3; // it's all we support
-                uint8_t * pmode = GetMem( 0x40, 0x49 ); // update the mode in bios data
+                uint8_t * pmode = cpu.flat_address8( 0x40, 0x49 ); // update the mode in bios data
                 *pmode = mode;
             }
 
@@ -3752,7 +3747,7 @@ void handle_int_10( uint8_t c )
 
 void handle_int_16( uint8_t c )
 {
-    uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+    uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
     pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
 
     CKbdBuffer kbd_buf;
@@ -3871,7 +3866,7 @@ void handle_int_16( uint8_t c )
 void HandleAppExit()
 {
     tracer.Trace( "  HandleAppExit for app psp %#x, '%s'\n", g_currentPSP, GetCurrentAppPath() );
-    DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
+    DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
     psp->Trace();
     trace_all_allocations();
 
@@ -4019,8 +4014,8 @@ bool FindCommandInPath( char * pc )
     if ( ':' == pc[1] || '\\' == *pc || '/' == *pc )
         return false;
 
-    DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
-    const char * penv = (char *) GetMem( psp->segEnvironment, 0 );
+    DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
+    const char * penv = (char *) cpu.flat_address( psp->segEnvironment, 0 );
 
     // iterate through environment variables looking for PATH=
 
@@ -4223,7 +4218,7 @@ void handle_int_21( uint8_t c )
         {
             // character input. block until a keystroke is available.
 
-            uint8_t * pbiosdata = (uint8_t *) GetMem( 0x40, 0 );
+            uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
             pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
 
             if ( g_use80x25)
@@ -4265,7 +4260,7 @@ void handle_int_21( uint8_t c )
         {
             // print string. prints chars up to a dollar sign $
     
-            char * p = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * p = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.TraceBinaryData( (uint8_t *) p, 0x40, 2 );
             while ( *p && '$' != *p )
                 printf( "%c", *p++ );
@@ -4282,7 +4277,7 @@ void handle_int_21( uint8_t c )
             invoke_assembler_routine( g_int21_a_seg );
             return;
 #else
-            uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
+            uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
             uint8_t maxLen = p[0];
             p[2] = 0;
 
@@ -4362,7 +4357,7 @@ void handle_int_21( uint8_t c )
             // open file using FCB
     
             tracer.Trace( "open file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
 
@@ -4407,7 +4402,7 @@ void handle_int_21( uint8_t c )
             // close file using FCB
     
             tracer.Trace( "close file using FCB\n" );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
     
             FILE * fp = pfcb->GetFP();
@@ -4431,7 +4426,7 @@ void handle_int_21( uint8_t c )
 
             CloseFindFirst();
             bool extendedFCB = false;
-            DOSFCB *pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB *pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             uint8_t attr = 0;
             if ( 0xff == pfcb->drive )
             {
@@ -4531,7 +4526,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_al( 0xff );
             else
             {
-                DOSFCB *pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+                DOSFCB *pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
                 uint8_t attr = 0;
                 bool extendedFCB = false;
                 if ( 0xff == pfcb->drive )
@@ -4568,7 +4563,7 @@ void handle_int_21( uint8_t c )
 #else
             if ( 0 != g_FindFirst )
             {
-                DOSFCB *pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+                DOSFCB *pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
                 uint8_t attr = 0;
                 bool extendedFCB = false;
                 if ( 0xff == pfcb->drive )
@@ -4614,7 +4609,7 @@ void handle_int_21( uint8_t c )
         {
             // delete file using FCB
     
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
     
@@ -4652,7 +4647,7 @@ void handle_int_21( uint8_t c )
             //         one record is read
 
             cpu.set_al( 1 );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -4695,7 +4690,7 @@ void handle_int_21( uint8_t c )
             //         one record is written
 
             cpu.set_al( 1 );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -4728,7 +4723,7 @@ void handle_int_21( uint8_t c )
             // create file using FCB
     
             tracer.Trace( "create file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
             cpu.set_al( 0xff );
@@ -4770,7 +4765,7 @@ void handle_int_21( uint8_t c )
             // rename file using FCB. Returns AL 0 if success and 0xff on failure.
     
             cpu.set_al( 0xff );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
             DOSFCB * pfcbNew = (DOSFCB * ) ( 0x10 + (uint8_t *) pfcb );
@@ -4875,7 +4870,7 @@ void handle_int_21( uint8_t c )
             //         one record is read
 
             cpu.set_al( 1 );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -4918,7 +4913,7 @@ void handle_int_21( uint8_t c )
             cpu.set_al( 1 );
             uint16_t recsToWrite = cpu.get_cx();
             cpu.set_cx( 0 );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -4955,7 +4950,7 @@ void handle_int_21( uint8_t c )
             // set interrupt vector
     
             tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_ds(), cpu.get_dx() );
-            uint16_t * pvec = (uint16_t *) GetMem( 0, 4 * (uint16_t) cpu.al() );
+            uint16_t * pvec = cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
             pvec[0] = cpu.get_dx();
             pvec[1] = cpu.get_ds();
             return;
@@ -4969,7 +4964,7 @@ void handle_int_21( uint8_t c )
             // The only apps I know of that use this are debug.com from MS-DOS 2.2 and Turbo Pascal 5.5
 
             uint16_t seg = cpu.get_dx();
-            memcpy( GetMem( seg, 0 ), GetMem( g_currentPSP, 0 ), sizeof( DOSPSP ) );
+            memcpy( cpu.flat_address( seg, 0 ), cpu.flat_address( g_currentPSP, 0 ), sizeof( DOSPSP ) );
             return;
         }
         case 0x27:
@@ -4982,7 +4977,7 @@ void handle_int_21( uint8_t c )
             cpu.set_al( 1 ); // eof
             uint32_t cRecords = cpu.get_cx();
             cpu.set_cx( 0 );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  random block read using FCBs\n" );
             pfcb->Trace();
             uint32_t seekOffset = pfcb->recNumber * pfcb->recSize;
@@ -5054,7 +5049,7 @@ void handle_int_21( uint8_t c )
             cpu.set_al( 1 );
             uint16_t recsToWrite = cpu.get_cx();
             cpu.set_cx( 0 );
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -5103,7 +5098,7 @@ void handle_int_21( uint8_t c )
             //      ds:si:  first byte after parsed string
             //      es:di:  buffer filled with unopened fcb
 
-            char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_si() );
+            char * pfile = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_si() );
             if ( 0 != pfile[ 0 ] && ':' == pfile[ 1 ] )
                 pfile += 2; // get past optional X:
 
@@ -5111,7 +5106,7 @@ void handle_int_21( uint8_t c )
             tracer.Trace( "  parse filename '%s'\n", pfile );
             tracer.TraceBinaryData( (uint8_t *) pfile, 64, 4 );
     
-            DOSFCB * pfcb = (DOSFCB *) GetMem( cpu.get_es(), cpu.get_di() );
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_es(), cpu.get_di() );
             uint8_t input_al = cpu.al();
 
             if ( 0 == ( input_al & 2 ) )
@@ -5254,7 +5249,7 @@ void handle_int_21( uint8_t c )
             g_allocEntries[ entry ].para_length = new_paragraphs;
             trace_all_allocations();
 
-            DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
+            DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
             if ( psp && ( firstAppTerminateAddress != psp->int22TerminateAddress ) )
             {
                 g_appTerminationReturnCode = cpu.al();
@@ -5297,7 +5292,7 @@ void handle_int_21( uint8_t c )
         {
             // get interrupt vector. 
     
-            uint16_t * pvec = (uint16_t *) GetMem( 0, 4 * (uint16_t) cpu.al() );
+            uint16_t * pvec = cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
             cpu.set_bx( pvec[ 0 ] );
             cpu.set_es( pvec[ 1 ] );
             tracer.Trace( "  getting interrupt vector %02x %s which is %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_es(), cpu.get_bx() );
@@ -5335,7 +5330,7 @@ void handle_int_21( uint8_t c )
             {
                 cpu.set_carry( false );
                 cpu.set_bx( 1 ); // USA
-                uint8_t * pinfo = GetMem( cpu.get_ds(), cpu.get_dx() );
+                uint8_t * pinfo = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                 memset( pinfo, 0, 0x20 );
                 pinfo[ 2 ] = '$';
                 pinfo[ 7 ] = ',';
@@ -5355,7 +5350,7 @@ void handle_int_21( uint8_t c )
         case 0x39:
         {
             // create directory ds:dx asciiz directory name. cf set on error with code in ax
-            char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * pathOriginal = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * path = DOSToHostPath( pathOriginal );            
             tracer.Trace( "  create directory '%s'\n", path );
 
@@ -5378,7 +5373,7 @@ void handle_int_21( uint8_t c )
         case 0x3a:
         {
             // remove directory ds:dx asciiz directory name. cf set on error with code in ax
-            char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * pathOriginal = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * path = DOSToHostPath( pathOriginal );
             tracer.Trace( "  remove directory '%s'\n", path );
 
@@ -5401,7 +5396,7 @@ void handle_int_21( uint8_t c )
         case 0x3b:
         {
             // change directory ds:dx asciiz directory name. cf set on error with code in ax
-            char * pathOriginal = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * pathOriginal = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * path = DOSToHostPath( pathOriginal );
             tracer.Trace( "  change directory to '%s'. original path '%s'\n", path, pathOriginal );
 
@@ -5425,7 +5420,7 @@ void handle_int_21( uint8_t c )
         {
             // create file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
-            char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * original_path = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * path = DOSToHostPath( original_path );
             tracer.Trace( "  create file '%s'\n", path );
             cpu.set_ax( 3 );
@@ -5462,7 +5457,7 @@ void handle_int_21( uint8_t c )
         {
             // open file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
     
-            char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * original_path = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * path = DOSToHostPath( original_path );
             tracer.TraceBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "  open file '%s'\n", path );
@@ -5589,7 +5584,7 @@ void handle_int_21( uint8_t c )
                     if ( g_use80x25 )
                         UpdateDisplay();
     
-                    uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
+                    uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                     cpu.set_carry( false );
     
                     while ( 0 == acBuffer[ 0 ] )
@@ -5648,7 +5643,7 @@ void handle_int_21( uint8_t c )
             if ( fp )
             {
                 uint16_t len = cpu.get_cx();
-                uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
+                uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                 tracer.Trace( "  read from file using handle %u fp %p %04x bytes at address %02x:%02x. offset just beyond: %02x\n",
                               cpu.get_bx(), fp, len, cpu.get_ds(), cpu.get_dx(), cpu.get_dx() + len );
                 uint32_t cur = ftell( fp );
@@ -5706,7 +5701,7 @@ void handle_int_21( uint8_t c )
     
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
     
-                uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
+                uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
     
                 if ( 1 == h || 2 == h )
                 {
@@ -5781,7 +5776,7 @@ void handle_int_21( uint8_t c )
             if ( fp )
             {
                 uint16_t len = cpu.get_cx();
-                uint8_t * p = GetMem( cpu.get_ds(), cpu.get_dx() );
+                uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                 tracer.Trace( "  write file using handle, %04x bytes at address %p\n", len, p );
     
                 cpu.set_ax( 0 );
@@ -5812,7 +5807,7 @@ void handle_int_21( uint8_t c )
             // delete file: ds:dx has asciiz name of file to delete.
             // return: cf set on error, ax = error code
     
-            char * original_path = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * original_path = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * pfile = DOSToHostPath( original_path );
             tracer.Trace( "  deleting file '%s'\n", pfile );
             trace_all_open_files();
@@ -5908,7 +5903,7 @@ void handle_int_21( uint8_t c )
             // ds:dx: asciiz filename
             // returns: ax = error code if CF set. CX = file attributes on get.
     
-            char * pfile = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * pfile = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  get/put file attributes on file '%s'\n", pfile );
             const char * hostPath = DOSToHostPath( pfile );
             cpu.set_carry( true );
@@ -6138,7 +6133,7 @@ void handle_int_21( uint8_t c )
                 char * past_start = cwd + 3; // result does not contain drive or initial backslash 'x:\'
                 if ( strlen( past_start ) <= 63 )
                 {
-                    strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), past_start );
+                    strcpy( (char *) cpu.flat_address( cpu.get_ds(), cpu.get_si() ), past_start );
                     tracer.Trace( "  returning current directory '%s'\n", past_start );
                     cpu.set_carry( false );
                 }
@@ -6169,7 +6164,7 @@ void handle_int_21( uint8_t c )
                 char * past_start = cwd + 3; // result does not contain drive or initial backslash 'x:\'
                 if ( strlen( past_start ) <= 63 )
                 {
-                    strcpy( (char *) GetMem( cpu.get_ds(), cpu.get_si() ), past_start );
+                    strcpy( (char *) cpu.flat_address( cpu.get_ds(), cpu.get_si() ), past_start );
                     tracer.Trace( "  returning current directory: '%s'\n", past_start );
                     cpu.set_carry( false );
                 }
@@ -6323,7 +6318,7 @@ void handle_int_21( uint8_t c )
             uint16_t save_sp = cpu.get_sp();
             uint16_t save_ss = cpu.get_ss();
 
-            const char * originalPath = (const char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            const char * originalPath = (const char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * pathToExecute = DOSToHostPath( originalPath );
             tracer.Trace( "  CreateProcess mode %u path to execute: '%s'\n", mode, pathToExecute );
 
@@ -6352,7 +6347,7 @@ void handle_int_21( uint8_t c )
 
             if ( 3 == mode )
             {
-                AppExecuteMode3 * pae = (AppExecuteMode3 *) GetMem( cpu.get_es(), cpu.get_bx() );
+                AppExecuteMode3 * pae = (AppExecuteMode3 *) cpu.flat_address( cpu.get_es(), cpu.get_bx() );
                 pae->Trace();
 
                 uint16_t result = LoadOverlay( acCommandPath, pae->segLoadAddress, pae->segmentRelocationFactor );
@@ -6362,11 +6357,11 @@ void handle_int_21( uint8_t c )
                 return;
             }
 
-            AppExecute * pae = (AppExecute *) GetMem( cpu.get_es(), cpu.get_bx() );
+            AppExecute * pae = (AppExecute *) cpu.flat_address( cpu.get_es(), cpu.get_bx() );
             pae->Trace();
-            const char * commandTail = (const char *) GetMem( pae->segCommandTail, pae->offsetCommandTail );
-            DOSFCB * pfirstFCB = (DOSFCB *) GetMem( pae->segFirstFCB, pae->offsetFirstFCB );
-            DOSFCB * psecondFCB = (DOSFCB *) GetMem( pae->segSecondFCB, pae->offsetSecondFCB );
+            const char * commandTail = (const char *) cpu.flat_address( pae->segCommandTail, pae->offsetCommandTail );
+            DOSFCB * pfirstFCB = (DOSFCB *) cpu.flat_address( pae->segFirstFCB, pae->offsetFirstFCB );
+            DOSFCB * psecondFCB = (DOSFCB *) cpu.flat_address( pae->segSecondFCB, pae->offsetSecondFCB );
 
             tracer.Trace( "  command tail: len %u, '%.*s'\n", *commandTail, *commandTail, commandTail + 1 );
             tracer.Trace( "  first and second fcbs: \n" );
@@ -6390,12 +6385,12 @@ void handle_int_21( uint8_t c )
                        // put 0xffff on the top of the child's stack.
 
                        pae->func1SP -= 2;
-                       uint16_t * pAX = (uint16_t *) GetMem( pae->func1SS, pae->func1SP );
+                       uint16_t * pAX = cpu.flat_address16( pae->func1SS, pae->func1SP );
                        *pAX = 0xffff;
                     }
 
                     strcpy( g_lastLoadedApp, acCommandPath );
-                    DOSPSP * psp = (DOSPSP *) GetMem( seg_psp, 0 );
+                    DOSPSP * psp = (DOSPSP *) cpu.flat_address( seg_psp, 0 );
                     psp->segParent = g_currentPSP;
                     psp->parentSS = save_ss; // as a courtesy to sloppy apps that don't restore their stack and use the child process stack
                     psp->parentSP = save_sp;
@@ -6451,7 +6446,7 @@ void handle_int_21( uint8_t c )
     
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
-            char * psearch_string = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
+            char * psearch_string = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * hostSearch = DOSToHostPath( psearch_string );
             pff->search_attributes = cpu.get_cx() & 0x1e; // only directory, system, volume, and hidden are honored
             assert( 0x15 == offsetof( DosFindFile, file_attributes ) );
@@ -6608,7 +6603,7 @@ void handle_int_21( uint8_t c )
 
             // check if it looks valid before setting...
 
-            DOSPSP * psp = (DOSPSP *) GetMem( cpu.get_bx(), 0 );
+            DOSPSP * psp = (DOSPSP *) cpu.flat_address( cpu.get_bx(), 0 );
             if ( 0x20cd == psp->int20Code )
                 g_currentPSP = cpu.get_bx();
             else
@@ -6642,7 +6637,7 @@ void handle_int_21( uint8_t c )
             // DX: new PSP segment address provided by the caller
             // SI: for DOS 3.0+, value to put in psp->topOfMemory
 
-            DOSPSP * psp = (DOSPSP *) GetMem( cpu.get_dx(), 0 );
+            DOSPSP * psp = (DOSPSP *) cpu.flat_address( cpu.get_dx(), 0 );
             memset( psp, 0, sizeof( DOSPSP ) );
             psp->segParent = g_currentPSP;
             psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
@@ -6659,8 +6654,8 @@ void handle_int_21( uint8_t c )
             // rename file: ds:dx old name, es:di new name
             // CF set on error, AX with error code
     
-            char * poldname = (char *) GetMem( cpu.get_ds(), cpu.get_dx() );
-            char * pnewname = (char *) GetMem( cpu.get_es(), cpu.get_di() );
+            char * poldname = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
+            char * pnewname = (char *) cpu.flat_address( cpu.get_es(), cpu.get_di() );
 
             char acOld[ MAX_PATH ];
             const char * pfile = DOSToHostPath( poldname );
@@ -7052,7 +7047,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     }
     else if ( 0x23 == interrupt_num ) // control "C" exit address
     {
-        DOSPSP * psp = (DOSPSP *) GetMem( g_currentPSP, 0 );
+        DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
         if ( psp )
         {
             printf( "^C" );
@@ -7116,7 +7111,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
 void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnvironment )
 {
-    DOSPSP *psp = (DOSPSP *) GetMem( segment, 0 );
+    DOSPSP *psp = (DOSPSP *) cpu.flat_address( segment, 0 );
     memset( psp, 0, sizeof( DOSPSP ) );
 
     psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
@@ -7223,7 +7218,7 @@ uint16_t LoadOverlay( const char * app, uint16_t segCode, uint16_t segRelocation
         fseek( fp, 0, SEEK_END );
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
-        size_t blocks_read = fread( GetMem( segCode, 0 ), file_size, 1, fp );
+        size_t blocks_read = fread( cpu.flat_address( segCode, 0 ), file_size, 1, fp );
         fclose( fp );
 
         if ( 1 != blocks_read )
@@ -7283,7 +7278,7 @@ uint16_t LoadOverlay( const char * app, uint16_t segCode, uint16_t segRelocation
         cbUsed -= codeStart; // don't include the header
         tracer.Trace( "  bytes used by load module: %u, and code starts at %u\n", cbUsed, codeStart );
 
-        uint8_t * pcode = GetMem( segCode, 0 );
+        uint8_t * pcode = cpu.flat_address8( segCode, 0 );
         memcpy( pcode, theexe.data() + codeStart, cbUsed );
         tracer.Trace( "  start of the code:\n" );
         tracer.TraceBinaryData( pcode, 0x200, 4 );
@@ -7328,7 +7323,7 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint16_t 
     fseek( fp, 0, SEEK_END );
     long file_size = ftell( fp );
     fseek( fp, 0, SEEK_SET );
-    size_t blocks_read = fread( GetMem( 0x7c0, 0 ), get_min( 512L, file_size ), 1, fp );
+    size_t blocks_read = fread( cpu.flat_address( 0x7c0, 0 ), get_min( 512L, file_size ), 1, fp );
     fclose( fp );
 
     if ( 1 != blocks_read )
@@ -7394,7 +7389,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         fseek( fp, 0, SEEK_END );
         long file_size = ftell( fp );
         fseek( fp, 0, SEEK_SET );
-        size_t blocks_read = fread( GetMem( ComSegment, 0x100 ), get_min( 65536L - 0x100, file_size ), 1, fp );
+        size_t blocks_read = fread( cpu.flat_address( ComSegment, 0x100 ), get_min( 65536L - 0x100, file_size ), 1, fp );
         fclose( fp );
 
         if ( 1 != blocks_read )
@@ -7512,7 +7507,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         }
 
         const uint16_t CodeSegment = DataSegment + 16; //  data segment + 256 bytes (16 paragraphs) for the psp
-        uint8_t * pcode = GetMem( CodeSegment, 0 );
+        uint8_t * pcode = cpu.flat_address8( CodeSegment, 0 );
         memcpy( pcode, theexe.data() + codeStart, cbUsed );
         tracer.Trace( "  start of the code:\n" );
         tracer.TraceBinaryData( pcode, 0x200, 4 );
@@ -7703,7 +7698,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     const char * pBriefFlags = "BFLAGS=-kzr -mDJL";
     uint16_t bytesNeeded = (uint16_t) strlen( fullPath );
     uint16_t startLen = 0;
-    char * pEnvStart = (char *) GetMem( segStartingEnv, 0 );
+    char * pEnvStart = (char *) cpu.flat_address( segStartingEnv, 0 );
     uint16_t cmdLineEnvLen = 0;
 
     if ( 0 != segStartingEnv )
@@ -7741,7 +7736,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
         return 0;
     }
 
-    char * penvdata = (char *) GetMem( segEnvironment, 0 );
+    char * penvdata = (char *) cpu.flat_address( segEnvironment, 0 );
     char * penv = penvdata;
 
     if ( 0 == segStartingEnv )
@@ -7789,7 +7784,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 
 bool InterruptHookedByApp( uint8_t i )
 {
-    uint16_t seg = ( (uint16_t *) GetMem( 0, 0 ) )[ 2 * i + 1 ]; // lower uint_16 has offset, upper has segment
+    uint16_t seg = ( cpu.flat_address16( 0, 0 ) )[ 2 * i + 1 ]; // lower uint_16 has offset, upper has segment
     return ( InterruptRoutineSegment != seg );
 } //InterruptHookedByApp
 
@@ -8094,7 +8089,7 @@ int main( int argc, char * argv[], char * envp[] )
 
     // global bios memory
 
-    uint8_t * pbiosdata = GetMem( 0x40, 0 );
+    uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
     * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
     * (uint16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
     * (uint16_t *) ( pbiosdata + 0x1a ) = 0x1e;           // keyboard buffer head
@@ -8110,29 +8105,29 @@ int main( int argc, char * argv[], char * envp[] )
     * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer start
     * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
     * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
-    * (uint8_t *)  ( GetMem( 0xf000, 0xfff0 ) ) = 0xea;   // power on entry point (used by mulisp to detect if it's a standard PC) ea = jmp far
-    * (uint8_t *)  ( GetMem( 0xf000, 0xfff1 ) ) = 0xc0;   // "
-    * (uint8_t *)  ( GetMem( 0xf000, 0xfff2 ) ) = 0x12;   // "
-    * (uint8_t *)  ( GetMem( 0xf000, 0xfff3 ) ) = 0x00;   // "
-    * (uint8_t *)  ( GetMem( 0xf000, 0xfff4 ) ) = 0xf0;   // "
-    * (uint8_t *)  ( GetMem( 0xffff, 0xe ) ) = 0xff;      // original pc
+    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff0 ) ) = 0xea;   // power on entry point (used by mulisp to detect if it's a standard PC) ea = jmp far
+    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff1 ) ) = 0xc0;   // "
+    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff2 ) ) = 0x12;   // "
+    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff3 ) ) = 0x00;   // "
+    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff4 ) ) = 0xf0;   // "
+    * (uint8_t *)  ( cpu.flat_address8( 0xffff, 0xe ) ) = 0xff;      // original pc
 
 #if 0
     // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table.
     // make that pointer point to an empty system file table.
 
-    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetListOfLists + 4 ) ) = OffsetSystemFileTable;
-    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetListOfLists + 6 ) ) = SegmentListOfLists;
-    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetSystemFileTable ) ) = 0xffff;
-    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetSystemFileTable + 2 ) ) = 0xffff;
-    * (uint16_t *) ( GetMem( SegmentListOfLists, OffsetSystemFileTable + 4 ) ) = 0x30; // lots of files available
+    * ( cpu.flat_address16( SegmentListOfLists, OffsetListOfLists + 4 ) ) = OffsetSystemFileTable;
+    * ( cpu.flat_address16( SegmentListOfLists, OffsetListOfLists + 6 ) ) = SegmentListOfLists;
+    * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable ) ) = 0xffff;
+    * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable + 2 ) ) = 0xffff;
+    * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable + 4 ) ) = 0x30; // lots of files available
 #endif
 
     // put dummy values in the list of lists
-    uint16_t * pListOfLists = (uint16_t *) GetMem( SegmentListOfLists, OffsetListOfLists );
+    uint16_t * pListOfLists = cpu.flat_address16( SegmentListOfLists, OffsetListOfLists );
     pListOfLists[ 2 ] = OffsetDeviceControlBlock; // low dword of first drive parameter block (ffff is end of list)
     pListOfLists[ 3 ] = SegmentListOfLists;       // high "
-    uint16_t * pDeviceControlBlock = (uint16_t *) GetMem( SegmentListOfLists, OffsetDeviceControlBlock );
+    uint16_t * pDeviceControlBlock = cpu.flat_address16( SegmentListOfLists, OffsetDeviceControlBlock );
     *pDeviceControlBlock = 0xffff; // end of list
 
     // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
@@ -8143,8 +8138,8 @@ int main( int argc, char * argv[], char * envp[] )
     // Other interrupts use far ret 2 (not iret) so as to not trash the flags (Z and C) used as return codes.
     // Functions are all allocated 5 bytes each.
 
-    uint32_t * pVectors = (uint32_t *) GetMem( 0, 0 );
-    uint8_t * pRoutines = (uint8_t *) GetMem( InterruptRoutineSegment, 0 );
+    uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+    uint8_t * pRoutines = cpu.flat_address8( InterruptRoutineSegment, 0 );
     for ( uint32_t intx = 0; intx < 0x40; intx++ )
     {
         uint32_t offset = intx * 5;
@@ -8181,19 +8176,19 @@ int main( int argc, char * argv[], char * envp[] )
 #if USE_ASSEMBLY_FOR_KBD
     uint16_t curseg = MachineCodeSegment;
 
-    memcpy( GetMem( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
+    memcpy( cpu.flat_address( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
     g_int21_3f_seg = curseg;
     curseg += ( round_up_to( sizeof( int21_3f_code ), 16 ) / 16 );
 
-    memcpy( GetMem( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
+    memcpy( cpu.flat_address( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
     g_int21_a_seg = curseg;
     curseg += ( round_up_to( sizeof( int21_a_code ), 16 ) / 16 );
 
-    memcpy( GetMem( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
+    memcpy( cpu.flat_address( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
     g_int21_8_seg = curseg;
     curseg += ( round_up_to( sizeof( int21_8_code ), 16 ) / 16 );
 
-    memcpy( GetMem( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
+    memcpy( cpu.flat_address( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
     g_int16_0_seg = curseg;
     curseg += ( round_up_to( sizeof( int16_0_code ), 16 ) / 16 );
 

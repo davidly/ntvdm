@@ -23,7 +23,8 @@ using namespace std;
 
 #include "i8086.hxx"
 
-uint8_t memory[ 0x10fff0 ]; // the 8086 can address ffff:ffff bytes, which is 0..0x10ffef. mulisp assumes RAM above 1m is available
+uint8_t memory[ 0x10fff0 ];
+
 i8086 cpu;
 static CDisassemble8086 g_Disassembler;
 static uint32_t g_State = 0;
