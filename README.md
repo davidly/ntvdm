@@ -73,6 +73,7 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * Lotus 1-2-3 Release 1A
  * PC-LISP V3.00
  * muLISP v5.10 interpreter (released by Microsoft).
+ * IBM Personal Computer Pascal Compiler Version 2.00 (generated apps require WRAP_HMA_ADDRESSES to true in i8086.hxx)
 
 ### Software
 
