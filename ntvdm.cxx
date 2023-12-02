@@ -1778,6 +1778,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x21, "random read using FCB" },
     { 0x21, 0x22, "random write using FCB" },
     { 0x21, 0x23, "get file size using FCB" },
+    { 0x21, 0x24, "set relative record field in FCB" },
     { 0x21, 0x25, "set interrupt vector" },
     { 0x21, 0x26, "create new PSP" },
     { 0x21, 0x27, "random block read using FCB" },
@@ -4652,8 +4653,9 @@ void handle_int_21( uint8_t c )
             FILE * fp = pfcb->GetFP();
             if ( fp )
             {
-                uint32_t seekOffset = pfcb->curRecord * pfcb->recSize;
+                uint32_t seekOffset = (uint32_t) pfcb->curRecord * (uint32_t) pfcb->recSize;
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
+                tracer.Trace( "  using disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
                 {
@@ -4945,6 +4947,18 @@ void handle_int_21( uint8_t c )
     
             return;
         }
+        case 0x24:
+        {
+            // set relative record field in FCB.
+            // Modifies open FCB in DS:DX for random operation based on current sequential position
+            // returns nothing
+            // Digital Research's PLI.EXE compiler is the only app I know that uses this.
+
+            DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
+            pfcb->recNumber = pfcb->curRecord;
+
+            return;
+        }
         case 0x25:
         {
             // set interrupt vector
@@ -4978,7 +4992,7 @@ void handle_int_21( uint8_t c )
             uint32_t cRecords = cpu.get_cx();
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  random block read using FCBs\n" );
+            tracer.Trace( "  random block read using FCBs, cRecords %u\n", cRecords );
             pfcb->Trace();
             uint32_t seekOffset = pfcb->recNumber * pfcb->recSize;
 
@@ -5021,7 +5035,8 @@ void handle_int_21( uint8_t c )
                                 cpu.set_al( 3 ); // eof encountered, last record is partial
     
                             cpu.set_cx( (uint16_t) ( toRead / pfcb->recSize ) );
-                            tracer.Trace( "  successfully read %u bytes, CX set to %u, al set to %u:\n", toRead, cpu.get_cx(), cpu.al() );
+                            tracer.Trace( "  successfully read %u bytes of %u requested, CX set to %u, al set to %u:\n", numRead, toRead, cpu.get_cx(), cpu.al() );
+                            tracer.Trace( "  used disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
                             tracer.TraceBinaryData( GetDiskTransferAddress(), toRead, 4 );
                             pfcb->recNumber += (uint32_t) cRecords;
                             pfcb->curBlock = (uint8_t) ( pfcb->recNumber * pfcb->recSize / 128 ); // updated on random reads like this but just used for sequential reads
