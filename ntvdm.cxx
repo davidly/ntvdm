@@ -1279,10 +1279,40 @@ struct DOSFCB
     uint16_t time;
     uint8_t reserved[8];
     uint8_t curRecord;       // where sequential i/o starts
-    uint32_t recNumber;      // where random i/o starts
+    uint32_t recNumber;      // where random i/o starts. the high byte is only valid when recSize < 64 bytes
 
     void SetFP( FILE * fp ) { * ( (FILE **) & ( this->reserved ) ) = fp; }
     FILE * GetFP() { return * ( (FILE **) &this->reserved ); }
+
+    uint32_t BlockSize() { return (uint32_t) recSize * 128; }
+    uint32_t SequentialOffset() { return ( ( (uint32_t) curBlock * BlockSize() ) + ( (uint32_t) curRecord * (uint32_t) recSize ) ); }
+    uint32_t RandomRecordNumber()
+    {
+        if ( recSize >= 64 )
+            return ( recNumber & 0xffffff );
+
+        return recNumber;
+    }
+    uint32_t RandomOffset() { return ( RandomRecordNumber() * recSize ); }
+    void SetSequentialFromRandom()
+    {
+        tracer.Trace( "  fcb before SetSequentialFromRandom:\n" );
+        Trace();
+        uint32_t o = RandomOffset();
+        curBlock = (uint16_t) ( o / BlockSize() );
+        curRecord = (uint8_t) ( RandomRecordNumber() % 128 );
+        tracer.Trace( "  fcb after SetSequentialFromRandom:\n" );
+        Trace();
+        tracer.Trace( "  SequentialOffset %u, RandomOffset %u\n", SequentialOffset(), RandomOffset() );
+        assert( SequentialOffset() == RandomOffset() );
+    } //SetSequentialFromRandom
+
+    void SetRandomFromSequential()
+    {
+        recNumber = SequentialOffset() / recSize;
+        tracer.Trace( "  SequentialOffset %u, RandomOffset %u\n", SequentialOffset(), RandomOffset() );
+        assert( SequentialOffset() == RandomOffset() );
+    } //SetRandomFromSequential
 
     void Trace()
     {
@@ -1299,18 +1329,18 @@ struct DOSFCB
         assert( 0x21 == offsetof( DOSFCB, recNumber ) );
 
         tracer.Trace( "  fcb: %p\n", this );
-        tracer.Trace( "    drive        %u\n", this->drive );
+        tracer.Trace( "    drive        %u\n", drive );
         tracer.Trace( "    filename     '%c%c%c%c%c%c%c%c'\n",
-                      this->name[0],this->name[1],this->name[2],this->name[3],
-                      this->name[4],this->name[5],this->name[6],this->name[7] );
-        tracer.Trace( "    ext          '%c%c%c'\n", this->ext[0],this->ext[1],this->ext[2] );
-        tracer.Trace( "    curBlock:    %u\n", this->curBlock );
-        tracer.Trace( "    recSize:     %u\n", this->recSize );
-        tracer.Trace( "    fileSize:    %u\n", this->fileSize );
+                      name[0],name[1],name[2],name[3],
+                      name[4],name[5],name[6],name[7] );
+        tracer.Trace( "    ext          '%c%c%c'\n", ext[0],ext[1],ext[2] );
+        tracer.Trace( "    curBlock:    %u\n", curBlock );
+        tracer.Trace( "    recSize:     %u\n", recSize );
+        tracer.Trace( "    fileSize:    %u\n", fileSize );
         tracer.Trace( "    reserved/fp: %p\n", GetFP() );
-        tracer.Trace( "    curRecord:   %u\n", this->curRecord );
-        tracer.Trace( "    recNumber:   %u\n", this->recNumber );
-    }
+        tracer.Trace( "    curRecord:   %u\n", curRecord );
+        tracer.Trace( "    recNumber:   %u\n", RandomRecordNumber() );
+    } //Trace
 
     void TraceFirst16()
     {
@@ -1321,18 +1351,18 @@ struct DOSFCB
         assert( 0xe == offsetof( DOSFCB, recSize ) );
 
         tracer.Trace( "  fcb first 16: %p\n", this );
-        tracer.Trace( "    drive        %u\n", this->drive );
+        tracer.Trace( "    drive        %u\n", drive );
         tracer.Trace( "    filename     '%c%c%c%c%c%c%c%c'\n",
-                      this->name[0],this->name[1],this->name[2],this->name[3],
-                      this->name[4],this->name[5],this->name[6],this->name[7] );
+                      name[0],name[1],name[2],name[3],
+                      name[4],name[5],name[6],name[7] );
         tracer.Trace( "    filename     %02x, %02x, %02x, %02x, %02x, %02x, %02x, %02x\n",
-                      this->name[0],this->name[1],this->name[2],this->name[3],
-                      this->name[4],this->name[5],this->name[6],this->name[7] );
-        tracer.Trace( "    ext          '%c%c%c'\n", this->ext[0],this->ext[1],this->ext[2] );
-        tracer.Trace( "    ext          %02x, %02x, %02x\n", this->ext[0],this->ext[1],this->ext[2] );
-        tracer.Trace( "    curBlock:    %u\n", this->curBlock );
-        tracer.Trace( "    recSize:     %u\n", this->recSize );
-    }
+                      name[0],name[1],name[2],name[3],
+                      name[4],name[5],name[6],name[7] );
+        tracer.Trace( "    ext          '%c%c%c'\n", ext[0],ext[1],ext[2] );
+        tracer.Trace( "    ext          %02x, %02x, %02x\n", ext[0],ext[1],ext[2] );
+        tracer.Trace( "    curBlock:    %u\n", curBlock );
+        tracer.Trace( "    recSize:     %u\n", recSize );
+    } //TraceFirst16
 };
 
 struct DOSEXFCB
@@ -1782,7 +1812,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x25, "set interrupt vector" },
     { 0x21, 0x26, "create new PSP" },
     { 0x21, 0x27, "random block read using FCB" },
-    { 0x21, 0x28, "write random using FCBs" },
+    { 0x21, 0x28, "random block write using FCBs" },
     { 0x21, 0x29, "parse filename" },
     { 0x21, 0x2a, "get system date" },
     { 0x21, 0x2c, "get system time" },
@@ -4385,7 +4415,10 @@ void handle_int_21( uint8_t c )
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
                     pfcb->curRecord = 0;
-                    pfcb->recNumber = 0;
+
+                    // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
+                    // don't allocate enough RAM in the FCB for the recNumber (the last field).
+                    // pfcb->recNumber = 0;
     
                     pfcb->Trace();
                     cpu.set_al( 0 );
@@ -4653,7 +4686,7 @@ void handle_int_21( uint8_t c )
             FILE * fp = pfcb->GetFP();
             if ( fp )
             {
-                uint32_t seekOffset = (uint32_t) pfcb->curRecord * (uint32_t) pfcb->recSize;
+                uint32_t seekOffset = pfcb->SequentialOffset();
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
                 tracer.Trace( "  using disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
@@ -4697,7 +4730,7 @@ void handle_int_21( uint8_t c )
             FILE * fp = pfcb->GetFP();
             if ( fp )
             {
-                uint32_t seekOffset = pfcb->curRecord * pfcb->recSize;
+                uint32_t seekOffset = pfcb->SequentialOffset();
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
@@ -4708,6 +4741,7 @@ void handle_int_21( uint8_t c )
                          tracer.Trace( "  write succeded: %u bytes. recsize %u bytes\n", num_written, pfcb->recSize );
                          cpu.set_al( 0 );
                          pfcb->curRecord++;
+                         tracer.TraceBinaryData( GetDiskTransferAddress(), (uint32_t) num_written, 4 );
                     }
                     else
                          tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
@@ -4749,9 +4783,12 @@ void handle_int_21( uint8_t c )
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
                     pfcb->fileSize = 0;
-                    pfcb->recNumber = 0;
                     pfcb->curRecord = 0;
     
+                    // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
+                    // don't allocate enough RAM in the FCB for the recNumber (the last field)
+                    // pfcb->recNumber = 0;
+
                     pfcb->Trace();
                 }
                 else
@@ -4879,8 +4916,10 @@ void handle_int_21( uint8_t c )
             {
                 // lotus 123 1.0a writes a random value to the high byte; mask it away
 
-                uint32_t seekOffset = ( pfcb->recNumber & 0xffffff ) * pfcb->recSize;
+                uint32_t seekOffset = pfcb->RandomOffset();
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
+                pfcb->SetSequentialFromRandom();
+
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
                 {
@@ -4922,8 +4961,10 @@ void handle_int_21( uint8_t c )
             {
                 // lotus 123 1.0a writes a random value to the high byte; mask it away
 
-                uint32_t seekOffset = ( pfcb->recNumber & 0xffffff ) * pfcb->recSize;
+                uint32_t seekOffset = pfcb->RandomOffset();
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
+                pfcb->SetSequentialFromRandom();
+
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
                 {
@@ -4940,10 +4981,10 @@ void handle_int_21( uint8_t c )
                          tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "  ERROR random block write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR random write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
             }
             else
-                tracer.Trace( "  ERROR random block write using FCBs doesn't have an open file\n" );
+                tracer.Trace( "  ERROR random write using FCBs doesn't have an open file\n" );
     
             return;
         }
@@ -4955,7 +4996,9 @@ void handle_int_21( uint8_t c )
             // Digital Research's PLI.EXE compiler is the only app I know that uses this.
 
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
-            pfcb->recNumber = pfcb->curRecord;
+            pfcb->SetRandomFromSequential();
+            tracer.Trace( "  updated FCB:\n" );
+            pfcb->Trace();
 
             return;
         }
@@ -4987,6 +5030,7 @@ void handle_int_21( uint8_t c )
             // CX: number of records to read
             // DS:BX pointer to the FCB.
             // on exit, AL 0 success, 1 EOF no data read, 2 dta too small, 3 eof partial read (filled with 0s)
+            // also, sequential I/O position is updated 
     
             cpu.set_al( 1 ); // eof
             uint32_t cRecords = cpu.get_cx();
@@ -4994,7 +5038,7 @@ void handle_int_21( uint8_t c )
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  random block read using FCBs, cRecords %u\n", cRecords );
             pfcb->Trace();
-            uint32_t seekOffset = pfcb->recNumber * pfcb->recSize;
+            uint32_t seekOffset = pfcb->RandomOffset();
 
             FILE * fp = pfcb->GetFP();
             if ( fp )
@@ -5038,8 +5082,8 @@ void handle_int_21( uint8_t c )
                             tracer.Trace( "  successfully read %u bytes of %u requested, CX set to %u, al set to %u:\n", numRead, toRead, cpu.get_cx(), cpu.al() );
                             tracer.Trace( "  used disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
                             tracer.TraceBinaryData( GetDiskTransferAddress(), toRead, 4 );
+                            pfcb->SetSequentialFromRandom(); // the next sequential I/O expects this to be set. Thanks DRI compilers and liners.
                             pfcb->recNumber += (uint32_t) cRecords;
-                            pfcb->curBlock = (uint8_t) ( pfcb->recNumber * pfcb->recSize / 128 ); // updated on random reads like this but just used for sequential reads
                             tracer.Trace( "  fcb after random block read using FCBs\n" );
                             pfcb->Trace();
                         }
@@ -5069,8 +5113,10 @@ void handle_int_21( uint8_t c )
             FILE * fp = pfcb->GetFP();
             if ( fp )
             {
-                uint32_t seekOffset = pfcb->recNumber * pfcb->recSize;
+                uint32_t seekOffset = pfcb->RandomOffset();
                 tracer.Trace( "  seek offset: %u\n", seekOffset );
+                pfcb->SetSequentialFromRandom();
+
                 bool ok = !fseek( fp, seekOffset, SEEK_SET );
                 if ( ok )
                 {
@@ -5081,6 +5127,7 @@ void handle_int_21( uint8_t c )
                          cpu.set_cx( recsToWrite );
                          cpu.set_al( 0 );
     
+                         pfcb->SetSequentialFromRandom(); // the next sequential I/O expects this to be set. Thanks DRI compilers and liners.
                          pfcb->recNumber += recsToWrite;
                     }
                     else
