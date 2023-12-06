@@ -775,7 +775,7 @@ FILE * RemoveFileEntryFCB( const char * pname )
 {
     for ( size_t i = 0; i < g_fileEntriesFCB.size(); i++ )
     {
-        if ( !stricmp( pname, g_fileEntriesFCB[ i ].path ) )
+        if ( !_stricmp( pname, g_fileEntriesFCB[ i ].path ) )
         {
             FILE * fp = g_fileEntriesFCB[ i ].fp;
             tracer.Trace( "  removing fcb file entry %s: %d\n", g_fileEntriesFCB[ i ].path, i );
