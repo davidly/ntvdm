@@ -247,6 +247,7 @@ static bool g_haltExecution = false;               // true when the app is shutt
 static uint16_t g_diskTransferSegment = 0;         // segment of current disk transfer area
 static uint16_t g_diskTransferOffset = 0;          // offset of current disk transfer area
 static vector<FileEntry> g_fileEntries;            // vector of currently open files
+static vector<FileEntry> g_fileEntriesFCB;         // vector of currently open files with FCBs
 static vector<DosAllocation> g_allocEntries;       // vector of blocks allocated to DOS apps
 static uint8_t g_videoMode = 3;                    // 2=80x25 16 grey, 3=80x25 16 colors
 static uint16_t g_currentPSP = 0;                  // psp of the currently running process
@@ -672,6 +673,18 @@ static void trace_all_open_files()
     }
 } //trace_all_open_files
 
+static void trace_all_open_files_fcb()
+{
+    size_t cEntries = g_fileEntriesFCB.size();
+    tracer.Trace( "  all fcb files, count %d:\n", cEntries );
+    for ( size_t i = 0; i < cEntries; i++ )
+    {
+        FileEntry & fe = g_fileEntriesFCB[ i ];
+        tracer.Trace( "    fcb file entry %d, fp %p, handle %u, writable %d, process %u, refcount %u, path %s\n", i,
+                      fe.fp, fe.handle, fe.writeable, fe.seg_process, fe.refcount, fe.path );
+    }
+} //trace_all_open_files_fcb
+
 static bool tc_build_file_open()
 {
     // check if it looks like Turbo C is building something so we won't sleep in dos idle loop, which it calls
@@ -758,6 +771,23 @@ FILE * RemoveFileEntry( uint16_t handle )
     return 0;
 } //RemoveFileEntry
 
+FILE * RemoveFileEntryFCB( const char * pname )
+{
+    for ( size_t i = 0; i < g_fileEntriesFCB.size(); i++ )
+    {
+        if ( !stricmp( pname, g_fileEntriesFCB[ i ].path ) )
+        {
+            FILE * fp = g_fileEntriesFCB[ i ].fp;
+            tracer.Trace( "  removing fcb file entry %s: %d\n", g_fileEntriesFCB[ i ].path, i );
+            g_fileEntriesFCB.erase( g_fileEntriesFCB.begin() + i );
+            return fp;
+        }
+    }
+
+    tracer.Trace( "  ERROR: could not remove fcb file entry for name '%s'\n", pname );
+    return 0;
+} //RemoveFileEntryFCB
+
 FILE * FindFileEntry( uint16_t handle )
 {
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
@@ -798,6 +828,16 @@ size_t FindFileEntryIndexByProcess( uint16_t seg )
     return (size_t) -1;
 } //FindFileEntryIndexByProcess
 
+size_t FindFileEntryIndexByProcessFCB( uint16_t seg )
+{
+    for ( size_t i = 0; i < g_fileEntriesFCB.size(); i++ )
+    {
+        if ( seg == g_fileEntriesFCB[ i ].seg_process )
+            return i;
+    }
+    return (size_t) -1;
+} //FindFileEntryIndexByProcessFCB
+
 const char * FindFileEntryPath( uint16_t handle )
 {
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
@@ -836,6 +876,21 @@ size_t FindFileEntryFromPath( const char * pfile )
     tracer.Trace( "  NOTICE: could not find file entry for path %s\n", pfile );
     return (size_t) -1;
 } //FindFileEntryFromPath
+
+FILE * FindFileEntryFromFileFCB( const char * pfile )
+{
+    for ( size_t i = 0; i < g_fileEntriesFCB.size(); i++ )
+    {
+        if ( !_stricmp( pfile, g_fileEntriesFCB[ i ].path ) )
+        {
+            tracer.Trace( "  found fcb file entry '%s': %d\n", g_fileEntriesFCB[ i ].path, i );
+            return g_fileEntriesFCB[ i ].fp;
+        }
+    }
+
+    tracer.Trace( "  NOTICE: could not find fcb file entry for path %s\n", pfile );
+    return 0;
+} //FindFileEntryFromFileFCB
 
 uint16_t FindFirstFreeFileHandle()
 {
@@ -1277,12 +1332,9 @@ struct DOSFCB
     uint32_t fileSize;
     uint16_t date;
     uint16_t time;
-    uint8_t reserved[8];
+    uint8_t reserved[8];     // unused
     uint8_t curRecord;       // where sequential i/o starts
     uint32_t recNumber;      // where random i/o starts. the high byte is only valid when recSize < 64 bytes
-
-    void SetFP( FILE * fp ) { * ( (FILE **) & ( this->reserved ) ) = fp; }
-    FILE * GetFP() { return * ( (FILE **) &this->reserved ); }
 
     uint32_t BlockSize() { return (uint32_t) recSize * 128; }
     uint32_t SequentialOffset() { return ( ( (uint32_t) curBlock * BlockSize() ) + ( (uint32_t) curRecord * (uint32_t) recSize ) ); }
@@ -1293,11 +1345,13 @@ struct DOSFCB
 
         return recNumber;
     }
+    void SetRandomRecordNumber( uint32_t x )
+    {
+        memcpy( &recNumber, &x, ( recSize >= 64 ) ? 3 : 4 );
+    }
     uint32_t RandomOffset() { return ( RandomRecordNumber() * recSize ); }
     void SetSequentialFromRandom()
     {
-        tracer.Trace( "  fcb before SetSequentialFromRandom:\n" );
-        Trace();
         uint32_t o = RandomOffset();
         curBlock = (uint16_t) ( o / BlockSize() );
         curRecord = (uint8_t) ( RandomRecordNumber() % 128 );
@@ -1309,7 +1363,10 @@ struct DOSFCB
 
     void SetRandomFromSequential()
     {
-        recNumber = SequentialOffset() / recSize;
+        if ( 0 == recSize ) // an app bug for sure
+            return;
+
+        SetRandomRecordNumber( SequentialOffset() / recSize );
         tracer.Trace( "  SequentialOffset %u, RandomOffset %u\n", SequentialOffset(), RandomOffset() );
         assert( SequentialOffset() == RandomOffset() );
     } //SetRandomFromSequential
@@ -1337,7 +1394,6 @@ struct DOSFCB
         tracer.Trace( "    curBlock:    %u\n", curBlock );
         tracer.Trace( "    recSize:     %u\n", recSize );
         tracer.Trace( "    fileSize:    %u\n", fileSize );
-        tracer.Trace( "    reserved/fp: %p\n", GetFP() );
         tracer.Trace( "    curRecord:   %u\n", curRecord );
         tracer.Trace( "    recNumber:   %u\n", RandomRecordNumber() );
     } //Trace
@@ -3009,7 +3065,7 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
         uint16_t _mon = 1 + lt.tm_mon;
         uint16_t _year = 1900 + lt.tm_year - 1980;
         dos_date = _mday | ( _mon << 5 ) | ( _year << 9 );
-
+    
         uint16_t _hour = lt.tm_hour;
         uint16_t _min = lt.tm_min; 
         uint16_t _sec = lt.tm_sec / 2; // 2-second granularity
@@ -3233,6 +3289,37 @@ bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
     } //FindFirstFileLinux
 
 #endif
+
+bool GetFileDOSTimeDate( const char * path, uint16_t & dos_time, uint16_t & dos_date )
+{
+    #ifdef _WIN32                    
+        WIN32_FILE_ATTRIBUTE_DATA fad = {0};
+        if ( GetFileAttributesExA( path, GetFileExInfoStandard, &fad ) )
+        {
+            FileTimeToDos( fad.ftLastWriteTime, dos_time, dos_date );
+            return true;
+        }
+
+        tracer.Trace( "  ERROR: can't get/set file date and time; getfileattributesex failed %d\n", GetLastError() );
+    #else
+        struct stat statbuf;
+        int ret = stat( path, & statbuf );
+        if ( 0 == ret )
+        {
+            #ifdef __APPLE__
+                tmTimeToDos( statbuf.st_mtimespec.tv_sec, dos_time, dos_date );
+            #else
+                tmTimeToDos( statbuf.st_mtim.tv_sec, dos_time, dos_date );
+            #endif
+
+            return true;
+        }
+
+        tracer.Trace( "  ERROR: can't get DOS file date and time; stat failed %d\n", errno );
+    #endif
+
+    return false;
+} //GetFileDOSTimeDate
 
 void PerhapsFlipTo80x25()
 {
@@ -3918,6 +4005,18 @@ void HandleAppExit()
         fclose( fp );
     } while ( true );
 
+    trace_all_open_files_fcb();
+
+    do
+    {
+        size_t index = FindFileEntryIndexByProcessFCB( g_currentPSP );
+        if ( -1 == index )
+            break;
+        tracer.Trace( "  closing fcb file an app leaked: '%s'\n", g_fileEntriesFCB[ index ].path );
+        FILE * fp = RemoveFileEntryFCB( g_fileEntriesFCB[ index ].path );
+        fclose( fp );
+    } while ( true );
+
     g_appTerminationReturnCode = cpu.al();
     tracer.Trace( "  app exit code: %d\n", g_appTerminationReturnCode );
     uint16_t pspToDelete = g_currentPSP;
@@ -4102,6 +4201,7 @@ bool FindCommandInPath( char * pc )
 
 void handle_int_21( uint8_t c )
 {
+    char filename[ DOS_FILENAME_SIZE ];
     uint8_t row, col;
     bool ah_used = false;
 
@@ -4121,6 +4221,8 @@ void handle_int_21( uint8_t c )
             // todo: interpret 7 (beep), 8 (backspace), 9 (tab) to tab on multiples of 8. 10 lf should move cursor down and scroll if needed
     
             char ch = cpu.dl();
+
+            tracer.Trace( "  output char %d == %#02x == '%c'\n", ch, ch, printable( ch ) );
 
             if ( g_use80x25 )
             {
@@ -4387,7 +4489,7 @@ void handle_int_21( uint8_t c )
         {
             // open file using FCB
     
-            tracer.Trace( "open file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
+            tracer.Trace( "  open file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
@@ -4396,30 +4498,54 @@ void handle_int_21( uint8_t c )
                 pfcb->drive = get_current_drive();
     
             cpu.set_al( 0xff );
-            char filename[ DOS_FILENAME_SIZE ];
             if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
                 tracer.Trace( "  opening %s\n", filename );
-                pfcb->SetFP( 0 );
-    
-                FILE * fp = fopen( filename, "r+b" );
+
+                // if the file is already open then close it. Digital Research CB86.EXE does this.
+
+                FILE * fp = FindFileEntryFromFileFCB( filename );
+                if ( 0 != fp )
+                {
+                    RemoveFileEntryFCB( filename );
+                    fclose( fp );
+                }
+
+                fp = fopen( filename, "r+b" );
                 if ( fp )
                 {
                     tracer.Trace( "  file opened successfully\n" );
-                    pfcb->SetFP( fp );
+        
+                    pfcb->fileSize = portable_filelen( fp );
     
-                    fseek( fp, 0, SEEK_END );
-                    pfcb->fileSize = ftell( fp );
-                    fseek( fp, 0, SEEK_SET );
-    
+                    if ( 0 == pfcb->drive )
+                        pfcb->drive = 1 + get_current_drive();
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
-                    pfcb->curRecord = 0;
+                    pfcb->curRecord = 0; // documentation says this shouldn't be initialized here
 
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
                     // don't allocate enough RAM in the FCB for the recNumber (the last field).
                     // pfcb->recNumber = 0;
+
+                    uint16_t dos_time, dos_date;
+                    if ( GetFileDOSTimeDate( filename, dos_time, dos_date ) )
+                    {
+                        pfcb->time = dos_time;
+                        pfcb->date = dos_date;
+                    }
     
+                    FileEntry fe = {0};
+                    strcpy( fe.path, filename );
+                    fe.fp = fp;
+                    fe.handle = 0;
+                    fe.writeable = true;
+                    fe.seg_process = g_currentPSP;
+                    fe.refcount = 1;
+                    g_fileEntriesFCB.push_back( fe );
+                    tracer.Trace( "  successfully opened file\n" );
+                    trace_all_open_files_fcb();
+        
                     pfcb->Trace();
                     cpu.set_al( 0 );
                 }
@@ -4435,18 +4561,27 @@ void handle_int_21( uint8_t c )
         {
             // close file using FCB
     
-            tracer.Trace( "close file using FCB\n" );
+            cpu.set_al( 0xff );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
-    
-            FILE * fp = pfcb->GetFP();
-            if ( fp )
+
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
-                fclose( fp );
-                pfcb->SetFP( 0 );
+                tracer.Trace( "  close file using FCB: '%s'\n", filename );
+
+                FILE * fp = RemoveFileEntryFCB( filename );
+                if ( 0 != fp )
+                {
+                    cpu.set_al( 0 );
+                    tracer.Trace( "  successfully closed already open file\n" );
+                    fclose( fp );
+                    trace_all_open_files_fcb();
+                }
+                else
+                    tracer.Trace( "  ERROR: file close using FCB of a file that's not open\n" );
             }
             else
-                tracer.Trace( "  ERROR: file close using FCB of a file that's not open\n" );
+                tracer.Trace( "  ERROR: file close is unable to parse filename from FCB\n" );
     
             return;
         }
@@ -4648,16 +4783,26 @@ void handle_int_21( uint8_t c )
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
     
             cpu.set_al( 0xff );
-            char filename[ DOS_FILENAME_SIZE ];
             if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
-                tracer.Trace( "  deleting %s\n", filename );
-    
+                tracer.Trace( "  deleting '%s'\n", filename );
+
+                // the file may be open (Digital Research's CB86 Basic Compiler does this). If so, close it.
+
+                FILE * fp = FindFileEntryFromFileFCB( filename );
+                if ( 0 != fp )
+                {
+                    RemoveFileEntryFCB( filename );
+                    tracer.Trace( "  closing an open file before deleting it\n" );
+                    fclose( fp );
+                    trace_all_open_files_fcb();
+                }
+
                 int removeok = ( 0 == remove( filename ) );
                 if ( removeok )
                 {
                     cpu.set_al( 0 );
-                    tracer.Trace( "delete successful\n" );
+                    tracer.Trace( "  delete successful\n" );
                 }
                 else
                     tracer.Trace( "  ERROR: delete file failed, error %d = %s\n", errno, strerror( errno ) );
@@ -4683,34 +4828,40 @@ void handle_int_21( uint8_t c )
             cpu.set_al( 1 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
-            FILE * fp = pfcb->GetFP();
-            if ( fp )
+
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
-                uint32_t seekOffset = pfcb->SequentialOffset();
-                tracer.Trace( "  seek offset: %u\n", seekOffset );
-                tracer.Trace( "  using disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
-                bool ok = !fseek( fp, seekOffset, SEEK_SET );
-                if ( ok )
+                FILE * fp = FindFileEntryFromFileFCB( filename );
+                if ( fp )
                 {
-                    memset( GetDiskTransferAddress(), 0, pfcb->recSize );
-                    size_t num_read = fread( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
-                    if ( num_read )
+                    uint32_t seekOffset = pfcb->SequentialOffset();
+                    tracer.Trace( "  seek offset: %u\n", seekOffset );
+                    tracer.Trace( "  using disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
+                    bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                    if ( ok )
                     {
-                         tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, pfcb->recSize );
-                         if ( num_read == pfcb->recSize )
-                             cpu.set_al( 0 );
-                         else
-                             cpu.set_al( 3 );
-                         pfcb->curRecord++;
+                        memset( GetDiskTransferAddress(), 0, pfcb->recSize );
+                        size_t num_read = fread( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
+                        if ( num_read )
+                        {
+                             tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, pfcb->recSize );
+                             if ( num_read == pfcb->recSize )
+                                 cpu.set_al( 0 );
+                             else
+                                 cpu.set_al( 3 );
+                             pfcb->curRecord++;
+                        }
+                        else
+                             tracer.Trace( "  read failed with error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                         tracer.Trace( "  read failed with error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR sequential read using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "  ERROR sequential read using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR sequential read using FCB doesn't have an open file\n" );
             }
             else
-                tracer.Trace( "  ERROR sequential read using FCBs doesn't have an open file\n" );
+                tracer.Trace( "  ERROR sequential read using FCB can't parse filename\n" );
 
             return;
         }
@@ -4727,30 +4878,36 @@ void handle_int_21( uint8_t c )
             cpu.set_al( 1 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
-            FILE * fp = pfcb->GetFP();
-            if ( fp )
+
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
-                uint32_t seekOffset = pfcb->SequentialOffset();
-                tracer.Trace( "  seek offset: %u\n", seekOffset );
-                bool ok = !fseek( fp, seekOffset, SEEK_SET );
-                if ( ok )
+                FILE * fp = FindFileEntryFromFileFCB( filename );
+                if ( fp )
                 {
-                    size_t num_written = fwrite( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
-                    if ( num_written )
+                    uint32_t seekOffset = pfcb->SequentialOffset();
+                    tracer.Trace( "  seek offset: %u\n", seekOffset );
+                    bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                    if ( ok )
                     {
-                         tracer.Trace( "  write succeded: %u bytes. recsize %u bytes\n", num_written, pfcb->recSize );
-                         cpu.set_al( 0 );
-                         pfcb->curRecord++;
-                         tracer.TraceBinaryData( GetDiskTransferAddress(), (uint32_t) num_written, 4 );
+                        size_t num_written = fwrite( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
+                        if ( num_written )
+                        {
+                             tracer.Trace( "  write succeded: %u bytes. recsize %u bytes\n", num_written, pfcb->recSize );
+                             cpu.set_al( 0 );
+                             pfcb->curRecord++;
+                             tracer.TraceBinaryData( GetDiskTransferAddress(), (uint32_t) num_written, 4 );
+                        }
+                        else
+                             tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                         tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR sequential write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "  ERROR sequential write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR sequential write using FCBs doesn't have an open file\n" );
             }
             else
-                tracer.Trace( "  ERROR sequential write using FCBs doesn't have an open file\n" );
+                tracer.Trace( "  ERROR sequential write using FCB can't parse filename\n" );
 
             return;
         }
@@ -4758,7 +4915,7 @@ void handle_int_21( uint8_t c )
         {
             // create file using FCB
     
-            tracer.Trace( "create file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
+            tracer.Trace( "  create file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
@@ -4767,18 +4924,15 @@ void handle_int_21( uint8_t c )
             if ( 0 == pfcb->drive )
                 pfcb->drive = get_current_drive();
     
-            char filename[ DOS_FILENAME_SIZE ];
             if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
                 tracer.Trace( "  creating '%s'\n", filename );
-                pfcb->SetFP( 0 );
     
                 FILE * fp = fopen( filename, "w+b" );
                 if ( fp )
                 {
                     tracer.Trace( "  file created successfully\n" );
                     cpu.set_al( 0 );
-                    pfcb->SetFP( fp );
     
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
@@ -4788,6 +4942,16 @@ void handle_int_21( uint8_t c )
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
                     // don't allocate enough RAM in the FCB for the recNumber (the last field)
                     // pfcb->recNumber = 0;
+
+                    FileEntry fe = {0};
+                    strcpy( fe.path, filename );
+                    fe.fp = fp;
+                    fe.handle = 0;
+                    fe.writeable = true;
+                    fe.seg_process = g_currentPSP;
+                    fe.refcount = 1;
+                    g_fileEntriesFCB.push_back( fe );
+                    trace_all_open_files_fcb();
 
                     pfcb->Trace();
                 }
@@ -4904,45 +5068,50 @@ void handle_int_21( uint8_t c )
             //             2 segment wrap in DTA, no data read
             //             3 end of file, partial record read
             //         disk transfer area DTA is filled with data from the current file position in the random record/size of the FCB
-            //         the file position isn't updated after the read
+            //         the random file position isn't updated after the read
             //         partial reads are 0-filled
             //         one record is read
+            // The sequential offset is set to match the random offset before the read
 
             cpu.set_al( 1 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
-            FILE * fp = pfcb->GetFP();
-            if ( fp )
+
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
-                // lotus 123 1.0a writes a random value to the high byte; mask it away
-
-                uint32_t seekOffset = pfcb->RandomOffset();
-                tracer.Trace( "  seek offset: %u\n", seekOffset );
-                pfcb->SetSequentialFromRandom();
-
-                bool ok = !fseek( fp, seekOffset, SEEK_SET );
-                if ( ok )
+                FILE * fp = FindFileEntryFromFileFCB( filename );
+                if ( fp )
                 {
-                    memset( GetDiskTransferAddress(), 0, pfcb->recSize );
-                    size_t num_read = fread( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
-                    if ( num_read )
-                    {
-                         tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, pfcb->recSize );
-                         if ( num_read == pfcb->recSize )
-                             cpu.set_al( 0 );
-                         else
-                             cpu.set_al( 3 );
+                    uint32_t seekOffset = pfcb->RandomOffset();
+                    tracer.Trace( "  seek offset: %u\n", seekOffset );
+                    pfcb->SetSequentialFromRandom(); // Digital Research PL/I compiler/linker depends on this
     
-                         // don't update the fcb's record number for this version of the API
+                    bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                    if ( ok )
+                    {
+                        memset( GetDiskTransferAddress(), 0, pfcb->recSize );
+                        size_t num_read = fread( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
+                        if ( num_read )
+                        {
+                             tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, pfcb->recSize );
+                             if ( num_read == pfcb->recSize )
+                                 cpu.set_al( 0 );
+                             else
+                                 cpu.set_al( 3 );
+        
+                             // don't update the fcb's record number for this version of the API
+                        }
+                        else
+                             tracer.Trace( "  read failed with error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                         tracer.Trace( "  read failed with error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR random read using FCB failed to seek, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "  ERROR random read using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR random read using FCB doesn't have an open file\n" );
             }
             else
-                tracer.Trace( "  ERROR random read using FCBs doesn't have an open file\n" );
+                tracer.Trace( "  ERROR random read using FCB can't parse filename\n" );
 
             return;
         }
@@ -4950,41 +5119,46 @@ void handle_int_21( uint8_t c )
         {
             // random write using FCBs. on output, 0 if success, 1 if disk full, 2 if DTA too small
             // CX has # of records written on exit
+            // The sequential offset is set to match the random offset before the write
     
             cpu.set_al( 1 );
             uint16_t recsToWrite = cpu.get_cx();
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
-            FILE * fp = pfcb->GetFP();
-            if ( fp )
+
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
-                // lotus 123 1.0a writes a random value to the high byte; mask it away
-
-                uint32_t seekOffset = pfcb->RandomOffset();
-                tracer.Trace( "  seek offset: %u\n", seekOffset );
-                pfcb->SetSequentialFromRandom();
-
-                bool ok = !fseek( fp, seekOffset, SEEK_SET );
-                if ( ok )
+                FILE * fp = FindFileEntryFromFileFCB( filename );
+                if ( fp )
                 {
-                    size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
-                    if ( num_written )
-                    {
-                         tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
-                         cpu.set_cx( recsToWrite );
-                         cpu.set_al( 0 );
+                    uint32_t seekOffset = pfcb->RandomOffset();
+                    tracer.Trace( "  seek offset: %u\n", seekOffset );
+                    pfcb->SetSequentialFromRandom(); // Digital Research PL/I compiler/linker depends on this
     
-                         // don't update the fcb's record number for this version of the API
+                    bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                    if ( ok )
+                    {
+                        size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
+                        if ( num_written )
+                        {
+                             tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
+                             cpu.set_cx( recsToWrite );
+                             cpu.set_al( 0 );
+        
+                             // don't update the fcb's record number for this version of the API
+                        }
+                        else
+                             tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                         tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR random write using FCB failed to seek, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "  ERROR random write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR random write using FCB doesn't have an open file\n" );
             }
             else
-                tracer.Trace( "  ERROR random write using FCBs doesn't have an open file\n" );
+                tracer.Trace( "  ERROR random write using FCB can't parse filename\n" );
     
             return;
         }
@@ -5040,62 +5214,60 @@ void handle_int_21( uint8_t c )
             pfcb->Trace();
             uint32_t seekOffset = pfcb->RandomOffset();
 
-            FILE * fp = pfcb->GetFP();
-            if ( fp )
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
-                fseek( fp, 0, SEEK_END );
-                pfcb->fileSize = ftell( fp );
-                fseek( fp, 0, SEEK_SET );
-            }
-
-            if ( seekOffset > pfcb->fileSize )
-            {
-                tracer.Trace( "  ERROR: random read beyond end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
-                cpu.set_al( 1 ); // eof
-            }
-            else if ( seekOffset == pfcb->fileSize )
-            {
-                tracer.Trace( "  WARNING: random read at end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
-                cpu.set_al( 1 ); // eof
-            }
-            else
-            {
+                FILE * fp = FindFileEntryFromFileFCB( filename );
                 if ( fp )
                 {
-                    tracer.Trace( "  seek offset: %u\n", seekOffset );
-                    bool ok = !fseek( fp, seekOffset, SEEK_SET );
-                    if ( ok )
+                    pfcb->fileSize = portable_filelen( fp );
+
+                    if ( seekOffset > pfcb->fileSize )
                     {
-                        uint32_t askedBytes = pfcb->recSize * cRecords;
-                        memset( GetDiskTransferAddress(), 0, askedBytes );
-                        uint32_t toRead = get_min( pfcb->fileSize - seekOffset, askedBytes );
-                        size_t numRead = fread( GetDiskTransferAddress(), 1, toRead, fp );
-                        if ( numRead )
-                        {
-                            tracer.Trace( "  numRead: %zd, toRead %zd, askedBytes %u\n", numRead, toRead, askedBytes );
-                            if ( numRead == askedBytes )
-                                cpu.set_al( 0 );
-                            else
-                                cpu.set_al( 3 ); // eof encountered, last record is partial
-    
-                            cpu.set_cx( (uint16_t) ( toRead / pfcb->recSize ) );
-                            tracer.Trace( "  successfully read %u bytes of %u requested, CX set to %u, al set to %u:\n", numRead, toRead, cpu.get_cx(), cpu.al() );
-                            tracer.Trace( "  used disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
-                            tracer.TraceBinaryData( GetDiskTransferAddress(), toRead, 4 );
-                            pfcb->SetSequentialFromRandom(); // the next sequential I/O expects this to be set. Thanks DRI compilers and liners.
-                            pfcb->recNumber += (uint32_t) cRecords;
-                            tracer.Trace( "  fcb after random block read using FCBs\n" );
-                            pfcb->Trace();
-                        }
-                        else
-                            tracer.Trace( "  ERROR random block read using FCBs failed to read, error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR: random read beyond end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
+                        cpu.set_al( 1 ); // eof
+                    }
+                    else if ( seekOffset == pfcb->fileSize )
+                    {
+                        tracer.Trace( "  WARNING: random read at end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
+                        cpu.set_al( 1 ); // eof
                     }
                     else
-                        tracer.Trace( "  ERROR random block read using FCBs failed to seek, error %d= %s\n", errno, strerror( errno ) );
+                    {
+                        tracer.Trace( "  seek offset: %u\n", seekOffset );
+                        bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                        if ( ok )
+                        {
+                            uint32_t askedBytes = pfcb->recSize * cRecords;
+                            memset( GetDiskTransferAddress(), 0, askedBytes );
+                            uint32_t toRead = get_min( pfcb->fileSize - seekOffset, askedBytes );
+                            size_t numRead = fread( GetDiskTransferAddress(), 1, toRead, fp );
+                            if ( numRead )
+                            {
+                                tracer.Trace( "  numRead: %zd, toRead %zd, askedBytes %u\n", numRead, toRead, askedBytes );
+                                if ( numRead == askedBytes )
+                                    cpu.set_al( 0 );
+                                else
+                                    cpu.set_al( 3 ); // eof encountered, last record is partial
+        
+                                cpu.set_cx( (uint16_t) ( toRead / pfcb->recSize ) );
+                                tracer.Trace( "  successfully read %u bytes of %u requested, CX set to %u, al set to %u:\n", numRead, toRead, cpu.get_cx(), cpu.al() );
+                                tracer.Trace( "  used disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
+                                tracer.TraceBinaryData( GetDiskTransferAddress(), toRead, 4 );
+                                pfcb->SetRandomRecordNumber( pfcb->RandomRecordNumber() + (uint32_t) cpu.get_cx() );
+                                pfcb->SetSequentialFromRandom(); // the next sequential I/O expects this to be set. Thanks DRI compilers and linkers.
+                            }
+                            else
+                                tracer.Trace( "  ERROR random block read using FCBs failed to read, error %d = %s\n", errno, strerror( errno ) );
+                        }
+                        else
+                            tracer.Trace( "  ERROR random block read using FCBs failed to seek, error %d= %s\n", errno, strerror( errno ) );
+                    }
                 }
                 else
                     tracer.Trace( "  ERROR random block read using FCBs doesn't have an open file\n" );
             }
+            else
+                tracer.Trace( "  ERROR random block read using FCBs can't parse filename\n" );
     
             return;
         }
@@ -5110,34 +5282,39 @@ void handle_int_21( uint8_t c )
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
-            FILE * fp = pfcb->GetFP();
-            if ( fp )
-            {
-                uint32_t seekOffset = pfcb->RandomOffset();
-                tracer.Trace( "  seek offset: %u\n", seekOffset );
-                pfcb->SetSequentialFromRandom();
 
-                bool ok = !fseek( fp, seekOffset, SEEK_SET );
-                if ( ok )
+            if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
+            {
+                FILE * fp = FindFileEntryFromFileFCB( filename );
+                if ( fp )
                 {
-                    size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
-                    if ( num_written )
-                    {
-                         tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
-                         cpu.set_cx( recsToWrite );
-                         cpu.set_al( 0 );
+                    uint32_t seekOffset = pfcb->RandomOffset();
+                    tracer.Trace( "  seek offset: %u\n", seekOffset );
     
-                         pfcb->SetSequentialFromRandom(); // the next sequential I/O expects this to be set. Thanks DRI compilers and liners.
-                         pfcb->recNumber += recsToWrite;
+                    bool ok = !fseek( fp, seekOffset, SEEK_SET );
+                    if ( ok )
+                    {
+                        size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
+                        if ( num_written )
+                        {
+                             tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
+                             tracer.TraceBinaryData( GetDiskTransferAddress(), recsToWrite * pfcb->recSize, 4 );
+                             cpu.set_cx( recsToWrite );
+                             cpu.set_al( 0 );
+                             pfcb->SetRandomRecordNumber( pfcb->RandomRecordNumber() + (uint32_t) recsToWrite );
+                             pfcb->SetSequentialFromRandom(); // the next sequential I/O expects this to be set. Thanks DRI compilers and liners.
+                        }
+                        else
+                             tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                         tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR random block write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "  ERROR random block write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                    tracer.Trace( "  ERROR random block write using FCBs doesn't have an open file\n" );
             }
             else
-                tracer.Trace( "  ERROR random block write using FCBs doesn't have an open file\n" );
+                tracer.Trace( "  ERROR random block write using FCBs can't parse filename\n" );
     
             return;
         }
@@ -6763,45 +6940,16 @@ void handle_int_21( uint8_t c )
             {
                 if ( 0 == cpu.al() )
                 {
-#ifdef _WIN32                    
-                    WIN32_FILE_ATTRIBUTE_DATA fad = {0};
-                    if ( GetFileAttributesExA( hostPath, GetFileExInfoStandard, &fad ) )
+                    uint16_t dos_time, dos_date;
+                    if ( GetFileDOSTimeDate( hostPath, dos_time, dos_date ) )
                     {
                         cpu.set_ax( 0 );
                         cpu.set_carry( false );
-                        uint16_t dos_time, dos_date;
-                        FileTimeToDos( fad.ftLastWriteTime, dos_time, dos_date );
                         cpu.set_cx( dos_time );
                         cpu.set_dx( dos_date );
                     }
                     else
-                    {
-                        tracer.Trace( "  ERROR: can't get/set file date and time; getfileattributesex failed %d\n", GetLastError() );
                         cpu.set_ax( 1 );
-                    }
-#else
-                    struct stat statbuf;
-                    int ret = stat( hostPath, & statbuf );
-                    if ( 0 == ret )
-                    {
-                        cpu.set_ax( 0 );
-                        cpu.set_carry( false );
-
-                        uint16_t the_time, the_date;
-#ifdef __APPLE__
-                        tmTimeToDos( statbuf.st_mtimespec.tv_sec, the_time, the_date );
-#else
-                        tmTimeToDos( statbuf.st_mtim.tv_sec, the_time, the_date );
-#endif
-                        cpu.set_cx( the_time );
-                        cpu.set_dx( the_date );
-                    }
-                    else
-                    {
-                        tracer.Trace( "  ERROR: can't get/set file date and time; stat failed %d\n", errno );
-                        cpu.set_ax( 1 );
-                    }
-#endif                    
                 }
                 else if ( 1 == cpu.al() )
                 {
