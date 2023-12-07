@@ -2846,133 +2846,133 @@ bool starts_with( const char * str, const char * start )
 } //starts_with
 
 #ifdef _WIN32
-void FileTimeToDos( FILETIME & ftSystem, uint16_t & dos_time, uint16_t & dos_date )
-{
-    FILETIME ft;
-    FileTimeToLocalFileTime( &ftSystem, &ft );
-    SYSTEMTIME st = {0};
-    FileTimeToSystemTime( &ft, &st );
-
-    // low 5 bits seconds, next 6 bits minutes, high 5 bits hours
-
-    dos_time = st.wSecond;
-    dos_time |= ( st.wMinute << 5 );
-    dos_time |= ( st.wHour << 11 );
-
-    // low 5 bits day, next 4 bits month, high 7 bits year less 1980
-
-    dos_date = st.wDay;
-    dos_date |= ( st.wMonth << 5 );
-    dos_date |= ( ( st.wYear - 1980 ) << 9 );
-} //FileTimeToDos
-
-bool ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
-{
-    // these bits are the same on Windows and DOS
-
-    uint8_t matching_attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM ) );
-
-    // return normal files always and any of the 3 special classes if their bit is set in search_attributes
-
-    if ( ( 0 != matching_attr ) && ( 0 == ( matching_attr & pff->search_attributes ) ) )
+    void FileTimeToDos( FILETIME & ftSystem, uint16_t & dos_time, uint16_t & dos_date )
     {
-        tracer.Trace( "  file '%s' attr %#x doesn't match the attribute filter %#x\n", fd.cFileName, fd.dwFileAttributes, pff->search_attributes );
-        return false;
-    }
-
-    tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
-    if ( 0 != fd.cAlternateFileName[ 0 ] )
-        strcpy( pff->file_name, fd.cAlternateFileName );
-    else if ( strlen( fd.cFileName ) < _countof( pff->file_name ) )
-        strcpy( pff->file_name, fd.cFileName );
-    else
+        FILETIME ft;
+        FileTimeToLocalFileTime( &ftSystem, &ft );
+        SYSTEMTIME st = {0};
+        FileTimeToSystemTime( &ft, &st );
+    
+        // low 5 bits seconds, next 6 bits minutes, high 5 bits hours
+    
+        dos_time = st.wSecond;
+        dos_time |= ( st.wMinute << 5 );
+        dos_time |= ( st.wHour << 11 );
+    
+        // low 5 bits day, next 4 bits month, high 7 bits year less 1980
+    
+        dos_date = st.wDay;
+        dos_date |= ( st.wMonth << 5 );
+        dos_date |= ( ( st.wYear - 1980 ) << 9 );
+    } //FileTimeToDos
+    
+    bool ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
     {
-        // this only works on volumes that have the feature enabled. Most don't.
-
-        DWORD result = GetShortPathNameA( fd.cFileName, pff->file_name, _countof( pff->file_name ) );
-        if ( result > _countof( pff->file_name ) )
-            return false; // files with long names are just invisible to DOS apps
-    }
-
-    _strupr( pff->file_name );
-    pff->file_size = fd.nFileSizeLow;
-    uint8_t attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
-                                             FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
-    pff->file_attributes = attr;
-    FileTimeToDos( fd.ftLastWriteTime, pff->file_time, pff->file_date );
-    tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
-    return true;
-} //ProcessFoundFile
-
-bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
-{
-    // note: extended FCB code isn't well-tested. Multiplan setup.exe is the only app I know that uses it and it fails for other reasons
-    // non-extended FCBs will have attr = 0
-
-    attr &= ~ ( 8 ); // remove the volume label bit if set
-    uint8_t matching_attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM ) );
-
-    if ( ( matching_attr && ( 0 == attr ) ) || ( ( 0 != attr) && ( 0 == ( attr & matching_attr ) ) ) )
-    {
-        tracer.Trace( "  file '%s' attr %#x doesn't match the attribute filter %#x\n", fd.cFileName, fd.dwFileAttributes, attr );
-        return false;
-    }
-
-    tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
-    char acResult[ DOS_FILENAME_SIZE ];
-    if ( 0 != fd.cAlternateFileName[ 0 ] )
-        strcpy( acResult, fd.cAlternateFileName );
-    else if ( strlen( fd.cFileName ) < _countof( acResult ) )
-        strcpy( acResult, fd.cFileName );
-    else
-    {
-        // this only works on volumes that have the feature enabled. Most don't.
-
-        DWORD result = GetShortPathNameA( fd.cFileName, acResult, _countof( acResult ) );
-        if ( result > _countof( acResult ) )
-            return false; // files with long names are just invisible to DOS apps
-    }
-
-    _strupr( acResult );
-
-    // now write the file into an FCB at the transfer address
-
-    DOSFCB *pfcb = 0;
-    if ( exFCB )
-    {
-        DOSEXFCB * pexfcb = (DOSEXFCB *) GetDiskTransferAddress();
-        pexfcb->extendedFlag = 0xff;
-        pexfcb->attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
+        // these bits are the same on Windows and DOS
+    
+        uint8_t matching_attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM ) );
+    
+        // return normal files always and any of the 3 special classes if their bit is set in search_attributes
+    
+        if ( ( 0 != matching_attr ) && ( 0 == ( matching_attr & pff->search_attributes ) ) )
+        {
+            tracer.Trace( "  file '%s' attr %#x doesn't match the attribute filter %#x\n", fd.cFileName, fd.dwFileAttributes, pff->search_attributes );
+            return false;
+        }
+    
+        tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
+        if ( 0 != fd.cAlternateFileName[ 0 ] )
+            strcpy( pff->file_name, fd.cAlternateFileName );
+        else if ( strlen( fd.cFileName ) < _countof( pff->file_name ) )
+            strcpy( pff->file_name, fd.cFileName );
+        else
+        {
+            // this only works on volumes that have the feature enabled. Most don't.
+    
+            DWORD result = GetShortPathNameA( fd.cFileName, pff->file_name, _countof( pff->file_name ) );
+            if ( result > _countof( pff->file_name ) )
+                return false; // files with long names are just invisible to DOS apps
+        }
+    
+        _strupr( pff->file_name );
+        pff->file_size = fd.nFileSizeLow;
+        uint8_t attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
                                                  FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
-        memset( pexfcb->reserved, 0, sizeof( pexfcb->reserved ) );
-        pfcb = & (pexfcb->fcb);
-    }
-    else
-        pfcb = (DOSFCB *) GetDiskTransferAddress();
-
-    pfcb->drive = 0;
-    for ( int i = 0; i < _countof( pfcb->name ); i++ )
-        pfcb->name[ i ] = ' ';
-    for ( int i = 0; i < _countof( pfcb->ext ); i++ )
-        pfcb->ext[ i ] = ' ';
-    for ( int i = 0; i < _countof( pfcb->name ) && 0 != acResult[i] && '.' != acResult[i]; i++ )
-        pfcb->name[i] = acResult[i];
-    char * pdot = strchr( acResult, '.' );
-    if ( pdot )
+        pff->file_attributes = attr;
+        FileTimeToDos( fd.ftLastWriteTime, pff->file_time, pff->file_date );
+        tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
+        return true;
+    } //ProcessFoundFile
+    
+    bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
     {
-        pdot++;
-        for ( int i = 0; i < _countof( pfcb->ext ) && 0 != acResult[i]; i++ )
-            pfcb->ext[i] = pdot[ i ];
-    }
-
-    pfcb->fileSize = fd.nFileSizeLow;
-    uint16_t file_time;
-    FileTimeToDos( fd.ftLastWriteTime, file_time, pfcb->date );
-
-    pfcb->TraceFirst16();
-    return true;
-} //ProcessFoundFileFCB
-
+        // note: extended FCB code isn't well-tested. Multiplan setup.exe is the only app I know that uses it and it fails for other reasons
+        // non-extended FCBs will have attr = 0
+    
+        attr &= ~ ( 8 ); // remove the volume label bit if set
+        uint8_t matching_attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM ) );
+    
+        if ( ( matching_attr && ( 0 == attr ) ) || ( ( 0 != attr) && ( 0 == ( attr & matching_attr ) ) ) )
+        {
+            tracer.Trace( "  file '%s' attr %#x doesn't match the attribute filter %#x\n", fd.cFileName, fd.dwFileAttributes, attr );
+            return false;
+        }
+    
+        tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
+        char acResult[ DOS_FILENAME_SIZE ];
+        if ( 0 != fd.cAlternateFileName[ 0 ] )
+            strcpy( acResult, fd.cAlternateFileName );
+        else if ( strlen( fd.cFileName ) < _countof( acResult ) )
+            strcpy( acResult, fd.cFileName );
+        else
+        {
+            // this only works on volumes that have the feature enabled. Most don't.
+    
+            DWORD result = GetShortPathNameA( fd.cFileName, acResult, _countof( acResult ) );
+            if ( result > _countof( acResult ) )
+                return false; // files with long names are just invisible to DOS apps
+        }
+    
+        _strupr( acResult );
+    
+        // now write the file into an FCB at the transfer address
+    
+        DOSFCB *pfcb = 0;
+        if ( exFCB )
+        {
+            DOSEXFCB * pexfcb = (DOSEXFCB *) GetDiskTransferAddress();
+            pexfcb->extendedFlag = 0xff;
+            pexfcb->attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
+                                                     FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_ARCHIVE ) );
+            memset( pexfcb->reserved, 0, sizeof( pexfcb->reserved ) );
+            pfcb = & (pexfcb->fcb);
+        }
+        else
+            pfcb = (DOSFCB *) GetDiskTransferAddress();
+    
+        pfcb->drive = 0;
+        for ( int i = 0; i < _countof( pfcb->name ); i++ )
+            pfcb->name[ i ] = ' ';
+        for ( int i = 0; i < _countof( pfcb->ext ); i++ )
+            pfcb->ext[ i ] = ' ';
+        for ( int i = 0; i < _countof( pfcb->name ) && 0 != acResult[i] && '.' != acResult[i]; i++ )
+            pfcb->name[i] = acResult[i];
+        char * pdot = strchr( acResult, '.' );
+        if ( pdot )
+        {
+            pdot++;
+            for ( int i = 0; i < _countof( pfcb->ext ) && 0 != acResult[i]; i++ )
+                pfcb->ext[i] = pdot[ i ];
+        }
+    
+        pfcb->fileSize = fd.nFileSizeLow;
+        uint16_t file_time;
+        FileTimeToDos( fd.ftLastWriteTime, file_time, pfcb->date );
+    
+        pfcb->TraceFirst16();
+        return true;
+    } //ProcessFoundFileFCB
+    
     static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
 
     void CloseFindFirst()
@@ -4116,18 +4116,19 @@ bool command_exists( char * pc )
     return false;
 } //command_exists
 
-const int day_of_week( int year, int month, int day )
-{
-    return(                                                       
-          day                                                     
-        + ((153 * (month + 12 * ((14 - month) / 12) - 3) + 2) / 5)
-        + (365 * (year + 4800 - ((14 - month) / 12)))             
-        + ((year + 4800 - ((14 - month) / 12)) / 4)               
-        - ((year + 4800 - ((14 - month) / 12)) / 100)             
-        + ((year + 4800 - ((14 - month) / 12)) / 400)             
-        - 32045                                                   
-      ) % 7;
-} //day_of_week
+#ifndef _WIN32
+    const int day_of_week( int year, int month, int day )
+    {
+        return( day                                                     
+                + ((153 * (month + 12 * ((14 - month) / 12) - 3) + 2) / 5)
+                + (365 * (year + 4800 - ((14 - month) / 12)))             
+                + ((year + 4800 - ((14 - month) / 12)) / 4)               
+                - ((year + 4800 - ((14 - month) / 12)) / 100)             
+                + ((year + 4800 - ((14 - month) / 12)) / 400)             
+                - 32045                                                   
+              ) % 7;
+    } //day_of_week
+#endif
 
 bool FindCommandInPath( char * pc )
 {
@@ -7297,14 +7298,21 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         // dos multiplex interrupt; get installed state of xml driver and other items.
         // AL = 0 to indicate nothing is installed for the many AX values that invoke this.
 
+
         if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
             if ( g_use80x25 )
                 UpdateDisplay();
             SleepAndScheduleInterruptCheck();
+            cpu.set_al( 0x01 ); // not installed, do NOT install
         }
+        else if ( 0x98 == cpu.ah() || 0x97 == cpu.ah() ) // micro focus cobol. 
+        {
+            // don't set al to anything or cobol and its generated apps won't run
+        }
+        else
+            cpu.set_al( 0x01 ); // not installed, do NOT install
 
-        cpu.set_al( 0x01 ); // not installed, do NOT install
         return;
     }
     else if ( 0x33 == interrupt_num )
