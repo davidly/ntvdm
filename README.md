@@ -74,6 +74,9 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * PC-LISP V3.00
  * muLISP v5.10 interpreter (released by Microsoft).
  * IBM Personal Computer Pascal Compiler Version 2.00 (generated apps require WRAP_HMA_ADDRESSES be true in i8086.hxx)
+ * Microsoft COBOL Compiler Version 5.0 (compiler and generated apps). Linker requires 286 but QBX's linker works fine.
+ * Digital Research PL/I-86 Compiler Version 1.0, link86, and generated apps.
+ * Microsoft FORTRAN77, the linker, and generated apps.
 
 ### Software
 
