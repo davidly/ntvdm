@@ -899,7 +899,10 @@ uint16_t FindFirstFreeFileHandle()
     // newly opened file. It's a bug in the app, but it's not getting fixed.
 
     qsort( g_fileEntries.data(), g_fileEntries.size(), sizeof( FileEntry ), compare_file_entries );
-    uint16_t freehandle = 5; // DOS uses this, since 0-4 are for built-in handles
+
+    // DOS uses this, since 0-4 are for built-in handles. stdin, stdout, stderr, com1, lpt1
+
+    uint16_t freehandle = 5;
 
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
     {
@@ -1297,6 +1300,14 @@ struct DOSPSP
     uint8_t  countCommandTail;       // # of characters in command tail. This byte and beyond later used as Disk Transfer Address
     uint8_t  commandTail[127];       // command line characters after executable, newline terminated
 
+    void TraceHandleMap()
+    {
+        tracer.Trace( "  handlemap: " );
+        for ( size_t x = 0; x < _countof( fileHandles ); x++ )
+            tracer.Trace( "%02x ", fileHandles[ x ] );
+        tracer.Trace( "\n" );
+    }
+
     void Trace()
     {
         assert( 0x16 == offsetof( DOSPSP, segParent ) );
@@ -1310,6 +1321,10 @@ struct DOSPSP
         tracer.Trace( "  segParent: %04x\n", segParent );
         tracer.Trace( "  return address: %04x\n", int22TerminateAddress );
         tracer.Trace( "  command tail: len %u, '%.*s'\n", countCommandTail, countCommandTail, commandTail );
+        tracer.Trace( "  handleArraySize: %u\n", (uint32_t) handleArraySize );
+        tracer.Trace( "  handleArrayPointer: %04x\n", handleArrayPointer );
+
+        TraceHandleMap();
 
         tracer.Trace( "  segEnvironment: %04x\n", segEnvironment );
         if ( 0 != segEnvironment )
@@ -1430,6 +1445,56 @@ struct DOSEXFCB
 };
 #pragma pack(pop)
 
+uint16_t MapFileHandleHack( uint16_t x )
+{
+    if ( ends_with( g_acApp, "cobol.exe" ) )
+    {
+        FILE * fp = FindFileEntry( x );
+        if ( 0 == fp )
+        {
+            // MS cobol v5 reads and writes to the file handle table in the psp.
+            // This is undocumented behavior.
+
+            if ( 0x13 == x )
+            {
+                // grab the handle cobol stuck in the last slot, which it copied
+                // from the handle table so it can hard-code handle 0x13.
+
+                DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
+                return psp->fileHandles[ 0x13 ];
+            }
+        }
+    }
+
+    return x;
+} //MapFileHandleHack
+
+void UpdateHandleMap()
+{
+    // This updates the file handle table in the PSP to reflect currently open files.
+    // The only app I know that needs this is Microsoft COBOL v5, which reads handles
+    // from the table and puts them at the end of the list so it can hard-code handle
+    // 0x13 for many file operations and not pass the actual handle through.
+    // This is undocumented behavior.
+
+    DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
+    memset( & ( psp->fileHandles[5] ), 0xff, sizeof( psp->fileHandles ) - 5 );
+
+    size_t cEntries = g_fileEntries.size();
+    if ( 0 != cEntries )
+    {
+        cEntries = get_min( cEntries, _countof( psp->fileHandles ) );
+
+        for ( int i = 0; i < cEntries; i++ )
+        {
+            FileEntry & fe = g_fileEntries[ i ];
+            psp->fileHandles[ fe.handle ] = (uint8_t) fe.handle;
+        }
+    }
+
+    psp->TraceHandleMap();
+} //UpdateHandleMap
+
 const char * GetCurrentAppPath()
 {
     DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
@@ -1489,7 +1554,7 @@ void traceDisplayBuffers()
 {
     for ( int i = 0; i < 2; i++ )
     {
-        tracer.Trace( "cga memory buffer %d\n", i );
+        tracer.Trace( "  cga memory buffer %d\n", i );
         uint8_t * pbuf = cpu.flat_address8( ScreenBufferSegment, (uint16_t) ( 0x1000 * i ) );
         for ( size_t y = 0; y < ScreenRows; y++ )
         {
@@ -1723,6 +1788,7 @@ bool throttled_UpdateDisplay( int64_t delay = 50 )
     if ( _duration.HasTimeElapsedMS( delay ) )
         return UpdateDisplay();
 
+    //tracer.Trace( "  not updating display; throttled\n" );
     return false;
 } //throttled_UpdateDisplay
 
@@ -1825,6 +1891,8 @@ const IntInfo interrupt_list[] =
     { 0x10, 0x1c, "save/restore video state" },
     { 0x10, 0xef, "hercules -- get video adapter type and mode" },
     { 0x10, 0xfa, "ega register interface library" },
+    { 0x10, 0xfe, "(topview) get video buffer" },
+    { 0x10, 0xff, "(topview) update real screen from video buffer" },
     { 0x12, 0x00, "get memory size" },
     { 0x14, 0x01, "serial i/o transmit character" },
     { 0x14, 0x02, "serial i/o receive character" },
@@ -1916,6 +1984,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x62, "get psp address" },
     { 0x21, 0x63, "get lead byte table" },
     { 0x21, 0x68, "fflush - commit file" },
+    { 0x21, 0xdd, "novell netware 4.0 - set error mode" },
 };
 
 const char * get_interrupt_string( uint8_t i, uint8_t c, bool & ah_used )
@@ -3785,7 +3854,7 @@ void handle_int_10( uint8_t c )
             if ( 0x10 == cpu.bl() )
             {
                 // wordperfect uses this to see how much RAM is installed
-                tracer.Trace( "app: '%s'\n", g_acApp );
+                tracer.Trace( "  app check in video subsystem config, app: '%s'\n", g_acApp );
 
                 if ( ends_with( g_acApp, "wp.com" ) )
                 {
@@ -3853,6 +3922,21 @@ void handle_int_10( uint8_t c )
             // ega register interface library -- interrogate driver
 
             cpu.set_bx( 0 ); // RIL / mouse driver not present
+
+            return;
+        }
+        case 0xfe:
+        {
+            // (topview) get video buffer. do nothing and use the default video buffer.
+
+            return;
+        }
+        case 0xff:
+        {
+            // (topview) update real screen from video buffer. No topview support, but why not update the display?
+
+            if ( g_use80x25 )
+                UpdateDisplay();
 
             return;
         }
@@ -5680,6 +5764,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_carry( false );
                 tracer.Trace( "  successfully created file and using new handle %04x\n", cpu.get_ax() );
                 trace_all_open_files();
+                UpdateHandleMap();
             }
             else
             {
@@ -5746,6 +5831,7 @@ void handle_int_21( uint8_t c )
                     cpu.set_carry( false );
                     tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.get_ax() );
                     trace_all_open_files();
+                    UpdateHandleMap();
                 }
                 else
                 {
@@ -5763,6 +5849,8 @@ void handle_int_21( uint8_t c )
 
             trace_all_open_files();
             uint16_t handle = cpu.get_bx();
+            handle = MapFileHandleHack( handle );
+
             if ( handle <= 4 )
             {
                 tracer.Trace( "  close of built-in handle ignored\n" );
@@ -5784,6 +5872,7 @@ void handle_int_21( uint8_t c )
                             tracer.Trace( "  close file handle %04x, fp %p\n", handle, fp );
                             fclose( fp );
                             cpu.set_carry( false );
+                            UpdateHandleMap();
                         }
                     }
                 }
@@ -5801,14 +5890,20 @@ void handle_int_21( uint8_t c )
         {
             // read from file using handle. BX=handle, CX=num bytes, DS:DX: buffer
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
-    
-            uint16_t h = cpu.get_bx();
-            if ( h <= 4 )
+
+            uint16_t handle = cpu.get_bx();
+            handle = MapFileHandleHack( handle );
+            tracer.Trace( "  handle %04x, mapped %04x, bytes %04x\n", cpu.get_bx(), handle, cpu.get_cx() );
+
+            if ( handle <= 4 )
             {
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
     
-                if ( 0 == h )
+                if ( 0 == handle )
                 {
+                    if ( g_use80x25 )
+                        UpdateDisplay();
+    
 #if USE_ASSEMBLY_FOR_KBD
                     // This assembler version allows the emulator to send timer and keyboard interrupts
 
@@ -5820,9 +5915,6 @@ void handle_int_21( uint8_t c )
     
                     uint16_t request_len = cpu.get_cx();
                     static char acBuffer[ 128 ] = {0};
-    
-                    if ( g_use80x25 )
-                        UpdateDisplay();
     
                     uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                     cpu.set_carry( false );
@@ -5873,13 +5965,13 @@ void handle_int_21( uint8_t c )
                 else
                 {
                     cpu.set_carry( true );
-                    tracer.Trace( "  attempt to read from output handle %04x\n", h );
+                    tracer.Trace( "  attempt to read from output handle %04x\n", handle );
                 }
     
                 return;
             }
     
-            FILE * fp = FindFileEntry( cpu.get_bx() );
+            FILE * fp = FindFileEntry( handle );
             if ( fp )
             {
                 uint16_t len = cpu.get_cx();
@@ -5921,7 +6013,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "  ERROR: read from file handle couldn't find handle %04x\n", cpu.get_bx() );
+                tracer.Trace( "  ERROR: read from file handle couldn't find handle %04x\n", handle );
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
@@ -5933,9 +6025,12 @@ void handle_int_21( uint8_t c )
             // write to file using handle. BX=handle, CX=num bytes, DS:DX: buffer
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
     
-            uint16_t h = cpu.get_bx();
+            uint16_t handle = cpu.get_bx();
+            handle = MapFileHandleHack( handle );
+            tracer.Trace( "  handle %04x, mapped %04x, bytes %04x\n", cpu.get_bx(), handle, cpu.get_cx() );
+
             cpu.set_carry( false );
-            if ( h <= 4 )
+            if ( handle <= 4 )
             {
                 cpu.set_ax( cpu.get_cx() );
     
@@ -5943,7 +6038,7 @@ void handle_int_21( uint8_t c )
     
                 uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
     
-                if ( 1 == h || 2 == h )
+                if ( 1 == handle || 2 == handle )
                 {
                     if ( g_use80x25 )
                     {
@@ -6012,7 +6107,7 @@ void handle_int_21( uint8_t c )
                 return;
             }
     
-            FILE * fp = FindFileEntry( cpu.get_bx() );
+            FILE * fp = FindFileEntry( handle );
             if ( fp )
             {
                 uint16_t len = cpu.get_cx();
@@ -6035,7 +6130,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "  ERROR: write to file handle couldn't find handle %04x\n", cpu.get_bx() );
+                tracer.Trace( "  ERROR: write to file handle couldn't find handle %04x\n", handle );
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
@@ -6082,8 +6177,11 @@ void handle_int_21( uint8_t c )
         {
             // move file pointer (lseek)
             // bx == handle, cx:dx: 32-bit offset, al=mode. 0=beginning, 1=current. 2=end
-    
+
             uint16_t handle = cpu.get_bx();
+            handle = MapFileHandleHack( handle );
+            int32_t offset = ( ( (int32_t) cpu.get_cx() ) << 16 ) | cpu.get_dx();
+            tracer.Trace( "  move file pointer; original handle %04x, mapped handle %04x, offset %d\n", cpu.get_bx(), handle, offset );
 
             if ( handle <= 4 ) // built-in handle
             {
@@ -6094,7 +6192,6 @@ void handle_int_21( uint8_t c )
             FILE * fp = FindFileEntry( handle );
             if ( fp )
             {
-                int32_t offset = ( ( (int32_t) cpu.get_cx() ) << 16 ) | cpu.get_dx();
                 uint8_t origin = cpu.al();
                 if ( origin > 2 )
                 {
@@ -7041,6 +7138,11 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( false );
             return;
         }
+        case 0xdd:
+        {
+            // novell netware 4.0 - set error mode. ignore.
+            return;
+        }
         default:
         {
             tracer.Trace( "unhandled int21 command %02x\n", c );
@@ -7298,7 +7400,6 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         // dos multiplex interrupt; get installed state of xml driver and other items.
         // AL = 0 to indicate nothing is installed for the many AX values that invoke this.
 
-
         if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
             if ( g_use80x25 )
@@ -7310,6 +7411,8 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         {
             // don't set al to anything or cobol and its generated apps won't run
         }
+        else if ( 0x1687 == cpu.get_ax() ) // undocumented, used by cobol
+            cpu.set_ax( 0 );
         else
             cpu.set_al( 0x01 ); // not installed, do NOT install
 
@@ -7329,7 +7432,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
 void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnvironment )
 {
-    DOSPSP *psp = (DOSPSP *) cpu.flat_address( segment, 0 );
+    DOSPSP * psp = (DOSPSP *) cpu.flat_address( segment, 0 );
     memset( psp, 0, sizeof( DOSPSP ) );
 
     psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
@@ -7343,6 +7446,11 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     psp->segEnvironment = segEnvironment;
     memset( 1 + (char *) & ( psp->firstFCB ), ' ', 11 );
     memset( 1 + (char *) & ( psp->secondFCB ), ' ', 11 );
+    psp->handleArraySize = 20;
+    psp->handleArrayPointer = offsetof( DOSPSP, fileHandles );
+    memset( & ( psp->fileHandles[0] ), 0xff, sizeof( psp->fileHandles ) );
+    for ( uint8_t x = 0; x <= 4; x++ )
+        psp->fileHandles[ x ] = x;
 
     // put the first argument in the first fcb if it looks like it may be an 8.3 filename
 
@@ -7354,7 +7462,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     
         if ( pFirstArg[ 0 ] )
         {
-            tracer.Trace( "app arguments: '%s'\n", pFirstArg );
+            tracer.Trace( "  app arguments: '%s'\n", pFirstArg );
             const char * pEnd = pFirstArg + strlen( pFirstArg );
             const char * pSpace = strchr( pFirstArg, ' ' );
             if ( pSpace )
@@ -7372,7 +7480,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
                     name_len = ( pDot - pFirstArg );
                     ext_len = full_len - name_len - 1;
                 }
-                tracer.Trace( "first fcb filename info: full_len %zd, name_len %zd, ext_len %zd\n", full_len, name_len, ext_len );
+                tracer.Trace( "  first fcb filename info: full_len %zd, name_len %zd, ext_len %zd\n", full_len, name_len, ext_len );
 
                 if ( name_len <= 8 )
                 {
@@ -8317,6 +8425,7 @@ int main( int argc, char * argv[], char * envp[] )
     * (uint16_t *) ( pbiosdata + 0x4c ) = 0x1000;         // video regen buffer size
     * (uint8_t *)  ( pbiosdata + 0x60 ) = 7;              // cursor ending/bottom scan line
     * (uint8_t *)  ( pbiosdata + 0x61 ) = 6;              // cursor starting/top scan line
+    * (uint8_t *)  ( pbiosdata + 0x62 ) = 0;              // current display page
     * (uint16_t *) ( pbiosdata + 0x63 ) = 0x3d4;          // base port for 6845 CRT controller. color
     * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
     * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start

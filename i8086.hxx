@@ -256,7 +256,7 @@ struct i8086
         #ifndef NDEBUG
             //if ( flat < 0x600 )
             //    tracer.Trace( "referencing low-memory %#x\n", flat );
-            //if ( flat < 0xa00 )
+            //if ( flat < 0xa00 && flat >= 0x600)
             //    tracer.Trace( "referencing lowish-memory %#x\n", flat );
             //if ( flat >= 0xb8000 && flat < 0xb8fa0 )
             //    tracer.Trace( "referencing cga-memory page 0 %#x row %d column %d\n", flat, (flat - 0xb8000) / 160, ( (flat - 0xb8000) % 160 ) / 2 );
