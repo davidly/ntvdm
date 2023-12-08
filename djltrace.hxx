@@ -242,6 +242,11 @@ class CDJLTrace
                 {
                     pline = appendHexByte( pline, buf[ o - offset ] );
                     *pline++ = ' ';
+                    if ( ( bytesPerRow > 16 ) && ( o == ( offset + 15 ) ) )
+                    {
+                        *pline++ = ':';
+                        *pline++ = ' ';
+                    }
                 }
         
                 uint64_t spaceNeeded = ( bytesPerRow - ( cap - offset ) ) * 3;
