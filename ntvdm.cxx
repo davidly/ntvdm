@@ -26,6 +26,12 @@
 //    Multiplan v2. Setup for later versions fail, but they fail in dosbox too.
 //    Microsoft Works v3.0.
 //    Turbo Assembler tasm.
+//    PC-LISP V3.00
+//    muLISP v5.10 interpreter (released by Microsoft).
+//    IBM Personal Computer Pascal Compiler Version 2.00 (generated apps require WRAP_HMA_ADDRESSES be true in i8086.hxx)
+//    Microsoft COBOL Compiler Version 5.0 (compiler and generated apps). Linker requires 286 but QBX's linker works fine.
+//    Digital Research PL/I-86 Compiler Version 1.0, link86, and generated apps.
+//    Microsoft FORTRAN77, the linker, and generated apps.
 //
 // I went from 8085/6800/Z80 machines to Amiga to IBM 360/370 to VAX/VMS to Unix to
 // Windows to OS/2 to NT to Mac to Linux, and mostly skipped DOS programming. Hence this fills a gap
@@ -87,19 +93,6 @@ using namespace std::chrono;
 
 #define USE_ASSEMBLY_FOR_KBD true
 
-uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
-uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
-                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad );
-uint16_t LoadOverlay( const char * app, uint16_t segLoadAddress, uint16_t segmentRelocationFactor );
-
-uint16_t round_up_to( uint16_t x, uint16_t multiple )
-{
-    if ( 0 == ( x % multiple ) )
-        return x;
-
-    return x + ( multiple - ( x % multiple ) );
-} //round_up_to
-
 // machine code for various interrupts. generated with mint.bat. 
 uint64_t int16_0_code[] = { 
 0x01b4c08e0040b806, 0x068326fafa741669, 0x001a3e832602001a, 0x001a06c726077c3e, 0x000000cb07fb001e, 
@@ -120,6 +113,19 @@ uint64_t int21_3f_code[] = {
 0x0000000000000000, 
 }; 
 // end of machine code 
+
+uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
+uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
+                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad );
+uint16_t LoadOverlay( const char * app, uint16_t segLoadAddress, uint16_t segmentRelocationFactor );
+
+uint16_t round_up_to( uint16_t x, uint16_t multiple )
+{
+    if ( 0 == ( x % multiple ) )
+        return x;
+
+    return x + ( multiple - ( x % multiple ) );
+} //round_up_to
 
 uint16_t GetSegment( uint8_t * p )
 {
@@ -226,7 +232,7 @@ const uint32_t ScreenRowsM1 = ScreenRows - 1;                     // rows minus 
 const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
 const uint32_t ScreenBufferSegment = 0xb800;                      // location in i8086 physical RAM of CGA display. 16k, 4k per page.
 const uint32_t MachineCodeSegment = 0x0060;                       // machine code for keyboard/etc. starts here
-const uint16_t SegmentHardware = ScreenBufferSegment;             // where hardware starts (unlike real machines, which start at 0xa000)
+const uint16_t SegmentHardware = ScreenBufferSegment;             // where hardware starts (unlike real machines, which start at segment 0xa000)
 const uint16_t AppSegment = 0x1000 / 16;                          // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
@@ -985,7 +991,7 @@ void reset_mcb_tags()
         if ( i == ( g_allocEntries.size() - 1 ) )
         {
             pmcb->header = 'Z';
-            pmcb->paras = da.para_length - 1; // mcb has user-known-size DosAllocation has actual size
+            pmcb->paras = da.para_length - 1; // mcb has user-known-size. DosAllocation has actual size
         }
         else
         {
@@ -1032,7 +1038,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     size_t insertLocation = 0;
 
     // sometimes allocate an extra spaceBetween paragraphs between blocks for overly-optimistic resize requests.
-    // I'm looking at you link.exe v5.10 from 1990. QBX and cl.exe, run link.exe as a child process, so look for that too.
+    // I'm looking at you link.exe v5.10 from 1990. QBX and cl.exe run link.exe as a child process, so look for that too.
     // debug.com from DOS v2 is even worse about this.
 
     uint16_t spaceBetween = ( ends_with( g_acApp, "LINK.EXE" ) || ends_with( g_lastLoadedApp, "LINK.EXE" ) ) ? 0x40 : 0;
@@ -1298,7 +1304,7 @@ struct DOSPSP
     uint16_t parentSS;               // not DOS standard -- I use it to restore SS on child app exit
     uint16_t parentSP;               // not DOS standard -- I use it to restore SP on child app exit
     uint8_t  countCommandTail;       // # of characters in command tail. This byte and beyond later used as Disk Transfer Address
-    uint8_t  commandTail[127];       // command line characters after executable, newline terminated
+    uint8_t  commandTail[127];       // command line characters after executable, CR terminated
 
     void TraceHandleMap()
     {
@@ -1445,7 +1451,7 @@ struct DOSEXFCB
 };
 #pragma pack(pop)
 
-uint16_t MapFileHandleHack( uint16_t x )
+uint16_t MapFileHandleCobolHack( uint16_t x )
 {
     if ( ends_with( g_acApp, "cobol.exe" ) )
     {
@@ -1467,7 +1473,7 @@ uint16_t MapFileHandleHack( uint16_t x )
     }
 
     return x;
-} //MapFileHandleHack
+} //MapFileHandleCobolHack
 
 void UpdateHandleMap()
 {
@@ -5849,7 +5855,7 @@ void handle_int_21( uint8_t c )
 
             trace_all_open_files();
             uint16_t handle = cpu.get_bx();
-            handle = MapFileHandleHack( handle );
+            handle = MapFileHandleCobolHack( handle );
 
             if ( handle <= 4 )
             {
@@ -5892,7 +5898,7 @@ void handle_int_21( uint8_t c )
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
 
             uint16_t handle = cpu.get_bx();
-            handle = MapFileHandleHack( handle );
+            handle = MapFileHandleCobolHack( handle );
             tracer.Trace( "  handle %04x, mapped %04x, bytes %04x\n", cpu.get_bx(), handle, cpu.get_cx() );
 
             if ( handle <= 4 )
@@ -6026,7 +6032,7 @@ void handle_int_21( uint8_t c )
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
     
             uint16_t handle = cpu.get_bx();
-            handle = MapFileHandleHack( handle );
+            handle = MapFileHandleCobolHack( handle );
             tracer.Trace( "  handle %04x, mapped %04x, bytes %04x\n", cpu.get_bx(), handle, cpu.get_cx() );
 
             cpu.set_carry( false );
@@ -6179,7 +6185,7 @@ void handle_int_21( uint8_t c )
             // bx == handle, cx:dx: 32-bit offset, al=mode. 0=beginning, 1=current. 2=end
 
             uint16_t handle = cpu.get_bx();
-            handle = MapFileHandleHack( handle );
+            handle = MapFileHandleCobolHack( handle );
             int32_t offset = ( ( (int32_t) cpu.get_cx() ) << 16 ) | cpu.get_dx();
             tracer.Trace( "  move file pointer; original handle %04x, mapped handle %04x, offset %d\n", cpu.get_bx(), handle, offset );
 
@@ -6865,7 +6871,7 @@ void handle_int_21( uint8_t c )
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             tracer.Trace( "  Find Next Asciiz\n" );
     
-    #ifdef _WIN32
+#ifdef _WIN32
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
                 do
@@ -6983,7 +6989,6 @@ void handle_int_21( uint8_t c )
             psp->int22TerminateAddress = firstAppTerminateAddress;
 
             g_currentPSP = cpu.get_dx();
-
             return;
         }
         case 0x56:
@@ -7442,7 +7447,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     uint8_t len = (uint8_t) strlen( acAppArgs );
     psp->countCommandTail = len;
     strcpy( (char *) psp->commandTail, acAppArgs );
-    psp->commandTail[ len ] = 0x0d;           // DOS has 0x0d at the end of the command tail, not a null
+    psp->commandTail[ len ] = 0x0d;           // DOS has a CR / 0x0d at the end of the command tail, not a null
     psp->segEnvironment = segEnvironment;
     memset( 1 + (char *) & ( psp->firstFCB ), ' ', 11 );
     memset( 1 + (char *) & ( psp->secondFCB ), ' ', 11 );
