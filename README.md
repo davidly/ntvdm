@@ -77,6 +77,7 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * Microsoft COBOL Compiler Version 5.0 (compiler and generated apps). Linker requires 286 but QBX's linker works fine.
  * Digital Research PL/I-86 Compiler Version 1.0, link86, and generated apps.
  * Microsoft FORTRAN77, the linker, and generated apps.
+ * Microsoft (R) C Optimizing Compiler Version 5.10 with Microsoft (R) Overlay Linker  Version 3.65
 
 ### Software
 
