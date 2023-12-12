@@ -43,6 +43,8 @@
 //         https://stanislavs.org/helppc/scan_codes.html
 //         http://www.ctyme.com/intr/int.htm
 //         https://grandidierite.github.io/dos-interrupts/
+//         https://fd.lod.bz/rbil/interrup/dos_kernel/2152.html
+//         https://faydoc.tripod.com/structures/13/1378.htm
 //
 // Memory map:
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
@@ -232,7 +234,6 @@ const uint32_t ScreenRowsM1 = ScreenRows - 1;                     // rows minus 
 const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
 const uint32_t ScreenBufferSegment = 0xb800;                      // location in i8086 physical RAM of CGA display. 16k, 4k per page.
 const uint32_t MachineCodeSegment = 0x0060;                       // machine code for keyboard/etc. starts here
-const uint16_t SegmentHardware = ScreenBufferSegment;             // where hardware starts (unlike real machines, which start at segment 0xa000)
 const uint16_t AppSegment = 0x1000 / 16;                          // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
@@ -246,46 +247,47 @@ const uint16_t OffsetSystemFileTable = 0xf0;
 
 CDJLTrace tracer;
 
-static uint16_t blankLine[ScreenColumns] = {0};    // an optimization for filling lines with blanks
-static std::mutex g_mtxEverything;                 // one mutex for all shared state
-static ConsoleConfiguration g_consoleConfig;       // to get into and out of 80x25 mode
-static bool g_haltExecution = false;               // true when the app is shutting down
-static uint16_t g_diskTransferSegment = 0;         // segment of current disk transfer area
-static uint16_t g_diskTransferOffset = 0;          // offset of current disk transfer area
-static vector<FileEntry> g_fileEntries;            // vector of currently open files
-static vector<FileEntry> g_fileEntriesFCB;         // vector of currently open files with FCBs
-static vector<DosAllocation> g_allocEntries;       // vector of blocks allocated to DOS apps
-static uint8_t g_videoMode = 3;                    // 2=80x25 16 grey, 3=80x25 16 colors
-static uint16_t g_currentPSP = 0;                  // psp of the currently running process
-static bool g_use80x25 = false;                    // true to force 80x25 with cursor positioning
-static bool g_forceConsole = false;                // true to force teletype mode, with no cursor positioning
-static bool g_int16_1_loop = false;                // true if an app is looping to get keyboard input. don't busy loop.
-static bool g_KbdPeekAvailable = false;            // true when peek on the keyboard sees keystrokes
-static bool g_int9_pending = false;                // true if an int9 was scheduled but not yet invoked
-static long g_injectedControlC = 0;                // # of control c events to inject
-static int g_appTerminationReturnCode = 0;         // when int 21 function 4c is invoked to terminate an app, this is the app return code
-static char g_acRoot[ MAX_PATH ];                  // host folder ending in slash/backslash that maps to DOS "C:\"
-static char g_acApp[ MAX_PATH ];                   // the DOS .com or .exe being run
-static char g_thisApp[ MAX_PATH ];                 // name of this exe (argv[0]), likely NTVDM
-static char g_lastLoadedApp[ MAX_PATH ] = {0};     // path of most recenly loaded program (though it may have terminated)
-static bool g_PackedFileCorruptWorkaround = false; // if true, allocate memory starting at 64k, not AppSegment
-static uint16_t g_int21_3f_seg = 0;                // segment where this code resides with ip = 0
-static uint16_t g_int21_a_seg = 0;                 // "
-static uint16_t g_int21_8_seg = 0;                 // "
-static uint16_t g_int16_0_seg = 0;                 // "
-static char cwd[ MAX_PATH ] = {0};                 // used as a temporary in several locations
-static vector<IntCalled> g_InterruptsCalled;       // track interrupt usage
+static uint16_t g_segHardware = ScreenBufferSegment; // first byte beyond where apps have available memory
+static uint16_t blankLine[ScreenColumns] = {0};      // an optimization for filling lines with blanks
+static std::mutex g_mtxEverything;                   // one mutex for all shared state
+static ConsoleConfiguration g_consoleConfig;         // to get into and out of 80x25 mode
+static bool g_haltExecution = false;                 // true when the app is shutting down
+static uint16_t g_diskTransferSegment = 0;           // segment of current disk transfer area
+static uint16_t g_diskTransferOffset = 0;            // offset of current disk transfer area
+static vector<FileEntry> g_fileEntries;              // vector of currently open files
+static vector<FileEntry> g_fileEntriesFCB;           // vector of currently open files with FCBs
+static vector<DosAllocation> g_allocEntries;         // vector of blocks allocated to DOS apps
+static uint8_t g_videoMode = 3;                      // 2=80x25 16 grey, 3=80x25 16 colors
+static uint16_t g_currentPSP = 0;                    // psp of the currently running process
+static bool g_use80x25 = false;                      // true to force 80x25 with cursor positioning
+static bool g_forceConsole = false;                  // true to force teletype mode, with no cursor positioning
+static bool g_int16_1_loop = false;                  // true if an app is looping to get keyboard input. don't busy loop.
+static bool g_KbdPeekAvailable = false;              // true when peek on the keyboard sees keystrokes
+static bool g_int9_pending = false;                  // true if an int9 was scheduled but not yet invoked
+static long g_injectedControlC = 0;                  // # of control c events to inject
+static int g_appTerminationReturnCode = 0;           // when int 21 function 4c is invoked to terminate an app, this is the app return code
+static char g_acRoot[ MAX_PATH ];                    // host folder ending in slash/backslash that maps to DOS "C:\"
+static char g_acApp[ MAX_PATH ];                     // the DOS .com or .exe being run
+static char g_thisApp[ MAX_PATH ];                   // name of this exe (argv[0]), likely NTVDM
+static char g_lastLoadedApp[ MAX_PATH ] = {0};       // path of most recenly loaded program (though it may have terminated)
+static bool g_PackedFileCorruptWorkaround = false;   // if true, allocate memory starting at 64k, not AppSegment
+static uint16_t g_int21_3f_seg = 0;                  // segment where this code resides with ip = 0
+static uint16_t g_int21_a_seg = 0;                   // "
+static uint16_t g_int21_8_seg = 0;                   // "
+static uint16_t g_int16_0_seg = 0;                   // "
+static char cwd[ MAX_PATH ] = {0};                   // used as a temporary in several locations
+static vector<IntCalled> g_InterruptsCalled;         // track interrupt usage
 static high_resolution_clock::time_point g_tAppStart; // system time at app start
 static uint8_t g_bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
-static CKeyStrokes g_keyStrokes;                   // read or write keystrokes between kslog.txt and the app
-static bool g_UseOneThread = false;                // true if no keyboard thread should be used
-static uint64_t g_msAtStart = 0;                   // milliseconds since epoch at app start
-static bool g_SendControlCInt = false;             // set to TRUE when/if a ^C is detected and an interrupt should be sent
+static CKeyStrokes g_keyStrokes;                     // read or write keystrokes between kslog.txt and the app
+static bool g_UseOneThread = false;                  // true if no keyboard thread should be used
+static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
+static bool g_SendControlCInt = false;               // set to TRUE when/if a ^C is detected and an interrupt should be sent
 
 #ifndef _WIN32
-static bool g_forcePathsUpper = false;             // helpful for Linux
-static bool g_forcePathsLower = false;             // helpful for Linux
-static bool g_altPressedRecently = false;          // hack because I can't figure out if ALT is currently pressed
+static bool g_forcePathsUpper = false;               // helpful for Linux
+static bool g_forcePathsLower = false;               // helpful for Linux
+static bool g_altPressedRecently = false;            // hack because I can't figure out if ALT is currently pressed
 #endif
 
 bool ValidDOSFilename( char * pc )
@@ -481,7 +483,7 @@ static void usage( char const * perr )
     printf( "  -C               change text area to 80x25 (don't use tty mode).\n" );
     printf( "  -d               don't clear the display on exit\n" );
     printf( "  -e:env,...       define environment variables.\n" );
-    printf( "  -h               load high above 64k.\n" );
+    printf( "  -h               load high above 64k and below 0xa0000.\n" );
     printf( "  -i               trace instructions to %s.log.\n", g_thisApp );
     printf( "  -t               enable debug tracing to %s.log\n", g_thisApp );
     printf( "  -p               show performance stats on exit.\n" );
@@ -1051,7 +1053,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
         // Microsoft (R) Overlay Linker Version 3.61 with Quick C v 1.0 is a packed EXE that requires /h to be in high memory
 
         const uint16_t baseSeg = g_PackedFileCorruptWorkaround ? ( 65536 / 16 ) : AppSegment;
-        const uint16_t ParagraphsAvailable = SegmentHardware - baseSeg - 1;  // hardware starts at 0xb800, apps load at baseSeg, -1 for MCB
+        const uint16_t ParagraphsAvailable = g_segHardware - baseSeg - 1;  // hardware starts at 0xb800, apps load at baseSeg, -1 for MCB
 
         if ( request_paragraphs > ParagraphsAvailable )
         {
@@ -1091,7 +1093,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
                     break;
                 }
             }
-            else if ( ( after + request_paragraphs + spaceBetween ) <= SegmentHardware )
+            else if ( ( after + request_paragraphs + spaceBetween ) <= g_segHardware )
             {
                 tracer.Trace( "  using gap after allocated memory: %02x\n", after );
                 allocatedSeg = after + spaceBetween;
@@ -1121,7 +1123,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
                         break;
                     }
                 }
-                else if ( ( after + request_paragraphs ) <= SegmentHardware )
+                else if ( ( after + request_paragraphs ) <= g_segHardware )
                 {
                     tracer.Trace( "  using gap after allocated memory: %02x\n", after );
                     allocatedSeg = after;
@@ -1135,8 +1137,8 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
         {
             DosAllocation & last = g_allocEntries[ cEntries - 1 ];
             uint16_t firstFreeSeg = last.segment - 1 + last.para_length;
-            assert( firstFreeSeg <= SegmentHardware );
-            largest_block = SegmentHardware - firstFreeSeg;
+            assert( firstFreeSeg <= g_segHardware );
+            largest_block = g_segHardware - firstFreeSeg;
             if ( largest_block > spaceBetween )
                 largest_block -= spaceBetween;
 
@@ -1157,7 +1159,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     da.para_length = request_paragraphs;
     da.seg_process = g_currentPSP;
     g_allocEntries.insert( insertLocation + g_allocEntries.begin(), da );
-    largest_block = SegmentHardware - allocatedSeg;
+    largest_block = g_segHardware - allocatedSeg;
     initialize_mcb( allocatedSeg - 1, request_paragraphs - 1 );
     reset_mcb_tags();
     trace_all_allocations();
@@ -5209,12 +5211,10 @@ void handle_int_21( uint8_t c )
         case 0x22:
         {
             // random write using FCBs. on output, 0 if success, 1 if disk full, 2 if DTA too small
-            // CX has # of records written on exit
             // The sequential offset is set to match the random offset before the write
+            // Apps that use this: Lotus 123 v1.0A and Microsoft Pascal v1.0.
     
             cpu.set_al( 1 );
-            uint16_t recsToWrite = cpu.get_cx();
-            cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
 
@@ -5230,11 +5230,10 @@ void handle_int_21( uint8_t c )
                     bool ok = !fseek( fp, seekOffset, SEEK_SET );
                     if ( ok )
                     {
-                        size_t num_written = fwrite( GetDiskTransferAddress(), recsToWrite, pfcb->recSize, fp );
+                        size_t num_written = fwrite( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
                         if ( num_written )
                         {
-                             tracer.Trace( "  write succeded: %u bytes\n", recsToWrite * pfcb->recSize );
-                             cpu.set_cx( recsToWrite );
+                             tracer.Trace( "  write succeded: %u bytes\n", pfcb->recSize );
                              cpu.set_al( 0 );
         
                              // don't update the fcb's record number for this version of the API
@@ -6253,6 +6252,16 @@ void handle_int_21( uint8_t c )
     
             if ( 0 == cpu.al() ) // get
             {
+                if ( !_stricmp( pfile, "CON" ) ||
+                     !_stricmp( pfile, "\\DEV\\CON" ) ||
+                     !_stricmp( pfile, "/dev/con" ) )
+                {
+                    cpu.set_cx( 0 );
+                    cpu.set_carry( false );
+                    tracer.Trace( "  get file attributes on 'con': cx %04x\n", cpu.get_cx() );
+                    return;
+                }
+
 #ifdef _WIN32                
                 uint32_t attr = GetFileAttributesA( hostPath );
                 if ( INVALID_FILE_ATTRIBUTES != attr )
@@ -6275,7 +6284,7 @@ void handle_int_21( uint8_t c )
                         attribs |= 0x10;
                     cpu.set_cx( attribs );
 
-                    tracer.Trace( "  read get file attributes: cx %04x\n", cpu.get_cx() );
+                    tracer.Trace( "  get file attributes: cx %04x\n", cpu.get_cx() );
                 }
                 else
                 {
@@ -6396,8 +6405,16 @@ void handle_int_21( uint8_t c )
 
             cpu.set_carry( true );
             uint16_t existing_handle = cpu.get_bx();
-            size_t index = FindFileEntryIndex( existing_handle );
 
+            if ( existing_handle <= 4 )
+            {
+                cpu.set_ax( existing_handle );
+                cpu.set_carry( false );
+                tracer.Trace( "  fake duplicate of built-in handle\n" );
+                return;
+            }
+
+            size_t index = FindFileEntryIndex( existing_handle );
             if ( -1 != index )
             {
                 FileEntry & entry = g_fileEntries[ index ];
@@ -6590,7 +6607,7 @@ void handle_int_21( uint8_t c )
 
             uint16_t maxParas;
             if ( entry == ( cEntries - 1 ) )
-                maxParas = SegmentHardware - g_allocEntries[ entry ].segment;
+                maxParas = g_segHardware - g_allocEntries[ entry ].segment;
             else
             {
                 maxParas = g_allocEntries[ entry + 1 ].segment - g_allocEntries[ entry ].segment;
@@ -7441,8 +7458,8 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     memset( psp, 0, sizeof( DOSPSP ) );
 
     psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
-    psp->topOfMemory = SegmentHardware - 1;   // top of memorysegment in paragraph form
-    psp->comAvailable = 0xffff;               // .com programs bytes available in segment
+    psp->topOfMemory = g_segHardware - 1;   // top of memorysegment in paragraph form
+    psp->comAvailable = 0xffff;             // .com programs bytes available in segment
     psp->int22TerminateAddress = firstAppTerminateAddress;
     uint8_t len = (uint8_t) strlen( acAppArgs );
     psp->countCommandTail = len;
@@ -7582,7 +7599,7 @@ uint16_t LoadOverlay( const char * app, uint16_t segCode, uint16_t segRelocation
         ExeHeader & head = * (ExeHeader *) theexe.data();
         if ( 0x5a4d != head.signature )
         {
-            tracer.Trace( "  exe isn't MZ" );
+            tracer.Trace( "  exe isn't MZ\n" );
             return 1;
         }
 
@@ -7801,7 +7818,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         ExeHeader & head = * (ExeHeader *) theexe.data();
         if ( 0x5a4d != head.signature )
         {
-            tracer.Trace( "  exe isn't MZ" );
+            tracer.Trace( "  exe isn't MZ\n" );
             FreeMemory( DataSegment );
             return 0;
         }
@@ -8407,6 +8424,12 @@ int main( int argc, char * argv[], char * envp[] )
             }
         }
     }
+
+    // Microsoft Pascal v1.0 requires end of 64k block, not the middle of a block
+    // Overload -h to do this as well -- have a conformant address space for apps.
+
+    if ( ends_with( g_acApp, "pas2.exe" ) || g_PackedFileCorruptWorkaround )
+        g_segHardware = 0xa000;
 
 #ifdef _WIN32
     if ( 0 != dwProcessAffinityMask )
