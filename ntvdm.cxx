@@ -181,7 +181,7 @@ struct AppExecute
 
     void Trace()
     {
-        tracer.Trace( "  app execute block: \n" );
+        tracer.Trace( "  app execute block:\n" );
         tracer.Trace( "    segEnvironment:    %04x\n", segEnvironment );
         tracer.Trace( "    offsetCommandTail: %04x\n", offsetCommandTail );
         tracer.Trace( "    segCommandTail:    %04x\n", segCommandTail );
@@ -197,13 +197,32 @@ struct ExeHeader
     uint16_t header_paragraphs;
     uint16_t min_extra_paragraphs;
     uint16_t max_extra_paragraphs;
-    uint16_t ss;
+    uint16_t relative_ss;
     uint16_t sp;
     uint16_t checksum;
     uint16_t ip;
-    uint16_t cs;
+    uint16_t relative_cs;
     uint16_t reloc_table_offset;
     uint16_t overlay_number;
+
+    void Trace()
+    {
+        tracer.Trace( "  exe header:\n" );
+        tracer.Trace( "    signature:            %04x = %u\n", signature, signature );
+        tracer.Trace( "    bytes in last block:  %04x = %u\n", bytes_in_last_block, bytes_in_last_block );
+        tracer.Trace( "    blocks in file:       %04x = %u\n", blocks_in_file, blocks_in_file );
+        tracer.Trace( "    num relocs:           %04x = %u\n", num_relocs, num_relocs );
+        tracer.Trace( "    header paragraphs:    %04x = %u\n", header_paragraphs, header_paragraphs );
+        tracer.Trace( "    min extra paragraphs: %04x = %u\n", min_extra_paragraphs, min_extra_paragraphs );
+        tracer.Trace( "    max extra paragraphs: %04x = %u\n", max_extra_paragraphs, max_extra_paragraphs );
+        tracer.Trace( "    relative ss:          %04x = %u\n", relative_ss, relative_ss );
+        tracer.Trace( "    sp:                   %04x = %u\n", sp, sp );
+        tracer.Trace( "    checksum:             %04x = %u\n", checksum, checksum );
+        tracer.Trace( "    ip:                   %04x = %u\n", ip, ip );
+        tracer.Trace( "    relative cs:          %04x = %u\n", relative_cs, relative_cs );
+        tracer.Trace( "    reloc table offset:   %04x = %u\n", reloc_table_offset, reloc_table_offset );
+        tracer.Trace( "    overlay_number:       %04x = %u\n", overlay_number, overlay_number );
+    }
 };
 
 struct ExeRelocation
@@ -1070,7 +1089,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
         uint16_t *pFirstBlockInListOfLists = cpu.flat_address16( SegmentListOfLists, OffsetListOfLists - 2 );
         *pFirstBlockInListOfLists = allocatedSeg;
-        tracer.Trace( "wrote segment of first allocation %04x to list of lists - 2 at %04x:%04x\n", allocatedSeg, SegmentListOfLists, OffsetListOfLists - 2 );
+        tracer.Trace( "  wrote segment of first allocation %04x to list of lists - 2 at %04x:%04x\n", allocatedSeg, SegmentListOfLists, OffsetListOfLists - 2 );
     }
     else
     {
@@ -7458,8 +7477,8 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     memset( psp, 0, sizeof( DOSPSP ) );
 
     psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
-    psp->topOfMemory = g_segHardware - 1;   // top of memorysegment in paragraph form
-    psp->comAvailable = 0xffff;             // .com programs bytes available in segment
+    psp->topOfMemory = g_segHardware - 1;     // top of memorysegment in paragraph form
+    psp->comAvailable = 0xffff;               // .com programs bytes available in segment
     psp->int22TerminateAddress = firstAppTerminateAddress;
     uint8_t len = (uint8_t) strlen( acAppArgs );
     psp->countCommandTail = len;
@@ -7521,22 +7540,20 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     psp->Trace();
 } //InitializePSP
 
-bool IsBinaryCOM( const char * app )
+bool IsBinaryCOM( const char * app, FILE * fp )
 {
     bool isCOM = ends_with( app, ".com" );
-
     if ( isCOM )
     {
         // look for signature indicating it's actually a .exe file named .com. Later versions of DOS really do this.
 
         tracer.Trace( "  checking if '%s' is actually a .exe\n", app );
-        FILE * fp = fopen( app, "rb" );
-        if ( !fp )
-            return true;
-
         char ac[2];
-        bool ok = ( 0 != fread( ac, 1, _countof( ac ), fp ) );
-        fclose( fp );
+
+        uint32_t cur = ftell( fp );
+        fseek( fp, 0, SEEK_SET );
+        bool ok = ( 1 == fread( ac, _countof( ac ), 1, fp ) );
+        fseek( fp, cur, SEEK_SET );
 
         if ( !ok )
             return true;
@@ -7547,28 +7564,30 @@ bool IsBinaryCOM( const char * app )
     return isCOM;
 } //IsBinaryCOM
 
-uint16_t LoadOverlay( const char * app, uint16_t segCode, uint16_t segRelocationFactor )
+uint16_t LoadOverlay( const char * app, uint16_t CodeSegment, uint16_t segRelocationFactor )
 {
     // Used by int21, 4b mode 3: Load Overlay and don't execute.
     // returns AX return code: 1 on failure, 0 on success
+    // QuickPascal v1.0 uses this to run child process apps it built (with or without the debugger)
 
-    bool isCOM = IsBinaryCOM( app );
-
-    if ( isCOM )
+    tracer.Trace( "  in LoadOverlay\n" );
+    CFile file( fopen( app, "rb" ) );
+    if ( 0 == file.get() )
     {
-        FILE * fp = fopen( app, "rb" );
-        if ( 0 == fp )
+        tracer.Trace( "can't open executable file, error %d\n", errno );
+        return 1;
+    }
+
+    if ( IsBinaryCOM( app, file.get() ) )
+    {
+        long file_size = portable_filelen( file.get() );
+        if ( file_size > ( 65536 - 0x100) )
         {
-            tracer.Trace( "open .com file, error %d\n", errno );
+            tracer.Trace( "can't read .com file into RAM -- it's too big!\n" );
             return 1;
         }
     
-        fseek( fp, 0, SEEK_END );
-        long file_size = ftell( fp );
-        fseek( fp, 0, SEEK_SET );
-        size_t blocks_read = fread( cpu.flat_address( segCode, 0 ), file_size, 1, fp );
-        fclose( fp );
-
+        size_t blocks_read = fread( cpu.flat_address( CodeSegment, 0 ), file_size, 1, file.get() );
         if ( 1 != blocks_read )
         {
             tracer.Trace( "can't read .com file into RAM, error %d\n", errno );
@@ -7577,69 +7596,65 @@ uint16_t LoadOverlay( const char * app, uint16_t segCode, uint16_t segRelocation
     }
     else // EXE
     {
-        FILE * fp = fopen( app, "rb" );
-        if ( 0 == fp )
-        {
-            tracer.Trace( "  can't open input executable '%s', error %d\n", app, errno );
-            return 1;
-        }
-    
-        fseek( fp, 0, SEEK_END );
-        long file_size = ftell( fp );
-        fseek( fp, 0, SEEK_SET );
-        vector<uint8_t> theexe( file_size );
-        size_t blocks_read = fread( theexe.data(), file_size, 1, fp );
-        fclose( fp );
+        ExeHeader head = { 0 };
+        size_t blocks_read = fread( & head, sizeof( head ), 1, file.get() );
         if ( 1 != blocks_read )
         {
-            tracer.Trace( "  can't read input exe file, error %d", errno );
+            tracer.Trace( "  can't read input executable head '%s', error %d\n", app, errno );
             return 1;
         }
 
-        ExeHeader & head = * (ExeHeader *) theexe.data();
+        head.Trace();
+
         if ( 0x5a4d != head.signature )
         {
             tracer.Trace( "  exe isn't MZ\n" );
             return 1;
         }
 
-        tracer.Trace( "  loading app %s\n", app );
-        tracer.Trace( "  looks like an MZ exe... size %u, size from blocks %u, bytes in last block %u\n",
-                      file_size, ( (uint32_t) head.blocks_in_file ) * 512, head.bytes_in_last_block );
-        tracer.Trace( "  relocation entry count %u, header paragraphs %u (%u bytes)\n",
-                      head.num_relocs, head.header_paragraphs, head.header_paragraphs * 16 );
-        tracer.Trace( "  relative value of stack segment: %#x, initial sp: %#x, initial ip %#x, initial cs relative to segment: %#x\n",
-                      head.ss, head.sp, head.ip, head.cs );
-        tracer.Trace( "  relocation table offset %u, overlay number %u\n",
-                      head.reloc_table_offset, head.overlay_number );
-
         if ( head.reloc_table_offset > 100 )
         {
-            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %d", head.reloc_table_offset );
+            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %u", head.reloc_table_offset );
             return 1;
         }
 
         uint32_t codeStart = 16 * (uint32_t) head.header_paragraphs;
-        uint32_t cbUsed = head.blocks_in_file * 512;
+        uint32_t imageSize = (uint32_t) head.blocks_in_file * 512;
         if ( 0 != head.bytes_in_last_block )
-            cbUsed -= ( 512 - head.bytes_in_last_block );
-        cbUsed -= codeStart; // don't include the header
-        tracer.Trace( "  bytes used by load module: %u, and code starts at %u\n", cbUsed, codeStart );
+            imageSize -= ( 512 - head.bytes_in_last_block );
+        imageSize -= codeStart; // don't include the header
+        tracer.Trace( "  image size of code and initialized data: %u, code starts at %u\n", imageSize, codeStart );
 
-        uint8_t * pcode = cpu.flat_address8( segCode, 0 );
-        memcpy( pcode, theexe.data() + codeStart, cbUsed );
-        tracer.Trace( "  start of the code:\n" );
-        tracer.TraceBinaryData( pcode, 0x200, 4 );
-
-        // apply relocation entries
-
-        ExeRelocation * pRelocationEntries = (ExeRelocation *) ( theexe.data() + head.reloc_table_offset );
-        for ( uint16_t r = 0; r < head.num_relocs; r++ )
+        uint8_t * pcode = cpu.flat_address8( CodeSegment, 0 );
+        fseek( file.get(), codeStart, SEEK_SET );
+        blocks_read = fread( pcode, imageSize, 1, file.get() );
+        if ( 1 != blocks_read )
         {
-            uint32_t offset = pRelocationEntries[ r ].offset + pRelocationEntries[ r ].segment * 16;
-            uint16_t * target = (uint16_t *) ( pcode + offset );
-            //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + segRelocationFactor );
-            *target += segRelocationFactor;
+            tracer.Trace( "  can't read input exe file image, error %d", errno );
+            return 1;
+        }
+
+        tracer.Trace( "  start of the code:\n" );
+        tracer.TraceBinaryData( pcode, get_min( imageSize, (uint32_t) 0x100 ), 4 );
+
+        if ( 0 != head.num_relocs )
+        {
+            vector<ExeRelocation> relocations( head.num_relocs );
+            fseek( file.get(), head.reloc_table_offset, SEEK_SET );
+            blocks_read = fread( relocations.data(), head.num_relocs * sizeof( ExeRelocation ), 1, file.get() );
+            if ( 1 != blocks_read )
+            {
+                tracer.Trace( "  can't read input exe file relocation data, error %d", errno );
+                return 1;
+            }
+    
+            for ( uint16_t r = 0; r < head.num_relocs; r++ )
+            {
+                uint32_t offset = (uint32_t) relocations[ r ].offset + (uint32_t) relocations[ r ].segment * 16;
+                uint16_t * target = (uint16_t *) ( pcode + offset );
+                //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + segRelocationFactor );
+                *target += segRelocationFactor;
+            }
         }
     }
 
@@ -7660,30 +7675,26 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint16_t 
     tracer.Trace( "  loading boot sector, BSSegment is %04x\n", BSSegment );
     InitializePSP( BSSegment, acAppArgs, segEnvironment );
 
-    FILE * fp = fopen( acApp, "rb" );
-    if ( 0 == fp )
+    CFile file( fopen( acApp, "rb" ) );
+    if ( 0 == file.get() )
     {
         tracer.Trace( "open boot sector file, error %d\n", errno );
         FreeMemory( BSSegment );
         return 0;
     }
     
-    fseek( fp, 0, SEEK_END );
-    long file_size = ftell( fp );
-    fseek( fp, 0, SEEK_SET );
-    size_t blocks_read = fread( cpu.flat_address( 0x7c0, 0 ), get_min( 512L, file_size ), 1, fp );
-    fclose( fp );
-
-    if ( 1 != blocks_read )
+    long file_size = portable_filelen( file.get() );
+    if ( 512 != file_size )
     {
-        tracer.Trace( "can't read boot sector file into RAM, error %d\n", errno );
+        tracer.Trace( "error: boot sector file isn't 512 bytes\n" );
         FreeMemory( BSSegment );
         return 0;
     }
     
-    if ( 512 != file_size )
+    size_t blocks_read = fread( cpu.flat_address( 0x7c0, 0 ), 512, 1, file.get() );
+    if ( 1 != blocks_read )
     {
-        tracer.Trace( "error: boot sector file isn't 512 bytes\n" );
+        tracer.Trace( "can't read boot sector file into RAM, error %d\n", errno );
         FreeMemory( BSSegment );
         return 0;
     }
@@ -7707,10 +7718,15 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
     if ( bootSectorLoad )
         return LoadAsBootSector( acApp, acAppArgs, segEnvironment );
 
-    uint16_t psp = 0;
-    bool isCOM = IsBinaryCOM( acApp );
+    CFile file( fopen( acApp, "rb" ) );
+    if ( 0 == file.get() )
+    {
+        tracer.Trace( "  can't open input executable '%s', error %d\n", acApp, errno );
+        return 0;
+    }
 
-    if ( isCOM )
+    uint16_t psp = 0;
+    if ( IsBinaryCOM( acApp, file.get() ) )
     {
         // allocate 64k for the .COM file
 
@@ -7726,27 +7742,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         InitializePSP( ComSegment, acAppArgs, segEnvironment );
         tracer.Trace( "  loading com, ComSegment is %04x\n", ComSegment );
 
-        FILE * fp = fopen( acApp, "rb" );
-        if ( 0 == fp )
-        {
-            tracer.Trace( "open .com file, error %d\n", errno );
-            FreeMemory( ComSegment );
-            return 0;
-        }
-    
-        fseek( fp, 0, SEEK_END );
-        long file_size = ftell( fp );
-        fseek( fp, 0, SEEK_SET );
-        size_t blocks_read = fread( cpu.flat_address( ComSegment, 0x100 ), get_min( 65536L - 0x100, file_size ), 1, fp );
-        fclose( fp );
-
-        if ( 1 != blocks_read )
-        {
-            tracer.Trace( "can't read .com file into RAM, error %d\n", errno );
-            FreeMemory( ComSegment );
-            return 0;
-        }
-
+        long file_size = portable_filelen( file.get() );
         if ( file_size > ( 65536 - 0x100) )
         {
             tracer.Trace( "can't read .com file into RAM -- it's too big!\n" );
@@ -7754,13 +7750,26 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             return 0;
         }
     
+        size_t blocks_read = fread( cpu.flat_address( ComSegment, 0x100 ), file_size, 1, file.get() );
+        if ( 1 != blocks_read )
+        {
+            tracer.Trace( "can't read .com file into RAM, error %d\n", errno );
+            FreeMemory( ComSegment );
+            return 0;
+        }
+
+        // ensure the last two bytes (the top of the stack) are 0 so ret at app end exits the app via cp/m legacy mode
+
+        uint16_t * pstacktop = cpu.flat_address16( ComSegment, 0xfffe );
+        *pstacktop = 0;
+
         // prepare to execute the COM file
 
         if ( setupRegs )
         {
             cpu.set_cs( ComSegment );
             cpu.set_ss( ComSegment );
-            cpu.set_sp( 0xffff );
+            cpu.set_sp( 0xfffe );          // word at the top is reserved for return address of 0
             cpu.set_ip( 0x100 );
             cpu.set_ds( ComSegment );
             cpu.set_es( ComSegment );
@@ -7769,7 +7778,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         else
         {
             *reg_ss = ComSegment;
-            *reg_sp = 0xffff;
+            *reg_sp = 0xfffe;
             *reg_cs = ComSegment;
             *reg_ip = 0x100;
             tracer.Trace( "  loaded %s but didn't initialize registers, app segment %04x, ip %04x\n", acApp, cpu.get_cs(), cpu.get_ip() );
@@ -7777,12 +7786,63 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
     }
     else // EXE
     {
-        // Apps own all free memory by default. They can realloc this to free space for other allocations
+        ExeHeader head = { 0 };
+        size_t blocks_read = fread( & head, sizeof( head ), 1, file.get() );
+        if ( 1 != blocks_read )
+        {
+            tracer.Trace( "  can't read input executable head '%s', error %d\n", acApp, errno );
+            return 0;
+        }
 
-        uint16_t paragraphs_remaining, paragraphs_free = 0;
-        uint16_t DataSegment = AllocateMemory( 0xffff, paragraphs_free );
-        assert( 0 == DataSegment );
-        DataSegment = AllocateMemory( paragraphs_free, paragraphs_remaining );
+        head.Trace();
+
+        if ( 0x5a4d != head.signature )
+        {
+            tracer.Trace( "  exe isn't MZ\n" );
+            return 0;
+        }
+
+        if ( head.reloc_table_offset > 100 )
+        {
+            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %u", head.reloc_table_offset );
+            return 0;
+        }
+
+        uint32_t codeStart = 16 * (uint32_t) head.header_paragraphs;
+        uint32_t imageSize = (uint32_t) head.blocks_in_file * 512;
+        if ( 0 != head.bytes_in_last_block )
+            imageSize -= ( 512 - head.bytes_in_last_block );
+        imageSize -= codeStart; // don't include the header
+        tracer.Trace( "  image size of code and initialized data: %u, code starts at %u\n", imageSize, codeStart );
+
+        uint16_t paragraphs_free = 0;
+        uint16_t requested_paragraphs = 0xffff;
+        uint16_t image_paragraphs = (uint16_t) ( round_up( imageSize, (uint32_t) 16 ) / (uint32_t) 16 );
+        tracer.Trace( "  image_paragraphs: %04x\n", image_paragraphs );
+        uint16_t required_paragraphs = head.min_extra_paragraphs + image_paragraphs;
+        tracer.Trace( "  required_paragraphs: %04x\n", required_paragraphs );
+
+        if ( 0xffff != head.max_extra_paragraphs )
+        {
+            if ( head.max_extra_paragraphs < head.min_extra_paragraphs )
+                requested_paragraphs = head.min_extra_paragraphs + image_paragraphs;
+            else if ( ( (uint32_t) head.max_extra_paragraphs + (uint32_t) image_paragraphs ) < (uint32_t) 0xffff )
+                requested_paragraphs = head.max_extra_paragraphs + image_paragraphs;
+
+            tracer.Trace( "  adjusted requested_paragraphs %04x\n", requested_paragraphs );
+        }
+
+        uint16_t DataSegment = AllocateMemory( requested_paragraphs, paragraphs_free );
+        if ( 0 == DataSegment )
+        {
+            if ( required_paragraphs > paragraphs_free )
+            {
+                tracer.Trace( "  insufficient RAM. required_paragraphs > image_paragraphs %04x > %04x\n", required_paragraphs, image_paragraphs );
+                return 0;
+            }
+
+            DataSegment = AllocateMemory( paragraphs_free, paragraphs_free );
+        }
 
         if ( 0 == DataSegment )
         {
@@ -7794,87 +7854,49 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         psp = DataSegment;
         InitializePSP( DataSegment, acAppArgs, segEnvironment );
 
-        FILE * fp = fopen( acApp, "rb" );
-        if ( 0 == fp )
-        {
-            tracer.Trace( "  can't open input executable '%s', error %d\n", acApp, errno );
-            FreeMemory( DataSegment );
-            return 0;
-        }
-    
-        fseek( fp, 0, SEEK_END );
-        long file_size = ftell( fp );
-        fseek( fp, 0, SEEK_SET );
-        vector<uint8_t> theexe( file_size );
-        size_t blocks_read = fread( theexe.data(), file_size, 1, fp );
-        fclose( fp );
-        if ( 1 != blocks_read )
-        {
-            tracer.Trace( "  can't read input exe file, error %d", errno );
-            FreeMemory( DataSegment );
-            return 0;
-        }
-
-        ExeHeader & head = * (ExeHeader *) theexe.data();
-        if ( 0x5a4d != head.signature )
-        {
-            tracer.Trace( "  exe isn't MZ\n" );
-            FreeMemory( DataSegment );
-            return 0;
-        }
-
         tracer.Trace( "  loading app %s\n", acApp );
-        tracer.Trace( "  looks like an MZ exe... size %u, size from blocks %u, bytes in last block %u\n",
-                      file_size, ( (uint32_t) head.blocks_in_file ) * 512, head.bytes_in_last_block );
-        tracer.Trace( "  relocation entry count %u, header paragraphs %u (%u bytes)\n",
-                      head.num_relocs, head.header_paragraphs, head.header_paragraphs * 16 );
-        tracer.Trace( "  relative value of stack segment: %#x, initial sp: %#x, initial ip %#x, initial cs relative to segment: %#x\n",
-                      head.ss, head.sp, head.ip, head.cs );
-        tracer.Trace( "  relocation table offset %u, overlay number %u\n",
-                      head.reloc_table_offset, head.overlay_number );
-
-        if ( head.reloc_table_offset > 100 )
-        {
-            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %d", head.reloc_table_offset );
-            FreeMemory( DataSegment );
-            return 0;
-        }
-
-        uint32_t codeStart = 16 * (uint32_t) head.header_paragraphs;
-        uint32_t cbUsed = head.blocks_in_file * 512;
-        if ( 0 != head.bytes_in_last_block )
-            cbUsed -= ( 512 - head.bytes_in_last_block );
-        cbUsed -= codeStart; // don't include the header
-        tracer.Trace( "  bytes used by load module: %u, and code starts at %u\n", cbUsed, codeStart );
-
-        if ( ( cbUsed / 16 ) > paragraphs_free )
-        {
-            tracer.Trace( "  insufficient ram available RAM to load .exe, in paragraphs: %04x required, %04x available\n", cbUsed / 16, paragraphs_free );
-            FreeMemory( DataSegment );
-            return 0;
-        }
+        tracer.Trace( "  looks like an MZ exe... size from blocks %u, bytes in last block %u\n",
+                      ( (uint32_t) head.blocks_in_file ) * 512, head.bytes_in_last_block );
 
         const uint16_t CodeSegment = DataSegment + 16; //  data segment + 256 bytes (16 paragraphs) for the psp
         uint8_t * pcode = cpu.flat_address8( CodeSegment, 0 );
-        memcpy( pcode, theexe.data() + codeStart, cbUsed );
-        tracer.Trace( "  start of the code:\n" );
-        tracer.TraceBinaryData( pcode, 0x200, 4 );
-
-        // apply relocation entries
-
-        ExeRelocation * pRelocationEntries = (ExeRelocation *) ( theexe.data() + head.reloc_table_offset );
-        for ( uint16_t r = 0; r < head.num_relocs; r++ )
+        fseek( file.get(), codeStart, SEEK_SET );
+        blocks_read = fread( pcode, imageSize, 1, file.get() );
+        if ( 1 != blocks_read )
         {
-            uint32_t offset = pRelocationEntries[ r ].offset + pRelocationEntries[ r ].segment * 16;
-            uint16_t * target = (uint16_t *) ( pcode + offset );
-            //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + CodeSegment );
-            *target += CodeSegment;
+            tracer.Trace( "  can't read input exe file image, error %d", errno );
+            FreeMemory( DataSegment );
+            return 0;
+        }
+
+        tracer.Trace( "  start of the code:\n" );
+        tracer.TraceBinaryData( pcode, get_min( imageSize, (uint32_t) 0x100 ), 4 );
+
+        if ( 0 != head.num_relocs )
+        {
+            vector<ExeRelocation> relocations( head.num_relocs );
+            fseek( file.get(), head.reloc_table_offset, SEEK_SET );
+            blocks_read = fread( relocations.data(), head.num_relocs * sizeof( ExeRelocation ), 1, file.get() );
+            if ( 1 != blocks_read )
+            {
+                tracer.Trace( "  can't read input exe file relocation data, error %d", errno );
+                FreeMemory( DataSegment );
+                return 0;
+            }
+    
+            for ( uint16_t r = 0; r < head.num_relocs; r++ )
+            {
+                uint32_t offset = (uint32_t) relocations[ r ].offset + (uint32_t) relocations[ r ].segment * 16;
+                uint16_t * target = (uint16_t *) ( pcode + offset );
+                //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + CodeSegment );
+                *target += CodeSegment;
+            }
         }
 
         if ( setupRegs )
         {
-            cpu.set_cs( CodeSegment + head.cs );
-            cpu.set_ss( CodeSegment + head.ss );
+            cpu.set_cs( CodeSegment + head.relative_cs );
+            cpu.set_ss( CodeSegment + head.relative_ss );
             cpu.set_ds( DataSegment );
             cpu.set_es( cpu.get_ds() );
             cpu.set_sp( head.sp );
@@ -7885,9 +7907,9 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         }
         else
         {
-            *reg_ss = CodeSegment + head.ss;
+            *reg_ss = CodeSegment + head.relative_ss;
             *reg_sp = head.sp;
-            *reg_cs = CodeSegment + head.cs;
+            *reg_cs = CodeSegment + head.relative_cs;
             *reg_ip = head.ip;
             tracer.Trace( "  loaded %s suspended (mode 1), cs %04x, ip %04x, ss %04x, sp %04x\n",
                           acApp, *reg_cs, *reg_ip, *reg_ss, *reg_sp );

@@ -163,7 +163,7 @@ template <class T> inline T get_min( T a, T b )
     return b;
 } //get_min
 
-template <class T> inline T round_up( T x, uint64_t multiple )
+template <class T> inline T round_up( T x, T multiple )
 {
     if ( 0 == multiple )
        return x;
@@ -299,3 +299,23 @@ inline long portable_filelen( const char * p )
 
     return 0;
 } //portable_filelen
+
+class CFile
+{
+    private:
+        FILE * fp;
+
+    public:
+        CFile( FILE * file ) : fp( file ) {}
+        ~CFile() { close(); }
+        FILE * get() { return fp; }
+        void close()
+        {
+            if ( NULL != fp )
+            {
+                fclose( fp );
+                fp = NULL;
+            }
+        }
+};
+
