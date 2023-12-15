@@ -72,12 +72,13 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * Microsoft Works Version 3.0 for DOS.
  * Lotus 1-2-3 Release 1A
  * PC-LISP V3.00
- * muLISP v5.10 interpreter (released by Microsoft).
+ * muLISP v5.10 interpreter (released by Microsoft). See note in i8086.hxx for address wrapping workaround.
  * IBM Personal Computer Pascal Compiler Version 2.00 (generated apps require WRAP_HMA_ADDRESSES be true in i8086.hxx)
  * Microsoft COBOL Compiler Version 5.0 (compiler and generated apps). Linker requires 286 but QBX's linker works fine.
  * Digital Research PL/I-86 Compiler Version 1.0, link86, and generated apps.
  * Microsoft FORTRAN77, the linker, and generated apps.
  * Microsoft (R) C Optimizing Compiler Version 5.10 with Microsoft (R) Overlay Linker  Version 3.65
+ * Microsoft Pascal v1.10 (this requires using ntvdm's -h flag due to bugs in pas2.exe and generated apps)
 
 ### Software
 
