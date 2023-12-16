@@ -419,6 +419,7 @@ const char * DOSToHostPath( const char * p )
     p = dos_path;
 
     static char host_path[ MAX_PATH ];
+
     if ( ':' == p[1] )
     {
         strcpy( host_path, g_acRoot );
@@ -504,9 +505,10 @@ static void usage( char const * perr )
     printf( "  -e:env,...       define environment variables.\n" );
     printf( "  -h               load high above 64k and below 0xa0000.\n" );
     printf( "  -i               trace instructions to %s.log.\n", g_thisApp );
-    printf( "  -t               enable debug tracing to %s.log\n", g_thisApp );
+    printf( "  -m               after the app ends, print video memory\n" );
     printf( "  -p               show performance stats on exit.\n" );
     printf( "  -r:root          root folder that maps to C:\\\n" );
+    printf( "  -t               enable debug tracing to %s.log\n", g_thisApp );
 #ifdef I8086_TRACK_CYCLES
     printf( "  -s:X             set processor speed in Hz.\n" );
     printf( "                     for 4.77 MHz 8086 use -s:4770000.\n" );
@@ -1550,12 +1552,18 @@ bool GetDOSFilenameFromFCB( DOSFCB &fcb, char * filename )
         *filename++ = fcb.name[i];
     }
 
-    *filename++ = '.';
+    bool dot_added = false;
 
     for ( int i = 0; i < 3; i++ )
     {
         if ( ' ' == fcb.ext[i] || 0 == fcb.ext[i] )
             break;
+
+        if ( !dot_added )
+        {
+            *filename++ = '.';
+            dot_added = true;
+        }
 
         *filename++ = fcb.ext[i];
     }
@@ -1596,6 +1604,37 @@ void traceDisplayBuffers()
         }
     }
 } //traceDisplayBuffers
+
+void printDisplayBuffer( int buffer )
+{
+    printf( "  cga memory buffer %d\n", buffer );
+    uint8_t * pbuf = cpu.flat_address8( ScreenBufferSegment, (uint16_t) ( 0x1000 * buffer ) );
+    for ( size_t y = 0; y < ScreenRows; y++ )
+    {
+        size_t yoffset = y * ScreenColumns * 2;
+        bool blank = true;
+        for ( size_t x = 0; x < ScreenColumns; x++ )
+        {
+            size_t offset = yoffset + x * 2;
+            if ( ' ' != printable( pbuf[ offset ] ) )
+            {
+                blank = false;
+                break;
+            }
+        }
+
+        if ( !blank )
+        {
+            printf( "    row %02zd: '", y );
+            for ( size_t x = 0; x < ScreenColumns; x++ )
+            {
+                size_t offset = yoffset + x * 2;
+                printf( "%c", printable( pbuf[ offset ] ) );
+            }
+            printf( "'\n" );
+        }
+    }
+} //printDisplayBuffer
 
 void traceDisplayBufferAsHex()
 {
@@ -8249,6 +8288,7 @@ int main( int argc, char * argv[], char * envp[] )
     bool force80x25 = false;
     bool clearDisplayOnExit = true;
     bool bootSectorLoad = false;
+    bool printVideoMemory = false;
     char * penvVars = 0;
     static char acRootArg[ MAX_PATH ];
 #ifdef _WIN32
@@ -8322,6 +8362,8 @@ int main( int argc, char * argv[], char * envp[] )
                 else
                     usage( "invalid keystroke mode" );
             }
+            else if ( 'm' == ca )
+                printVideoMemory = true;
             else if ( 'r' == ca )
             {
                 if ( ':' != parg[2] )
@@ -8693,6 +8735,9 @@ int main( int argc, char * argv[], char * envp[] )
 #ifdef _WIN32
     CloseHandle( g_heventKeyStroke );
 #endif
+
+    if ( printVideoMemory )
+        printDisplayBuffer( GetActiveDisplayPage() );
 
     if ( showPerformance )
     {
