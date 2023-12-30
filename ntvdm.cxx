@@ -538,6 +538,7 @@ static void usage( char const * perr )
     printf( "  %s -r:. -u QBX\n", g_thisApp );
 #endif
     printf( "  %s -s:4770000 turbo.com\n", g_thisApp );
+    printf( "%s\n", build_string() );
     exit( 1 );
 } //usage
 
