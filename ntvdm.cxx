@@ -8234,10 +8234,10 @@ uint32_t GetBiosDailyTimer()
     return (uint32_t) ( diff / 54925100 );
 } //GetBiosDailyTimer
 
-int main( int argc, char * argv[], char * envp[] )
+int main( int argc, char * argv[] )
 {
-    bool runningInRVOS = ( envp && envp[ 0 ] && !strcmp( envp[ 0 ], "OS=RVOS" ) );
-    g_UseOneThread = runningInRVOS;
+    char * posval = getenv( "OS" );
+    g_UseOneThread = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
 
     g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
     g_tAppStart = high_resolution_clock::now();    
