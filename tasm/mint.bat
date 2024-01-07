@@ -4,7 +4,7 @@ rem builds c++ arrays with 8086 machine code to handle various interrupts in ntv
 
 echo // machine code for various interrupts. generated with mint.bat. >asm.txt
 
-set _intlist="int16_0" "int21_8" "int21_a" "int21_3f"
+set _intlist="int16_0" "int21_1" "int21_8" "int21_a" "int21_3f"
 
 ( for %%t in (%_intlist%) do ( call :buildit %%t ) )
 

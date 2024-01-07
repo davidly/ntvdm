@@ -99,6 +99,9 @@ using namespace std::chrono;
 uint64_t int16_0_code[] = { 
 0x01b4c08e0040b806, 0x068326fafa741669, 0x001a3e832602001a, 0x001a06c726077c3e, 0x000000cb07fb001e, 
 }; 
+uint64_t int21_1_code[] = { 
+0x10690ab4166900b4, 0x0000000000cb01b4, 
+}; 
 uint64_t int21_8_code[] = { 
 0x00cb08b416cd00b4, 
 }; 
@@ -292,6 +295,7 @@ static char g_lastLoadedApp[ MAX_PATH ] = {0};       // path of most recenly loa
 static bool g_PackedFileCorruptWorkaround = false;   // if true, allocate memory starting at 64k, not AppSegment
 static uint16_t g_int21_3f_seg = 0;                  // segment where this code resides with ip = 0
 static uint16_t g_int21_a_seg = 0;                   // "
+static uint16_t g_int21_1_seg = 0;                   // "
 static uint16_t g_int21_8_seg = 0;                   // "
 static uint16_t g_int16_0_seg = 0;                   // "
 static char cwd[ MAX_PATH ] = {0};                   // used as a temporary in several locations
@@ -1332,7 +1336,7 @@ struct DOSPSP
 
     void TraceHandleMap()
     {
-        tracer.Trace( "  handlemap: " );
+        tracer.Trace( "    handlemap: " );
         for ( size_t x = 0; x < _countof( fileHandles ); x++ )
             tracer.Trace( "%02x ", fileHandles[ x ] );
         tracer.Trace( "\n" );
@@ -1347,20 +1351,20 @@ struct DOSPSP
 
         tracer.Trace( "  PSP: %04x\n", GetSegment( (uint8_t *) this ) );
         tracer.TraceBinaryData( (uint8_t *) this, sizeof( DOSPSP ), 4 );
-        tracer.Trace( "  topOfMemory: %04x\n", topOfMemory );
-        tracer.Trace( "  segParent: %04x\n", segParent );
-        tracer.Trace( "  return address: %04x\n", int22TerminateAddress );
-        tracer.Trace( "  command tail: len %u, '%.*s'\n", countCommandTail, countCommandTail, commandTail );
-        tracer.Trace( "  handleArraySize: %u\n", (uint32_t) handleArraySize );
-        tracer.Trace( "  handleArrayPointer: %04x\n", handleArrayPointer );
+        tracer.Trace( "    topOfMemory: %04x\n", topOfMemory );
+        tracer.Trace( "    segParent: %04x\n", segParent );
+        tracer.Trace( "    return address: %04x\n", int22TerminateAddress );
+        tracer.Trace( "    command tail: len %u, '%.*s'\n", countCommandTail, countCommandTail, commandTail );
+        tracer.Trace( "    handleArraySize: %u\n", (uint32_t) handleArraySize );
+        tracer.Trace( "    handleArrayPointer: %04x\n", handleArrayPointer );
 
         TraceHandleMap();
 
-        tracer.Trace( "  segEnvironment: %04x\n", segEnvironment );
+        tracer.Trace( "    segEnvironment: %04x\n", segEnvironment );
         if ( 0 != segEnvironment )
         {
             const char * penv = (char *) cpu.flat_address( segEnvironment, 0 );
-            tracer.TraceBinaryData( (uint8_t *) penv, 0x100, 4 );
+            tracer.TraceBinaryData( (uint8_t *) penv, 0x100, 6 );
         }
     }
 };
@@ -1416,7 +1420,7 @@ struct DOSFCB
         assert( SequentialOffset() == RandomOffset() );
     } //SetRandomFromSequential
 
-    void Trace()
+    void TraceFirst16()
     {
         assert( 0x0 == offsetof( DOSFCB, drive ) );
         assert( 0x1 == offsetof( DOSFCB, name ) );
@@ -1429,27 +1433,6 @@ struct DOSFCB
         assert( 0x18 == offsetof( DOSFCB, reserved ) );
         assert( 0x20 == offsetof( DOSFCB, curRecord ) );
         assert( 0x21 == offsetof( DOSFCB, recNumber ) );
-
-        tracer.Trace( "  fcb: %p\n", this );
-        tracer.Trace( "    drive        %u\n", drive );
-        tracer.Trace( "    filename     '%c%c%c%c%c%c%c%c'\n",
-                      name[0],name[1],name[2],name[3],
-                      name[4],name[5],name[6],name[7] );
-        tracer.Trace( "    ext          '%c%c%c'\n", ext[0],ext[1],ext[2] );
-        tracer.Trace( "    curBlock:    %u\n", curBlock );
-        tracer.Trace( "    recSize:     %u\n", recSize );
-        tracer.Trace( "    fileSize:    %u\n", fileSize );
-        tracer.Trace( "    curRecord:   %u\n", curRecord );
-        tracer.Trace( "    recNumber:   %u\n", RandomRecordNumber() );
-    } //Trace
-
-    void TraceFirst16()
-    {
-        assert( 0x0 == offsetof( DOSFCB, drive ) );
-        assert( 0x1 == offsetof( DOSFCB, name ) );
-        assert( 0x9 == offsetof( DOSFCB, ext ) );
-        assert( 0xc == offsetof( DOSFCB, curBlock ) );
-        assert( 0xe == offsetof( DOSFCB, recSize ) );
 
         tracer.Trace( "  fcb first 16: %p\n", this );
         tracer.Trace( "    drive        %u\n", drive );
@@ -1464,6 +1447,34 @@ struct DOSFCB
         tracer.Trace( "    curBlock:    %u\n", curBlock );
         tracer.Trace( "    recSize:     %u\n", recSize );
     } //TraceFirst16
+
+    void TraceFirst24()
+    {
+        TraceFirst16();
+        tracer.Trace( "    fileSize:    %u\n", fileSize );
+
+        uint32_t day = date & 0x1f;
+        uint32_t month = ( date >> 5 ) & 0xf;
+        uint32_t year = (date >> 9 ) & 0x7f;
+        tracer.Trace( "    day:         %u\n", day );
+        tracer.Trace( "    month:       %u\n", month );
+        tracer.Trace( "    year -1980:  %u\n", year );
+
+        uint32_t secs = 2 * ( time & 0x1f );
+        uint32_t minutes = ( time >> 5 ) & 0x3f;
+        uint32_t hours = ( time >> 11 ) & 0x1f;
+        tracer.Trace( "    secs:        %u\n", secs );
+        tracer.Trace( "    minutes:     %u\n", minutes );
+        tracer.Trace( "    hours:       %u\n", hours );
+    } //TraceFirst24
+
+    void Trace()
+    {
+        TraceFirst24();
+
+        tracer.Trace( "    curRecord:   %u\n", curRecord );
+        tracer.Trace( "    recNumber:   %u\n", RandomRecordNumber() );
+    } //Trace
 };
 
 struct DOSEXFCB
@@ -1974,6 +1985,7 @@ const IntInfo interrupt_list[] =
     { 0x1a, 0x00, "read real time clock" },
     { 0x1a, 0x02, "get real-time clock time" },
     { 0x21, 0x00, "exit app" },
+    { 0x21, 0x01, "keyboard input with echo" },
     { 0x21, 0x02, "output character" },
     { 0x21, 0x06, "direct console character i/o" },
     { 0x21, 0x07, "direct character input without echo no ^c/^break check" },
@@ -3102,10 +3114,9 @@ bool starts_with( const char * str, const char * start )
         }
     
         pfcb->fileSize = fd.nFileSizeLow;
-        uint16_t file_time;
-        FileTimeToDos( fd.ftLastWriteTime, file_time, pfcb->date );
+        FileTimeToDos( fd.ftLastWriteTime, pfcb->time, pfcb->date );
     
-        pfcb->TraceFirst16();
+        pfcb->TraceFirst24();
         return true;
     } //ProcessFoundFileFCB
     
@@ -3324,7 +3335,7 @@ bool starts_with( const char * str, const char * start )
 #else
         tmTimeToDos( statbuf.st_mtim.tv_sec, pfcb->time, pfcb->date );
 #endif
-        pfcb->TraceFirst16();
+        pfcb->TraceFirst24();
         return true;
     } //ProcessFoundFileFCB
 
@@ -4035,7 +4046,6 @@ void handle_int_16( uint8_t c )
 
 #if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int16_0_seg );
-            return;
 #else
             while ( kbd_buf.IsEmpty() )
             {
@@ -4051,8 +4061,9 @@ void handle_int_16( uint8_t c )
             cpu.set_ah( kbd_buf.Consume() ); // scancode
 
             tracer.Trace( "  returning character %04x '%c'\n", cpu.get_ax(), printable( cpu.al() ) );
-            return;
 #endif
+
+            return;
         }
         case 1:
         case 0x11: // 0x11 is really the same behavior as 1 except it can return a wider set of characters
@@ -4203,6 +4214,8 @@ void HandleAppExit()
         tracer.Trace( "  freeing RAM an app leaked, segment %04x (MCB+1) para length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
         FreeMemory( g_allocEntries[ index ].segment );
     } while( true );
+
+    cpu.set_carry( false ); // indicate that the Create Process int x21 x4b (EXEC/Load and Execute Program) succeeded.
 } //HandleAppExit
 
 uint8_t HighestDrivePresent()
@@ -4351,6 +4364,84 @@ bool FindCommandInPath( char * pc )
     return false;
 } //FindCommandInPath
 
+void wait_for_kbd_to_al()
+{
+    bool first = true;
+
+    CKbdBuffer kbd_buf;
+    while ( kbd_buf.IsEmpty() )
+    {
+        if ( first && g_use80x25 )
+        {
+            first = false;
+            UpdateDisplay();
+        }
+
+        // wait for a character then return it.
+
+        while ( !peek_keyboard( true, true, false ) )
+            continue;
+
+        consume_keyboard();
+    }
+
+    cpu.set_al( kbd_buf.Consume() );
+    char scan_code = kbd_buf.Consume(); // unused
+
+    tracer.Trace( "  character input returning al %02x. scan_code %02x\n", cpu.al(), scan_code );
+} //wait_for_kbd_to_al
+
+void output_character( char ch )
+{
+    if ( g_use80x25 )
+    {
+        uint8_t row, col;
+        uint8_t * pbuf = GetVideoMem();
+        GetCursorPosition( row, col );
+        uint32_t offset = row * 2 * ScreenColumns + col * 2;
+
+        if ( 8 == ch )
+        {
+            if ( col > 0 )
+            {
+                col--;
+                offset = row * 2 * ScreenColumns + col * 2;
+                pbuf[ offset ] = ' ';
+            }
+        }
+        else if ( 0xa == ch ) // CR
+            col = 0;
+        else if ( 0xd == ch ) // LF
+        {
+            if ( row >= ScreenRowsM1 )
+            {
+                tracer.Trace( "  line feed scrolling up a line\n"  );
+                scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
+            }
+            else
+                row = row + 1;
+        }
+        else
+        {
+            pbuf[ offset ] = ch;
+            if ( 0 == pbuf[ offset + 1 ] )
+                pbuf[ offset + 1 ] = DefaultVideoAttribute;
+            col++;
+        }
+        SetCursorPosition( row, col );
+    }
+    else
+    {
+        if ( 0x0d != ch )
+        {
+            if ( 8 == ch )
+                printf( "%c ", ch );
+            printf( "%c", ch );
+            fflush( stdout );
+        }
+    }
+} //output_character
+
 void handle_int_21( uint8_t c )
 {
     char filename[ DOS_FILENAME_SIZE ];
@@ -4367,62 +4458,41 @@ void handle_int_21( uint8_t c )
 
             return;
         }
+        case 1:
+        {
+            // keyboard input with echo
+            // wait for keyboard input from stdin. echo to stdout
+            // return character in AL. return 0 to signal subsequent call will get scancode.
+            // ^c and ^break are checked.
+            // just like function 7 except character is echoed to stdout.
+
+            // character input. block until a keystroke is available.
+
+            uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
+            pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
+
+            if ( g_use80x25)
+                UpdateDisplay();
+
+            InjectKeystrokes();
+
+#if USE_ASSEMBLY_FOR_KBD
+            invoke_assembler_routine( g_int21_1_seg );
+#else
+            wait_for_kbd_to_al();
+            output_character( cpu.al() );
+#endif
+
+            return;
+        }
         case 2:
         {
             // output character in DL. move cursor as appropriate
             // todo: interpret 7 (beep), 8 (backspace), 9 (tab) to tab on multiples of 8. 10 lf should move cursor down and scroll if needed
     
             char ch = cpu.dl();
-
             tracer.Trace( "  output char %d == %#02x == '%c'\n", ch, ch, printable( ch ) );
-
-            if ( g_use80x25 )
-            {
-                uint8_t * pbuf = GetVideoMem();
-                GetCursorPosition( row, col );
-                uint32_t offset = row * 2 * ScreenColumns + col * 2;
-
-                if ( 8 == ch )
-                {
-                    if ( col > 0 )
-                    {
-                        col--;
-                        offset = row * 2 * ScreenColumns + col * 2;
-                        pbuf[ offset ] = ' ';
-                    }
-                }
-                else if ( 0xa == ch ) // CR
-                    col = 0;
-                else if ( 0xd == ch ) // LF
-                {
-                    if ( row >= ScreenRowsM1 )
-                    {
-                        tracer.Trace( "  line feed scrolling up a line\n"  );
-                        scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
-                    }
-                    else
-                        row = row + 1;
-                }
-                else
-                {
-                    pbuf[ offset ] = ch;
-                    if ( 0 == pbuf[ offset + 1 ] )
-                        pbuf[ offset + 1 ] = DefaultVideoAttribute;
-                    col++;
-                }
-                SetCursorPosition( row, col );
-            }
-            else
-            {
-                if ( 0x0d != ch )
-                {
-                    if ( 8 == ch )
-                        printf( "%c ", ch );
-                    printf( "%c", ch );
-                    fflush( stdout );
-                }
-            }
-    
+            output_character( ch );
             return;
         }
         case 6:
@@ -4513,7 +4583,6 @@ void handle_int_21( uint8_t c )
 
 #if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int21_8_seg );
-            return;
 #else
             bool first = true;
 
@@ -4538,8 +4607,9 @@ void handle_int_21( uint8_t c )
             char scan_code = kbd_buf.Consume(); // unused
 
             tracer.Trace( "  direct character input returning al %02x. scan_code %02x\n", cpu.al(), scan_code );
-            return;
 #endif
+
+            return;
         }
         case 9:
         {
@@ -4560,7 +4630,6 @@ void handle_int_21( uint8_t c )
 
 #if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int21_a_seg );
-            return;
 #else
             uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
             uint8_t maxLen = p[0];
@@ -4583,9 +4652,9 @@ void handle_int_21( uint8_t c )
                 p[1] = 0;
 
             tracer.Trace( "  returning length %d, string '%.*s'\n", p[1], p[1], p + 2 );
+#endif
 
             return;
-#endif
         }
         case 0xb:
         {
@@ -5972,7 +6041,6 @@ void handle_int_21( uint8_t c )
                     // This assembler version allows the emulator to send timer and keyboard interrupts
 
                     invoke_assembler_routine( g_int21_3f_seg );
-                    return;
 #else
                     // Callers like GWBasic ask for one character at a time but have no idea what a backspace is.
                     // So buffer until a cr, append a lf, and send that one character at a time.
@@ -6022,9 +6090,9 @@ void handle_int_21( uint8_t c )
 
                     if ( g_use80x25 )
                         ClearLastUpdateBuffer();
+#endif
 
                     return;
-#endif
                 }
                 else
                 {
@@ -6820,7 +6888,7 @@ void handle_int_21( uint8_t c )
                     tracer.Trace( "  set terminate address to %04x:%04x\n", save_cs, save_ip );
                     tracer.Trace( "  new child psp %p:\n", psp );
                     psp->Trace();
-                    cpu.set_carry( false );
+                    cpu.set_carry( false ); // meaningless because the child app is starting now
                 }
                 else
                 {
@@ -8604,6 +8672,10 @@ int main( int argc, char * argv[] )
     g_int21_a_seg = curseg;
     curseg += ( round_up_to( sizeof( int21_a_code ), 16 ) / 16 );
 
+    memcpy( cpu.flat_address( curseg, 0 ), int21_1_code, sizeof( int21_1_code ) );
+    g_int21_1_seg = curseg;
+    curseg += ( round_up_to( sizeof( int21_1_code ), 16 ) / 16 );
+
     memcpy( cpu.flat_address( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
     g_int21_8_seg = curseg;
     curseg += ( round_up_to( sizeof( int21_8_code ), 16 ) / 16 );
@@ -8612,8 +8684,8 @@ int main( int argc, char * argv[] )
     g_int16_0_seg = curseg;
     curseg += ( round_up_to( sizeof( int16_0_code ), 16 ) / 16 );
 
-    tracer.Trace( "machine code: 21_3f %04x, 21_a %04x, 21_8 %04x, 16_0 %04x\n",
-                  g_int21_3f_seg, g_int21_a_seg, g_int21_8_seg, g_int16_0_seg );
+    tracer.Trace( "machine code: 21_3f %04x, 21_a %04x, 21_1 %04x, 21_8 %04x, 16_0 %04x\n",
+                  g_int21_3f_seg, g_int21_a_seg, g_int21_1_seg, g_int21_8_seg, g_int16_0_seg );
 
     assert( curseg <= InterruptRoutineSegment );
 #endif

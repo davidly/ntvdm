@@ -14,12 +14,6 @@
 code segment
 assume cs:code
 
-kbd_head equ 1ah
-kbd_tail equ 1ch
-kbd_start equ 1eh
-kbd_beyond equ 3eh
-bios_seg equ 40h
-
 begin:
     mov ah, 0
     int 16h
