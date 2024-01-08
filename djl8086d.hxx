@@ -229,8 +229,8 @@ class CDisassemble8086
             i_opMath[0] = "test"; i_opMath[1] = "NYI "; i_opMath[2] = "not "; i_opMath[3] = "neg ";
             i_opMath[4] = "mul "; i_opMath[5] = "imul"; i_opMath[6] = "div "; i_opMath[7] = "idiv";
 
-            i_opMix[0] = "inc "; i_opMix[1] = "dec ";          i_opMix[2] = "call"; i_opMix[3] = "call dword ptr";
-            i_opMix[4] = "jmp "; i_opMix[5] = "jmp dword ptr"; i_opMix[6] = "push"; i_opMix[7] = "NYI";
+            i_opMix[0] = "inc "; i_opMix[1] = "dec ";    i_opMix[2] = "call"; i_opMix[3] = "call far";
+            i_opMix[4] = "jmp "; i_opMix[5] = "jmp far"; i_opMix[6] = "push"; i_opMix[7] = "NYI";
         }
 
          ~CDisassemble8086() {}
@@ -345,7 +345,7 @@ class CDisassemble8086
                 case 0xe6: _da( "out    al, %02xh", _b1 ); _bc = 2; break;
                 case 0xe7: _da( "out    ax, %02xh", _b1 ); _bc = 2; break;
                 case 0xe8: _da( "call   %04xh", _b12 ); _bc = 3; _pcode = 0; break;
-                case 0xe9: _da( "jmp    far %04xh", _b12 ); _bc = 3; _pcode = 0; break;
+                case 0xe9: _da( "jmp    near %04xh", _b12 ); _bc = 3; _pcode = 0; break;
                 case 0xea: _da( "jmp    far %04xh:%04xh", _b34, _b12 ); _bc = 5; _pcode = 0; break;
                 case 0xeb: _da( "jmp    short %d", (int) (int8_t) _b1 ); _bc = 2; _pcode = 0; break;
                 case 0xec: _da( "in     al, dx" ); break;
