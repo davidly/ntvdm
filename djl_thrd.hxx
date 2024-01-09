@@ -15,6 +15,7 @@ class CSimpleThread
         pthread_t the_thread;
         pthread_cond_t the_condition;
         pthread_mutex_t the_mutex;
+        bool exit_now;
 #endif        
 
     public:
@@ -38,7 +39,7 @@ class CSimpleThread
             }
         }
 #else        
-        CSimpleThread( void * ( * start_routine )( void * ) ) : the_thread( 0 )
+        CSimpleThread( void * ( * start_routine )( void * ) ) : the_thread( 0 ), exit_now( false )
         {
             the_condition = (pthread_cond_t) PTHREAD_COND_INITIALIZER;
             the_mutex = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
@@ -53,6 +54,7 @@ class CSimpleThread
             {
                 tracer.Trace( "signaling the keyboard thread to complete\n" );
                 pthread_cond_signal( & the_condition );
+                exit_now = true;
                 tracer.Trace( "joining the keyboard thread\n" );
                 pthread_join( the_thread, 0 );
                 the_thread = 0; 

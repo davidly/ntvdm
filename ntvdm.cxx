@@ -8069,6 +8069,14 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
                 break;
             }
 
+            // on RISC-V Debian this is needed. Not sure why
+
+            if ( thread.exit_now )
+            {
+                tracer.Trace( "async keyboard condition was signaled but not noticed. hmm. backup plan\n" );
+                break;
+            }
+
             if ( g_consoleConfig.portable_kbhit() )
             {
                 tracer.Trace( "async thread noticed that a keystroke is available\n" );
