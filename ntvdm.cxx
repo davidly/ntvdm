@@ -8039,7 +8039,6 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
     {
         tracer.Trace( "in peekkeyboardthreadproc for linux\n" );
         CSimpleThread & thread = * (CSimpleThread *) param;
-        pthread_mutex_lock( & thread.the_mutex );
 
         do
         {
@@ -8052,7 +8051,12 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
                 to.tv_nsec -= 1000000000;
             }
 
-            int err = pthread_cond_timedwait( & thread.the_condition, & thread.the_mutex, & to );
+            int err;
+            {
+                C_pthread_mutex_t_lock mtx_lock( thread.the_mutex );
+                err = pthread_cond_timedwait( & thread.the_condition, & thread.the_mutex, & to );
+            }
+
             if ( ETIMEDOUT == err )
             {
                 // too chatty tracer.Trace( "peekkeyboardthreadproc timed out in the wait\n" );
@@ -8069,14 +8073,6 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
                 break;
             }
 
-            // on RISC-V Debian this is needed. Not sure why
-
-            if ( thread.exit_now )
-            {
-                tracer.Trace( "async keyboard condition was signaled but not noticed. hmm. backup plan\n" );
-                break;
-            }
-
             if ( g_consoleConfig.portable_kbhit() )
             {
                 tracer.Trace( "async thread noticed that a keystroke is available\n" );
@@ -8085,7 +8081,6 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             }
         } while( true );
 
-        pthread_mutex_unlock( & thread.the_mutex );
         tracer.Trace( "falling out of peekkeyboardthreadproc for linux\n" );
         return 0;
     } //PeekKeyboardThreadProc
