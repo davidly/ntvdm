@@ -299,7 +299,7 @@ class CDisassemble8086
                 case 0x90: _da( "nop" ); break;
                 case 0x98: _da( "cbw" ); break;
                 case 0x99: _da( "cwd" ); break;
-                case 0x9a: _da( "call   far ptr  %04xh:%04xh", pcode[3] | ( (uint16_t) pcode[4] << 8 ), _b12 ); _bc += 4; _pcode = 0; break;
+                case 0x9a: _da( "call   far %04xh:%04xh", pcode[3] | ( (uint16_t) pcode[4] << 8 ), _b12 ); _bc += 4; _pcode = 0; break;
                 case 0x9b: _da( "wait" ); break;
                 case 0x9c: _da( "pushf" ); break;
                 case 0x9d: _da( "popf" ); break;
