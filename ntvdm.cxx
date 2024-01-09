@@ -1383,7 +1383,7 @@ struct DOSFCB
     uint16_t time;
     uint8_t reserved[8];     // unused
     uint8_t curRecord;       // where sequential i/o starts
-    uint32_t recNumber;      // where random i/o starts. the high byte is only valid when recSize < 64 bytes
+    uint32_t recNumber;      // where random i/o starts. the high byte is only valid when recSize < 64 bytes. Some apps don't allocate this field for sequential I/O!
 
     uint32_t BlockSize() { return (uint32_t) recSize * 128; }
     uint32_t SequentialOffset() { return ( ( (uint32_t) curBlock * BlockSize() ) + ( (uint32_t) curRecord * (uint32_t) recSize ) ); }
@@ -3215,7 +3215,7 @@ bool starts_with( const char * str, const char * start )
     
         uint16_t _hour = lt.tm_hour;
         uint16_t _min = lt.tm_min; 
-        uint16_t _sec = lt.tm_sec / 2; // 2-second granularity
+        uint16_t _sec = lt.tm_sec; // 2-second granularity not enforced
         dos_time = _sec | ( _min << 5 ) | ( _hour << 11 );
     } //tmTimeToDos
 
@@ -3588,7 +3588,6 @@ void handle_int_10( uint8_t c )
             cpu.set_ch( 0 );
             cpu.set_cl( 0 );
             tracer.Trace( "  get cursor position row %d col %d\n", cpu.dh(), cpu.dl() );
-
             return;
         }
         case 5:
@@ -3909,7 +3908,6 @@ void handle_int_10( uint8_t c )
             cpu.set_bh( GetActiveDisplayPage() ); // active display page
 
             tracer.Trace( "  returning video mode %u, columns %u, display page %u\n", cpu.al(), cpu.ah(), cpu.bh() );
-
             return;
         }
         case 0x10:
@@ -3957,7 +3955,6 @@ void handle_int_10( uint8_t c )
             // get physical display charactics
 
             cpu.set_ax( 0 ); // none
-
             return;
         }
         case 0x1a:
@@ -3975,7 +3972,6 @@ void handle_int_10( uint8_t c )
             // video functionality / state information
 
             cpu.set_al( 0 ); // indicate that the call isn't supported and es:di wasn't populated with mcga+ info
-
             return;
         }
         case 0x1c:
@@ -3984,7 +3980,6 @@ void handle_int_10( uint8_t c )
             // ps50+, vga, so n/a
 
             cpu.set_al( 0 ); // not supported because only CGA is supported
-
             return;
         }
         case 0xef:
@@ -3992,7 +3987,6 @@ void handle_int_10( uint8_t c )
             // get video adapter type and mode
 
             cpu.set_dl( 0xff ); // not a hercules-compatible card
-
             return;
         }
         case 0xfa:
@@ -4000,13 +3994,11 @@ void handle_int_10( uint8_t c )
             // ega register interface library -- interrogate driver
 
             cpu.set_bx( 0 ); // RIL / mouse driver not present
-
             return;
         }
         case 0xfe:
         {
             // (topview) get video buffer. do nothing and use the default video buffer.
-
             return;
         }
         case 0xff:
@@ -4196,7 +4188,7 @@ void HandleAppExit()
     }
     else
     {
-        tracer.Trace( "ending emulation\n" );
+        tracer.Trace( "  ending emulation by telling cpu emulator to stop once it starts running again\n" );
         cpu.end_emulation();
         g_haltExecution = true;
     }
@@ -4455,7 +4447,6 @@ void handle_int_21( uint8_t c )
             // terminate program
     
             HandleAppExit();
-
             return;
         }
         case 1:
@@ -4663,7 +4654,6 @@ void handle_int_21( uint8_t c )
             InjectKeystrokes();
             CKbdBuffer kbd_buf;
             cpu.set_al( kbd_buf.IsEmpty() ? 0 : 0xff );
-
             return;
         }
         case 0xc:
@@ -4676,7 +4666,6 @@ void handle_int_21( uint8_t c )
             cpu.set_ah( cpu.al() );
             tracer.Trace( "recursing to int 0x21 with command %#x\n", cpu.ah() );
             i8086_invoke_interrupt( 0x21 );
-    
             return;
         }
         case 0xd:
@@ -4684,7 +4673,6 @@ void handle_int_21( uint8_t c )
             // disk reset. ensures buffers are flushed to disk
 
             fflush( 0 ); // this flushes all open streams opened for write
-
             return;
         }
         case 0xe:
@@ -4737,29 +4725,22 @@ void handle_int_21( uint8_t c )
                 {
                     tracer.Trace( "  file opened successfully\n" );
         
-                    pfcb->fileSize = portable_filelen( fp );
-    
                     if ( 0 == pfcb->drive )
                         pfcb->drive = 1 + get_current_drive();
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
+                    pfcb->fileSize = portable_filelen( fp );
+                    GetFileDOSTimeDate( filename, pfcb->time, pfcb->date );
                     pfcb->curRecord = 0; // documentation says this shouldn't be initialized here
 
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
-                    // don't allocate enough RAM in the FCB for the recNumber (the last field).
+                    // don't allocate enough RAM in the FCB for the recNumber (the last field). Memory trashing would result.
                     // pfcb->recNumber = 0;
-
-                    uint16_t dos_time, dos_date;
-                    if ( GetFileDOSTimeDate( filename, dos_time, dos_date ) )
-                    {
-                        pfcb->time = dos_time;
-                        pfcb->date = dos_date;
-                    }
     
                     FileEntry fe = {0};
                     strcpy( fe.path, filename );
                     fe.fp = fp;
-                    fe.handle = 0;
+                    fe.handle = 0; // FCB files don't have handles
                     fe.writeable = true;
                     fe.seg_process = g_currentPSP;
                     fe.refcount = 1;
@@ -5158,10 +5139,11 @@ void handle_int_21( uint8_t c )
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
                     pfcb->fileSize = 0;
+                    GetFileDOSTimeDate( filename, pfcb->time, pfcb->date );
                     pfcb->curRecord = 0;
     
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
-                    // don't allocate enough RAM in the FCB for the recNumber (the last field)
+                    // don't allocate enough RAM in the FCB for the recNumber (the last field). Memory trashing would result.
                     // pfcb->recNumber = 0;
 
                     FileEntry fe = {0};
@@ -5235,7 +5217,6 @@ void handle_int_21( uint8_t c )
                           g_diskTransferSegment, g_diskTransferOffset, cpu.get_ds(), cpu.get_dx() );
             g_diskTransferSegment = cpu.get_ds();
             g_diskTransferOffset = cpu.get_dx();
-    
             return;
         }
         case 0x1c:
@@ -5277,7 +5258,6 @@ void handle_int_21( uint8_t c )
                 cpu.set_al( 0xff );
             }
 
-    
             return;
         }
         case 0x21:
@@ -6309,6 +6289,7 @@ void handle_int_21( uint8_t c )
         {
             // move file pointer (lseek)
             // bx == handle, cx:dx: 32-bit offset, al=mode. 0=beginning, 1=current. 2=end
+            // on success, set cx:dx to the current offset from the start of the file.
 
             uint16_t handle = cpu.get_bx();
             handle = MapFileHandleCobolHack( handle );
@@ -6430,7 +6411,6 @@ void handle_int_21( uint8_t c )
             }
     
             tracer.Trace( "  result of get/put file attributes: carry %d\n", cpu.get_carry() );
-    
             return;
         }
         case 0x44:
@@ -6909,7 +6889,6 @@ void handle_int_21( uint8_t c )
             // exit app
 
             HandleAppExit();
-
             return;
         }
         case 0x4d:
@@ -6919,7 +6898,6 @@ void handle_int_21( uint8_t c )
             cpu.set_al( (int8_t) g_appTerminationReturnCode );
             cpu.set_ah( 0 );
             tracer.Trace( "  exit code of subprogram: %d\n", g_appTerminationReturnCode );
-
             return;
         }
         case 0x4e:
