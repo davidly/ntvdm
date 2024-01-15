@@ -5116,6 +5116,8 @@ void handle_int_21( uint8_t c )
         case 0x16:
         {
             // create file using FCB
+            // Microsoft Pascal v1.0's first pass pas1 creates and writes ^z then 511 zeros to "con.lst".
+            // ms-dos sends that to the console because "con". No special "con" handling exists here.
     
             tracer.Trace( "  create file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
@@ -5473,13 +5475,22 @@ void handle_int_21( uint8_t c )
         {
             // random block write using FCBs.
             // in: CX = number of records, DS:BX the fcb
-            // out: al = 0 if success, 1 if disk full, 2 if data too smaoo, cx = number of records written
+            // out: al = 0 if success, 1 if disk full, 2 if data too small, cx = number of records written
     
             cpu.set_al( 1 );
             uint16_t recsToWrite = cpu.get_cx();
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
+
+            // pas1 of v1 of the Microsoft Pascal compiler writes 0 records just before closing the .lst file
+
+            if ( 0 == recsToWrite )
+            {
+                tracer.Trace( "  attempt to write 0 records is ignored\n" );
+                cpu.set_al( 0 );
+                return;
+            }
 
             if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
@@ -8073,11 +8084,14 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
                 break;
             }
 
-            if ( g_consoleConfig.portable_kbhit() )
+            if ( !g_KbdPeekAvailable )
             {
-                tracer.Trace( "async thread noticed that a keystroke is available\n" );
-                g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
-                cpu.exit_emulate_early();  // no time to lose processing the keystroke
+                if ( g_consoleConfig.portable_kbhit() )
+                {
+                    tracer.Trace( "async thread noticed that a keystroke is available\n" );
+                    g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+                    cpu.exit_emulate_early();  // no time to lose processing the keystroke
+                }
             }
         } while( true );
 
