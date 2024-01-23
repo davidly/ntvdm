@@ -8299,563 +8299,578 @@ uint32_t GetBiosDailyTimer()
 
 int main( int argc, char * argv[] )
 {
-    char * posval = getenv( "OS" );
-    g_UseOneThread = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
-
-    g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
-    g_tAppStart = high_resolution_clock::now();    
+    try
+    {
+        char * posval = getenv( "OS" );
+        g_UseOneThread = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
+    
+        g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
+        g_tAppStart = high_resolution_clock::now();    
 
 #ifdef _WIN32
-    g_msAtStart = GetTickCount64(); // struct timeval not availabe on Win32
+        g_msAtStart = GetTickCount64(); // struct timeval not availabe on Win32
 #else
-    struct timeval tv = {0};
-    gettimeofday( &tv, NULL );
-    g_msAtStart = tv.tv_sec * 1000LL + tv.tv_usec / 1000;
+        struct timeval tv = {0};
+        gettimeofday( &tv, NULL );
+        g_msAtStart = tv.tv_sec * 1000LL + tv.tv_usec / 1000;
 #endif
 
 #ifndef _WIN32
-    tzset(); // or localtime_r won't work correctly
+        tzset(); // or localtime_r won't work correctly
 #endif        
 
-    // put the app name without a path or .exe into g_thisApp
+        // put the app name without a path or .exe into g_thisApp
 
-    char * pname = argv[ 0 ];
+        char * pname = argv[ 0 ];
 #ifdef _WIN32
-    char * plastslash = strrchr( pname, '\\' );
+        char * plastslash = strrchr( pname, '\\' );
 #else
-    char * plastslash = strrchr( pname, '/' );
+        char * plastslash = strrchr( pname, '/' );
 #endif
 
-    if ( 0 != plastslash )
-        pname = plastslash + 1;
-    strcpy( g_thisApp, pname );
-    char * pdot = strchr( g_thisApp, '.' );
-    if ( pdot )
-        *pdot = 0;
-
-    memset( memory, 0, sizeof( memory ) );
+        if ( 0 != plastslash )
+            pname = plastslash + 1;
+        strcpy( g_thisApp, pname );
+        char * pdot = strchr( g_thisApp, '.' );
+        if ( pdot )
+            *pdot = 0;
+    
+        memset( memory, 0, sizeof( memory ) );
 
 #ifdef _WIN32
-    g_hConsoleOutput = GetStdHandle( STD_OUTPUT_HANDLE );
-    g_hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
-    g_heventKeyStroke = CreateEvent( 0, FALSE, FALSE, 0 );
+        g_hConsoleOutput = GetStdHandle( STD_OUTPUT_HANDLE );
+        g_hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
+        g_heventKeyStroke = CreateEvent( 0, FALSE, FALSE, 0 );
 #endif
 
-    init_blankline( DefaultVideoAttribute );
-
-    char * pcAPP = 0;
-    bool trace = false;
-    uint64_t clockrate = 0;
-    bool showPerformance = false;
-    char acAppArgs[127] = {0}; // max length for DOS command tail
-    bool traceInstructions = false;
-    bool force80x25 = false;
-    bool clearDisplayOnExit = true;
-    bool bootSectorLoad = false;
-    bool printVideoMemory = false;
-    char * penvVars = 0;
-    static char acRootArg[ MAX_PATH ];
+        init_blankline( DefaultVideoAttribute );
+    
+        char * pcAPP = 0;
+        bool trace = false;
+        uint64_t clockrate = 0;
+        bool showPerformance = false;
+        char acAppArgs[127] = {0}; // max length for DOS command tail
+        bool traceInstructions = false;
+        bool force80x25 = false;
+        bool clearDisplayOnExit = true;
+        bool bootSectorLoad = false;
+        bool printVideoMemory = false;
+        char * penvVars = 0;
+        static char acRootArg[ MAX_PATH ];
 #ifdef _WIN32
-    strcpy( acRootArg, "\\" );
-    DWORD_PTR dwProcessAffinityMask = 0; // by default let the OS decide
+        strcpy( acRootArg, "\\" );
+        DWORD_PTR dwProcessAffinityMask = 0; // by default let the OS decide
 #else
-    strcpy( acRootArg, "/" );
+        strcpy( acRootArg, "/" );
 #endif
 
-    CKeyStrokes::KeystrokeMode keystroke_mode = CKeyStrokes::ksm_None; //CKeyStrokes::KeystrokeMode::ksm_None;
-
-    for ( int i = 1; i < argc; i++ )
-    {
-        char *parg = argv[i];
-        char c = *parg;
-
-        if ( ( 0 == pcAPP ) && ( '-' == c
+        CKeyStrokes::KeystrokeMode keystroke_mode = CKeyStrokes::ksm_None; //CKeyStrokes::KeystrokeMode::ksm_None;
+    
+        for ( int i = 1; i < argc; i++ )
+        {
+            char *parg = argv[i];
+            char c = *parg;
+    
+            if ( ( 0 == pcAPP ) && ( '-' == c
 #if defined( WATCOM ) || defined( _WIN32 )
-            || '/' == c
+                || '/' == c
 #endif
-           ) )
-        {
-            char ca = (char) tolower( parg[1] );
-
-            if ( 'b' == ca )
-                bootSectorLoad = true;
-            else if ( 's' == ca )
+               ) )
             {
-                if ( ':' == parg[2] )
-                    clockrate = strtoull( parg + 3 , 0, 10 );
-                else
-                    usage( "colon required after s argument" );
-            }
-            else if ( 't' == ca )
-                trace = true;
-            else if ( 'i' == ca )
-                traceInstructions = true;
-            else if ( 'p' == ca )
-                showPerformance = true;
-            else if ( 'c' == parg[1] )
-                g_forceConsole = true;
-            else if ( 'C' == parg[1] )
-                force80x25 = true;
-            else if ( 'd' == ca )
-                clearDisplayOnExit = false;
+                char ca = (char) tolower( parg[1] );
+    
+                if ( 'b' == ca )
+                    bootSectorLoad = true;
+                else if ( 's' == ca )
+                {
+                    if ( ':' == parg[2] )
+                        clockrate = strtoull( parg + 3 , 0, 10 );
+                    else
+                        usage( "colon required after s argument" );
+                }
+                else if ( 't' == ca )
+                    trace = true;
+                else if ( 'i' == ca )
+                    traceInstructions = true;
+                else if ( 'p' == ca )
+                    showPerformance = true;
+                else if ( 'c' == parg[1] )
+                    g_forceConsole = true;
+                else if ( 'C' == parg[1] )
+                    force80x25 = true;
+                else if ( 'd' == ca )
+                    clearDisplayOnExit = false;
 #ifndef _WIN32
-            else if ( 'u' == ca )
-                g_forcePathsUpper = true;
-            else if ( 'l' == ca )
-                g_forcePathsLower = true;            
+                else if ( 'u' == ca )
+                    g_forcePathsUpper = true;
+                else if ( 'l' == ca )
+                    g_forcePathsLower = true;            
 #endif            
-            else if ( 'e' == ca )
-            {
-                if ( penvVars )
-                    usage( "environment variables can only be specified once\n" );
-
-                if ( ':' == parg[2] )
-                    penvVars = parg + 3;
-                else
-                    usage( "colon required after e argument" );
-            }
-            else if ( 'h' == ca )
-                g_PackedFileCorruptWorkaround = true;
-            else if ( 'k' == ca )
-            {
-                char cmode = (char) tolower( parg[2] );
-                if ( 'w' == cmode )
-                    keystroke_mode = CKeyStrokes::ksm_Write;
-                else if ( 'r' == cmode )
-                    keystroke_mode = CKeyStrokes::ksm_Read;
-                else
-                    usage( "invalid keystroke mode" );
-            }
-            else if ( 'm' == ca )
-                printVideoMemory = true;
-            else if ( 'r' == ca )
-            {
-                if ( ':' != parg[2] )
-                    usage( "colon required after r argument" );
-                strcpy( acRootArg, parg + 3 );
-            }
+                else if ( 'e' == ca )
+                {
+                    if ( penvVars )
+                        usage( "environment variables can only be specified once\n" );
+    
+                    if ( ':' == parg[2] )
+                        penvVars = parg + 3;
+                    else
+                        usage( "colon required after e argument" );
+                }
+                else if ( 'h' == ca )
+                    g_PackedFileCorruptWorkaround = true;
+                else if ( 'k' == ca )
+                {
+                    char cmode = (char) tolower( parg[2] );
+                    if ( 'w' == cmode )
+                        keystroke_mode = CKeyStrokes::ksm_Write;
+                    else if ( 'r' == cmode )
+                        keystroke_mode = CKeyStrokes::ksm_Read;
+                    else
+                        usage( "invalid keystroke mode" );
+                }
+                else if ( 'm' == ca )
+                    printVideoMemory = true;
+                else if ( 'r' == ca )
+                {
+                    if ( ':' != parg[2] )
+                        usage( "colon required after r argument" );
+                    strcpy( acRootArg, parg + 3 );
+                }
 #ifdef _WIN32            
-            else if ( 'z' == ca )
-            {
-                if ( ':' == parg[2] )
-                    dwProcessAffinityMask = _strtoui64( parg + 3, 0, 16 );
-                else
-                    usage( "colon required after z argument" );
-            }
+                else if ( 'z' == ca )
+                {
+                    if ( ':' == parg[2] )
+                        dwProcessAffinityMask = _strtoui64( parg + 3, 0, 16 );
+                    else
+                        usage( "colon required after z argument" );
+                }
 #endif            
-            else if ( 'v' == ca )
-                version();
-            else if ( '?' == ca )
-                usage( 0 );
+                else if ( 'v' == ca )
+                    version();
+                else if ( '?' == ca )
+                    usage( 0 );
+                else
+                    usage( "invalid argument specified" );
+            }
             else
-                usage( "invalid argument specified" );
-        }
-        else
-        {
-            if ( 0 == pcAPP )
-                pcAPP = parg;
-            else if ( strlen( acAppArgs ) + 3 + strlen( parg ) < _countof( acAppArgs ) )
             {
-                // DOS puts a space before the first argument and between arguments
-
-                strcat( acAppArgs, " " );
-                strcat( acAppArgs, parg );
+                if ( 0 == pcAPP )
+                    pcAPP = parg;
+                else if ( strlen( acAppArgs ) + 3 + strlen( parg ) < _countof( acAppArgs ) )
+                {
+                    // DOS puts a space before the first argument and between arguments
+    
+                    strcat( acAppArgs, " " );
+                    strcat( acAppArgs, parg );
+                }
             }
         }
-    }
-
+    
 #ifdef _WIN32
-    static wchar_t logFile[ MAX_PATH ];
-    wsprintf( logFile, L"%S.log", g_thisApp );
+        static wchar_t logFile[ MAX_PATH ];
+        wsprintf( logFile, L"%S.log", g_thisApp );
 #else
-    static char logFile[ MAX_PATH + 10 ];
-    sprintf( logFile, "%s.log", g_thisApp );
+        static char logFile[ MAX_PATH + 10 ];
+        sprintf( logFile, "%s.log", g_thisApp );
 #endif    
-    tracer.Enable( trace, logFile, true );
-    tracer.SetQuiet( true );
-    cpu.trace_instructions( traceInstructions );
-
-    tracer.Trace( "Use one thread: %d\n", g_UseOneThread );
-
+        tracer.Enable( trace, logFile, true );
+        tracer.SetQuiet( true );
+        cpu.trace_instructions( traceInstructions );
+    
+        tracer.Trace( "Use one thread: %d\n", g_UseOneThread );
+    
 #ifdef _WIN32    
-    GetFullPathNameA( acRootArg, _countof( g_acRoot ), g_acRoot, 0 );
-    DWORD attr = GetFileAttributesA( g_acRoot );
-    if ( ( INVALID_FILE_ATTRIBUTES == attr ) || ( 0 == ( attr & FILE_ATTRIBUTE_DIRECTORY ) ) )
-        usage( "/r root argument isn't a folder" );
-    size_t len = strlen( g_acRoot );
-    if ( 0 == len )
-        usage( "error parsing /r argument. does the folder exist?" );
-    if ( '\\' != g_acRoot[ len - 1 ] )
-        strcat( g_acRoot, "\\" );
+        GetFullPathNameA( acRootArg, _countof( g_acRoot ), g_acRoot, 0 );
+        DWORD attr = GetFileAttributesA( g_acRoot );
+        if ( ( INVALID_FILE_ATTRIBUTES == attr ) || ( 0 == ( attr & FILE_ATTRIBUTE_DIRECTORY ) ) )
+            usage( "/r root argument isn't a folder" );
+        size_t len = strlen( g_acRoot );
+        if ( 0 == len )
+            usage( "error parsing /r argument. does the folder exist?" );
+        if ( '\\' != g_acRoot[ len - 1 ] )
+            strcat( g_acRoot, "\\" );
 #else
-    char * fpath = realpath( acRootArg, 0 );
-    if ( !fpath )
-        usage( "error parsing /r argument" );
-    strcpy( g_acRoot, fpath );
-    free( fpath );
-    size_t len = strlen( g_acRoot );
-    if ( 0 == len )
-        usage( "error parsing /r argument. does the folder exist?" );
-    if ( '/' != g_acRoot[ len - 1 ] )
-        strcat( g_acRoot, "/" );
-    struct stat statbuf;
-    int ret = stat( g_acRoot, & statbuf );
-    if ( !S_ISDIR( statbuf.st_mode ) )
-        usage( "/r root argument isn't a folder" );
+        char * fpath = realpath( acRootArg, 0 );
+        if ( !fpath )
+            usage( "error parsing /r argument" );
+        strcpy( g_acRoot, fpath );
+        free( fpath );
+        size_t len = strlen( g_acRoot );
+        if ( 0 == len )
+            usage( "error parsing /r argument. does the folder exist?" );
+        if ( '/' != g_acRoot[ len - 1 ] )
+            strcat( g_acRoot, "/" );
+        struct stat statbuf;
+        int ret = stat( g_acRoot, & statbuf );
+        if ( !S_ISDIR( statbuf.st_mode ) )
+            usage( "/r root argument isn't a folder" );
 #endif
-    tracer.Trace( "root full path: '%s'\n", g_acRoot );
+        tracer.Trace( "root full path: '%s'\n", g_acRoot );
 
-    if ( 0 == pcAPP )
-    {
-        usage( "no command specified" );
-        assume_false; // prevent false prefast warning from the msft compiler
-    }
-
-    strcpy( g_acApp, pcAPP );
+        if ( 0 == pcAPP )
+        {
+            usage( "no command specified" );
+            assume_false; // prevent false prefast warning from the msft compiler
+        }
+    
+        strcpy( g_acApp, pcAPP );
 #ifdef _WIN32    
-    _strupr( g_acApp );
+        _strupr( g_acApp );
 #else
-    const char * pLinuxPath = DOSToHostPath( g_acApp );
-    strcpy( g_acApp, pLinuxPath );
+        const char * pLinuxPath = DOSToHostPath( g_acApp );
+        strcpy( g_acApp, pLinuxPath );
 #endif    
 
-    if ( !file_exists( g_acApp ) )
-    {
-        if ( ends_with( g_acApp, ".com" ) || ends_with( g_acApp, ".exe" ) )
-            usage( "can't find command file .com or .exe" );
-        else
+        if ( !file_exists( g_acApp ) )
         {
-            strcat( g_acApp, ".COM" );
-            if ( !file_exists( g_acApp ) )
+            if ( ends_with( g_acApp, ".com" ) || ends_with( g_acApp, ".exe" ) )
+                usage( "can't find command file .com or .exe" );
+            else
             {
-                char * dot = strstr( g_acApp, ".COM" );
-                strcpy( dot, ".EXE" );
+                strcat( g_acApp, ".COM" );
                 if ( !file_exists( g_acApp ) )
                 {
-#ifdef _WIN32                    
-                    usage( "can't find command file" );
-#else                    
-                    tracer.Trace( "couldn't find input file '%s'\n", g_acApp );
-                    char * pdot = strrchr( g_acApp, '.' );
-                    strcpy( pdot, ".com" );
+                    char * dot = strstr( g_acApp, ".COM" );
+                    strcpy( dot, ".EXE" );
                     if ( !file_exists( g_acApp ) )
                     {
-                        strcpy( pdot, ".exe" );
+#ifdef _WIN32                    
+                        usage( "can't find command file" );
+#else                    
+                        tracer.Trace( "couldn't find input file '%s'\n", g_acApp );
+                        char * pdot = strrchr( g_acApp, '.' );
+                        strcpy( pdot, ".com" );
                         if ( !file_exists( g_acApp ) )
                         {
-                            tracer.Trace( "looked last for '%s'\n", g_acApp );
-                            usage( "can't find command file" );
+                            strcpy( pdot, ".exe" );
+                            if ( !file_exists( g_acApp ) )
+                            {
+                                tracer.Trace( "looked last for '%s'\n", g_acApp );
+                                usage( "can't find command file" );
+                            }
                         }
-                    }
 #endif               
-                }     
+                    }     
+                }
             }
         }
-    }
 
-    // Microsoft Pascal v1.0 requires end of 64k block, not the middle of a block
-    // Overload -h to do this as well -- have a conformant address space for apps.
-
-    if ( ends_with( g_acApp, "pas2.exe" ) || g_PackedFileCorruptWorkaround )
-        g_segHardware = 0xa000;
+        // Microsoft Pascal v1.0 requires end of 64k block, not the middle of a block
+        // Overload -h to do this as well -- have a conformant address space for apps.
+    
+        if ( ends_with( g_acApp, "pas2.exe" ) || g_PackedFileCorruptWorkaround )
+            g_segHardware = 0xa000;
 
 #ifdef _WIN32
-    if ( 0 != dwProcessAffinityMask )
-    {
-        BOOL ok = SetProcessAffinityMask( (HANDLE) -1, dwProcessAffinityMask );
-        tracer.Trace( "Result of SetProcessAffinityMask( %#x ) is %d\n", dwProcessAffinityMask, ok );
-    }
+        if ( 0 != dwProcessAffinityMask )
+        {
+            BOOL ok = SetProcessAffinityMask( (HANDLE) -1, dwProcessAffinityMask );
+            tracer.Trace( "Result of SetProcessAffinityMask( %#x ) is %d\n", dwProcessAffinityMask, ok );
+        }
 #endif    
 
-    g_keyStrokes.SetMode( keystroke_mode );
-
-    // global bios memory
-
-    uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
-    * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
-    * (uint16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
-    * (uint16_t *) ( pbiosdata + 0x1a ) = 0x1e;           // keyboard buffer head
-    * (uint16_t *) ( pbiosdata + 0x1c ) = 0x1e;           // keyboard buffer tail
-    * (uint8_t *)  ( pbiosdata + 0x49 ) = g_videoMode;    // video mode is 80x25, 16 colors
-    * (uint16_t *) ( pbiosdata + 0x4a ) = ScreenColumns;  // 80
-    * (uint16_t *) ( pbiosdata + 0x4c ) = 0x1000;         // video regen buffer size
-    * (uint8_t *)  ( pbiosdata + 0x60 ) = 7;              // cursor ending/bottom scan line
-    * (uint8_t *)  ( pbiosdata + 0x61 ) = 6;              // cursor starting/top scan line
-    * (uint8_t *)  ( pbiosdata + 0x62 ) = 0;              // current display page
-    * (uint16_t *) ( pbiosdata + 0x63 ) = 0x3d4;          // base port for 6845 CRT controller. color
-    * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
-    * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start
-    * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer start
-    * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
-    * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
-    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff0 ) ) = 0xea;   // power on entry point (used by mulisp to detect if it's a standard PC) ea = jmp far
-    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff1 ) ) = 0xc0;   // "
-    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff2 ) ) = 0x12;   // "
-    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff3 ) ) = 0x00;   // "
-    * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff4 ) ) = 0xf0;   // "
-    * (uint8_t *)  ( cpu.flat_address8( 0xffff, 0xe ) ) = 0xff;      // original pc
-
+        g_keyStrokes.SetMode( keystroke_mode );
+    
+        // global bios memory
+    
+        uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
+        * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
+        * (uint16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
+        * (uint16_t *) ( pbiosdata + 0x1a ) = 0x1e;           // keyboard buffer head
+        * (uint16_t *) ( pbiosdata + 0x1c ) = 0x1e;           // keyboard buffer tail
+        * (uint8_t *)  ( pbiosdata + 0x49 ) = g_videoMode;    // video mode is 80x25, 16 colors
+        * (uint16_t *) ( pbiosdata + 0x4a ) = ScreenColumns;  // 80
+        * (uint16_t *) ( pbiosdata + 0x4c ) = 0x1000;         // video regen buffer size
+        * (uint8_t *)  ( pbiosdata + 0x60 ) = 7;              // cursor ending/bottom scan line
+        * (uint8_t *)  ( pbiosdata + 0x61 ) = 6;              // cursor starting/top scan line
+        * (uint8_t *)  ( pbiosdata + 0x62 ) = 0;              // current display page
+        * (uint16_t *) ( pbiosdata + 0x63 ) = 0x3d4;          // base port for 6845 CRT controller. color
+        * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
+        * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start
+        * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer start
+        * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
+        * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff0 ) ) = 0xea;   // power on entry point (used by mulisp to detect if it's a standard PC) ea = jmp far
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff1 ) ) = 0xc0;   // "
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff2 ) ) = 0x12;   // "
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff3 ) ) = 0x00;   // "
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff4 ) ) = 0xf0;   // "
+        * (uint8_t *)  ( cpu.flat_address8( 0xffff, 0xe ) ) = 0xff;      // original pc
+    
 #if 0
-    // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table.
-    // make that pointer point to an empty system file table.
-
-    * ( cpu.flat_address16( SegmentListOfLists, OffsetListOfLists + 4 ) ) = OffsetSystemFileTable;
-    * ( cpu.flat_address16( SegmentListOfLists, OffsetListOfLists + 6 ) ) = SegmentListOfLists;
-    * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable ) ) = 0xffff;
-    * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable + 2 ) ) = 0xffff;
-    * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable + 4 ) ) = 0x30; // lots of files available
+        // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table.
+        // make that pointer point to an empty system file table.
+    
+        * ( cpu.flat_address16( SegmentListOfLists, OffsetListOfLists + 4 ) ) = OffsetSystemFileTable;
+        * ( cpu.flat_address16( SegmentListOfLists, OffsetListOfLists + 6 ) ) = SegmentListOfLists;
+        * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable ) ) = 0xffff;
+        * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable + 2 ) ) = 0xffff;
+        * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable + 4 ) ) = 0x30; // lots of files available
 #endif
-
-    // put dummy values in the list of lists
-    uint16_t * pListOfLists = cpu.flat_address16( SegmentListOfLists, OffsetListOfLists );
-    pListOfLists[ 2 ] = OffsetDeviceControlBlock; // low dword of first drive parameter block (ffff is end of list)
-    pListOfLists[ 3 ] = SegmentListOfLists;       // high "
-    uint16_t * pDeviceControlBlock = cpu.flat_address16( SegmentListOfLists, OffsetDeviceControlBlock );
-    *pDeviceControlBlock = 0xffff; // end of list
-
-    // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
-    // routines starting at InterruptRoutineSegment. The routines are almost all the same -- fake opcode, interrupt #, retf 2
-    // One exception is tick tock interrupt 0x1c, which just does an iret for performance.
-    // Another is keyboard interrupt 9.
-    // Interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
-    // Other interrupts use far ret 2 (not iret) so as to not trash the flags (Z and C) used as return codes.
-    // Functions are all allocated 5 bytes each.
-
-    uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
-    uint8_t * pRoutines = cpu.flat_address8( InterruptRoutineSegment, 0 );
-    for ( uint32_t intx = 0; intx < 0x40; intx++ )
-    {
-        uint32_t offset = intx * 5;
-        pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset );
-        uint8_t * routine = pRoutines + offset;
-
-        if ( 8 == intx )
+    
+        // put dummy values in the list of lists
+        uint16_t * pListOfLists = cpu.flat_address16( SegmentListOfLists, OffsetListOfLists );
+        pListOfLists[ 2 ] = OffsetDeviceControlBlock; // low dword of first drive parameter block (ffff is end of list)
+        pListOfLists[ 3 ] = SegmentListOfLists;       // high "
+        uint16_t * pDeviceControlBlock = cpu.flat_address16( SegmentListOfLists, OffsetDeviceControlBlock );
+        *pDeviceControlBlock = 0xffff; // end of list
+    
+        // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
+        // routines starting at InterruptRoutineSegment. The routines are almost all the same -- fake opcode, interrupt #, retf 2
+        // One exception is tick tock interrupt 0x1c, which just does an iret for performance.
+        // Another is keyboard interrupt 9.
+        // Interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
+        // Other interrupts use far ret 2 (not iret) so as to not trash the flags (Z and C) used as return codes.
+        // Functions are all allocated 5 bytes each.
+    
+        uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+        uint8_t * pRoutines = cpu.flat_address8( InterruptRoutineSegment, 0 );
+        for ( uint32_t intx = 0; intx < 0x40; intx++ )
         {
-            routine[ 0 ] = 0xcd; // int
-            routine[ 1 ] = 0x1c; // int 1c
-            routine[ 2 ] = 0xcf; // iret
+            uint32_t offset = intx * 5;
+            pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset );
+            uint8_t * routine = pRoutines + offset;
+    
+            if ( 8 == intx )
+            {
+                routine[ 0 ] = 0xcd; // int
+                routine[ 1 ] = 0x1c; // int 1c
+                routine[ 2 ] = 0xcf; // iret
+            }
+            else if ( ( 9 == intx ) || ( intx <= 4 ) ) 
+            {
+                routine[ 0 ] = i8086_opcode_interrupt;
+                routine[ 1 ] = (uint8_t) intx;
+                routine[ 2 ] = 0xcf; // iret
+            }
+            else if ( 0x1c == intx )
+                routine[ 0 ] = 0xcf; // iret
+            else
+            {
+                routine[ 0 ] = i8086_opcode_interrupt;
+                routine[ 1 ] = (uint8_t) intx;
+                routine[ 2 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored
+                routine[ 3 ] = 2;
+                routine[ 4 ] = 0;
+            }
         }
-        else if ( ( 9 == intx ) || ( intx <= 4 ) ) 
-        {
-            routine[ 0 ] = i8086_opcode_interrupt;
-            routine[ 1 ] = (uint8_t) intx;
-            routine[ 2 ] = 0xcf; // iret
-        }
-        else if ( 0x1c == intx )
-            routine[ 0 ] = 0xcf; // iret
-        else
-        {
-            routine[ 0 ] = i8086_opcode_interrupt;
-            routine[ 1 ] = (uint8_t) intx;
-            routine[ 2 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored
-            routine[ 3 ] = 2;
-            routine[ 4 ] = 0;
-        }
-    }
-
-    // write assembler routines into 0x0600 - 0x0bff. make each function segment-aligned so
-    // execution can start at ip 0.
-
+    
+        // write assembler routines into 0x0600 - 0x0bff. make each function segment-aligned so
+        // execution can start at ip 0.
+    
 #if USE_ASSEMBLY_FOR_KBD
-    uint16_t curseg = MachineCodeSegment;
-
-    memcpy( cpu.flat_address( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
-    g_int21_3f_seg = curseg;
-    curseg += ( round_up_to( sizeof( int21_3f_code ), 16 ) / 16 );
-
-    memcpy( cpu.flat_address( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
-    g_int21_a_seg = curseg;
-    curseg += ( round_up_to( sizeof( int21_a_code ), 16 ) / 16 );
-
-    memcpy( cpu.flat_address( curseg, 0 ), int21_1_code, sizeof( int21_1_code ) );
-    g_int21_1_seg = curseg;
-    curseg += ( round_up_to( sizeof( int21_1_code ), 16 ) / 16 );
-
-    memcpy( cpu.flat_address( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
-    g_int21_8_seg = curseg;
-    curseg += ( round_up_to( sizeof( int21_8_code ), 16 ) / 16 );
-
-    memcpy( cpu.flat_address( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
-    g_int16_0_seg = curseg;
-    curseg += ( round_up_to( sizeof( int16_0_code ), 16 ) / 16 );
-
-    tracer.Trace( "machine code: 21_3f %04x, 21_a %04x, 21_1 %04x, 21_8 %04x, 16_0 %04x\n",
-                  g_int21_3f_seg, g_int21_a_seg, g_int21_1_seg, g_int21_8_seg, g_int16_0_seg );
-
-    assert( curseg <= InterruptRoutineSegment );
+        uint16_t curseg = MachineCodeSegment;
+    
+        memcpy( cpu.flat_address( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
+        g_int21_3f_seg = curseg;
+        curseg += ( round_up_to( sizeof( int21_3f_code ), 16 ) / 16 );
+    
+        memcpy( cpu.flat_address( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
+        g_int21_a_seg = curseg;
+        curseg += ( round_up_to( sizeof( int21_a_code ), 16 ) / 16 );
+    
+        memcpy( cpu.flat_address( curseg, 0 ), int21_1_code, sizeof( int21_1_code ) );
+        g_int21_1_seg = curseg;
+        curseg += ( round_up_to( sizeof( int21_1_code ), 16 ) / 16 );
+    
+        memcpy( cpu.flat_address( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
+        g_int21_8_seg = curseg;
+        curseg += ( round_up_to( sizeof( int21_8_code ), 16 ) / 16 );
+    
+        memcpy( cpu.flat_address( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
+        g_int16_0_seg = curseg;
+        curseg += ( round_up_to( sizeof( int16_0_code ), 16 ) / 16 );
+    
+        tracer.Trace( "machine code: 21_3f %04x, 21_a %04x, 21_1 %04x, 21_8 %04x, 16_0 %04x\n",
+                      g_int21_3f_seg, g_int21_a_seg, g_int21_1_seg, g_int21_8_seg, g_int16_0_seg );
+    
+        assert( curseg <= InterruptRoutineSegment );
 #endif
 
-    // allocate the environment space and load the binary
-
-    uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp, penvVars );
-    if ( 0 == segEnvironment )
-        i8086_hard_exit( "unable to create environment for the app\n", 0 );
-
-    g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment, true, 0, 0, 0, 0, bootSectorLoad );
-    if ( 0 == g_currentPSP )
-        i8086_hard_exit( "unable to load executable\n", 0 );
-
-    // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
-    // turbo pascal v3 doesn't give a good indication that it wants 80x25.
-    // word for DOS 6.0 is the same -- hard code it
-
-    if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) ||
-         ends_with( g_acApp, "turbo.com" ) || ends_with( g_acApp, "word.exe" ) ||
-         ends_with( g_acApp, "bc.exe" )  || ends_with( g_acApp, "mulisp.com" ) )
-    {
-        if ( !g_forceConsole )
-            force80x25 = true;
-    }
-
-    if ( force80x25 )
-        PerhapsFlipTo80x25();
-
-    g_diskTransferSegment = cpu.get_ds();
-    g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
-    g_haltExecution = false;
-    cpu.set_interrupt( true ); // DOS starts apps with interrupts enabled
-    uint32_t * pDailyTimer = (uint32_t *) ( pbiosdata + 0x6c );
-
-    // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
-    // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
-    // Note that kbhit() makes the same call interally to the same cross-process API. It's no faster.
-
-    unique_ptr<CSimpleThread> peekKbdThread( g_UseOneThread ? 0 : new CSimpleThread( PeekKeyboardThreadProc ) );
-
-    uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
-    CPUCycleDelay delay( clockrate );
-    high_resolution_clock::time_point tStart = high_resolution_clock::now();
-
-    do
-    {
-        total_cycles += cpu.emulate( 1000 );
-
-        if ( g_haltExecution )
-            break;
-
-        delay.Delay( total_cycles );
-
-        // apps like mips.com write to video ram and never provide an opportunity to redraw the display
-
-        if ( g_use80x25 )
-            throttled_UpdateDisplay( 200 );
-
-        uint32_t dt = GetBiosDailyTimer();
-        bool timer_changed = ( dt != *pDailyTimer );
-        if ( timer_changed )
-            *pDailyTimer = dt;
-
-        // check interrupt enable and trap flags externally to avoid side effects in the emulator
-
-        if ( cpu.get_interrupt() && !cpu.get_trap() )
-        {
-            // if the keyboard peek thread has detected a keystroke, process it with an int 9.
-            // don't plumb through port 60 since apps work without that.
-
-            if ( g_UseOneThread && g_consoleConfig.throttled_kbhit() )
-                g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
-
-            if ( g_SendControlCInt )
-            {
-                tracer.Trace( "scheduling an int x23 -- control C\n" );
-                g_SendControlCInt = false;
-                cpu.external_interrupt( 0x23 );
-                continue;
-            }
-
-            if ( g_KbdPeekAvailable && !g_int9_pending )
-            {
-                tracer.Trace( "%llu main loop: scheduling an int 9 -- keyboard\n", time_since_last() );
-                cpu.external_interrupt( 9 );
-                g_int9_pending = true;
-                g_KbdPeekAvailable = false;
-                continue;
-            }
-
-            // if interrupt 8 (timer) or 0x1c (tick tock) are hooked by an app and 55 milliseconds have elapsed,
-            // invoke int 8, which by default then invokes int 1c.
+        // allocate the environment space and load the binary
     
-            if ( timer_changed && ( InterruptHookedByApp( 0x1c ) || InterruptHookedByApp( 8 ) ) )
-            {
-                // on my machine this is invoked about every 72 million total_cycles if no throttle sleeping happened (tens of thousands if so)
+        uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp, penvVars );
+        if ( 0 == segEnvironment )
+            i8086_hard_exit( "unable to create environment for the app\n", 0 );
     
-                tracer.Trace( "scheduling an int 8 -- timer, dt: %#x, total_cycles %llu\n", dt, total_cycles );
-                cpu.external_interrupt( 8 );
-                continue;
-            }
-        }
-        else
+        g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment, true, 0, 0, 0, 0, bootSectorLoad );
+        if ( 0 == g_currentPSP )
+            i8086_hard_exit( "unable to load executable\n", 0 );
+    
+        // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
+        // turbo pascal v3 doesn't give a good indication that it wants 80x25.
+        // word for DOS 6.0 is the same -- hard code it
+    
+        if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) ||
+             ends_with( g_acApp, "turbo.com" ) || ends_with( g_acApp, "word.exe" ) ||
+             ends_with( g_acApp, "bc.exe" )  || ends_with( g_acApp, "mulisp.com" ) )
         {
-            if ( g_KbdPeekAvailable )
-                tracer.Trace( "can't schedule a keyboard interrupt because interrupts are disabled!\n" );
+            if ( !g_forceConsole )
+                force80x25 = true;
         }
-    } while ( true );
-
-    if ( g_use80x25 )  // get any last-second screen updates displayed
-        UpdateDisplay();
-
-    high_resolution_clock::time_point tDone = high_resolution_clock::now();
-
-    if ( !g_UseOneThread )
-        peekKbdThread->EndThread();
-
-    g_consoleConfig.RestoreConsole( clearDisplayOnExit );
+    
+        if ( force80x25 )
+            PerhapsFlipTo80x25();
+    
+        g_diskTransferSegment = cpu.get_ds();
+        g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
+        g_haltExecution = false;
+        cpu.set_interrupt( true ); // DOS starts apps with interrupts enabled
+        uint32_t * pDailyTimer = (uint32_t *) ( pbiosdata + 0x6c );
+    
+        // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
+        // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
+        // Note that kbhit() makes the same call interally to the same cross-process API. It's no faster.
+    
+        unique_ptr<CSimpleThread> peekKbdThread( g_UseOneThread ? 0 : new CSimpleThread( PeekKeyboardThreadProc ) );
+    
+        uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
+        CPUCycleDelay delay( clockrate );
+        high_resolution_clock::time_point tStart = high_resolution_clock::now();
+    
+        do
+        {
+            total_cycles += cpu.emulate( 1000 );
+    
+            if ( g_haltExecution )
+                break;
+    
+            delay.Delay( total_cycles );
+    
+            // apps like mips.com write to video ram and never provide an opportunity to redraw the display
+    
+            if ( g_use80x25 )
+                throttled_UpdateDisplay( 200 );
+    
+            uint32_t dt = GetBiosDailyTimer();
+            bool timer_changed = ( dt != *pDailyTimer );
+            if ( timer_changed )
+                *pDailyTimer = dt;
+    
+            // check interrupt enable and trap flags externally to avoid side effects in the emulator
+    
+            if ( cpu.get_interrupt() && !cpu.get_trap() )
+            {
+                // if the keyboard peek thread has detected a keystroke, process it with an int 9.
+                // don't plumb through port 60 since apps work without that.
+    
+                if ( g_UseOneThread && g_consoleConfig.throttled_kbhit() )
+                    g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
+    
+                if ( g_SendControlCInt )
+                {
+                    tracer.Trace( "scheduling an int x23 -- control C\n" );
+                    g_SendControlCInt = false;
+                    cpu.external_interrupt( 0x23 );
+                    continue;
+                }
+    
+                if ( g_KbdPeekAvailable && !g_int9_pending )
+                {
+                    tracer.Trace( "%llu main loop: scheduling an int 9 -- keyboard\n", time_since_last() );
+                    cpu.external_interrupt( 9 );
+                    g_int9_pending = true;
+                    g_KbdPeekAvailable = false;
+                    continue;
+                }
+    
+                // if interrupt 8 (timer) or 0x1c (tick tock) are hooked by an app and 55 milliseconds have elapsed,
+                // invoke int 8, which by default then invokes int 1c.
+        
+                if ( timer_changed && ( InterruptHookedByApp( 0x1c ) || InterruptHookedByApp( 8 ) ) )
+                {
+                    // on my machine this is invoked about every 72 million total_cycles if no throttle sleeping happened (tens of thousands if so)
+        
+                    tracer.Trace( "scheduling an int 8 -- timer, dt: %#x, total_cycles %llu\n", dt, total_cycles );
+                    cpu.external_interrupt( 8 );
+                    continue;
+                }
+            }
+            else
+            {
+                if ( g_KbdPeekAvailable )
+                    tracer.Trace( "can't schedule a keyboard interrupt because interrupts are disabled!\n" );
+            }
+        } while ( true );
+    
+        if ( g_use80x25 )  // get any last-second screen updates displayed
+            UpdateDisplay();
+    
+        high_resolution_clock::time_point tDone = high_resolution_clock::now();
+    
+        if ( !g_UseOneThread )
+            peekKbdThread->EndThread();
+    
+        g_consoleConfig.RestoreConsole( clearDisplayOnExit );
 #ifdef _WIN32
-    CloseHandle( g_heventKeyStroke );
+        CloseHandle( g_heventKeyStroke );
 #endif
 
-    if ( printVideoMemory )
-        printDisplayBuffer( GetActiveDisplayPage() );
-
-    if ( showPerformance )
-    {
-        char ac[ 100 ];
-        long long totalTime = duration_cast<std::chrono::milliseconds>( tDone - tStart ).count();
-        printf( "\n" );
-        printf( "elapsed milliseconds: %16s\n", RenderNumberWithCommas( totalTime, ac ) );
-
-        #ifdef I8086_TRACK_CYCLES
-            printf( "8086 cycles:      %20s\n", RenderNumberWithCommas( total_cycles, ac ) );
-            printf( "clock rate: " );
-            if ( 0 == clockrate )
-            {
-                printf( "      %20s\n", "unbounded" );
-                uint64_t total_ms = total_cycles / 4770;
-                printf( "approx ms at 4.77Mhz: %16s  == ", RenderNumberWithCommas( total_ms, ac ) );
-                uint16_t days = (uint16_t) ( total_ms / 1000 / 60 / 60 / 24 );
-                uint16_t hours = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 * 24 ) ) / 1000 / 60 / 60 );
-                uint16_t minutes = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 ) ) / 1000 / 60 );
-                uint16_t seconds = (uint16_t) ( ( total_ms % ( 1000 * 60 ) ) / 1000 );
-                uint64_t milliseconds = ( ( total_ms % 1000 ) );
-                printf( "%u days, %u hours, %u minutes, %u seconds, %llu milliseconds\n", days, hours, minutes, seconds, milliseconds );
-            }
-            else
-                printf( "      %20s Hz\n", RenderNumberWithCommas( clockrate, ac ) );
-        #endif
-
-        #ifndef NDEBUG
-            uint8_t unique_first_opcodes = cpu.trace_opcode_usage();
-            printf( "unique first opcodes: %16u\n", unique_first_opcodes );
-        #endif
-
-        printf( "app exit code:    %20d\n", g_appTerminationReturnCode );
-    }
-
-    {
-        qsort( g_InterruptsCalled.data(), g_InterruptsCalled.size(), sizeof( IntCalled ), compare_int_entries );
-        bool ah_used = false;
-        size_t cEntries = g_InterruptsCalled.size();
-        tracer.Trace( "Interrupt usage by the app:\n" );
-        tracer.Trace( "  int     ah       calls    name\n" );
-        for ( size_t i = 0; i < cEntries; i++ )
+        if ( printVideoMemory )
+            printDisplayBuffer( GetActiveDisplayPage() );
+    
+        if ( showPerformance )
         {
-            IntCalled & ic = g_InterruptsCalled[ i ];
-            const char * pintstr = get_interrupt_string( ic.i, (uint8_t) ic.c, ah_used );
-            if ( ah_used )
-                tracer.Trace( "   %02x     %02x  %10d    %s\n", ic.i, ic.c, ic.calls, pintstr );
-            else
-                tracer.Trace( "   %02x         %10d    %s\n", ic.i, ic.calls, pintstr );
+            char ac[ 100 ];
+            long long totalTime = duration_cast<std::chrono::milliseconds>( tDone - tStart ).count();
+            printf( "\n" );
+            printf( "elapsed milliseconds: %16s\n", RenderNumberWithCommas( totalTime, ac ) );
+    
+            #ifdef I8086_TRACK_CYCLES
+                printf( "8086 cycles:      %20s\n", RenderNumberWithCommas( total_cycles, ac ) );
+                printf( "clock rate: " );
+                if ( 0 == clockrate )
+                {
+                    printf( "      %20s\n", "unbounded" );
+                    uint64_t total_ms = total_cycles / 4770;
+                    printf( "approx ms at 4.77Mhz: %16s  == ", RenderNumberWithCommas( total_ms, ac ) );
+                    uint16_t days = (uint16_t) ( total_ms / 1000 / 60 / 60 / 24 );
+                    uint16_t hours = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 * 24 ) ) / 1000 / 60 / 60 );
+                    uint16_t minutes = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 ) ) / 1000 / 60 );
+                    uint16_t seconds = (uint16_t) ( ( total_ms % ( 1000 * 60 ) ) / 1000 );
+                    uint64_t milliseconds = ( ( total_ms % 1000 ) );
+                    printf( "%u days, %u hours, %u minutes, %u seconds, %llu milliseconds\n", days, hours, minutes, seconds, milliseconds );
+                }
+                else
+                    printf( "      %20s Hz\n", RenderNumberWithCommas( clockrate, ac ) );
+            #endif
+    
+            #ifndef NDEBUG
+                uint8_t unique_first_opcodes = cpu.trace_opcode_usage();
+                printf( "unique first opcodes: %16u\n", unique_first_opcodes );
+            #endif
+    
+            printf( "app exit code:    %20d\n", g_appTerminationReturnCode );
         }
+    
+        {
+            qsort( g_InterruptsCalled.data(), g_InterruptsCalled.size(), sizeof( IntCalled ), compare_int_entries );
+            bool ah_used = false;
+            size_t cEntries = g_InterruptsCalled.size();
+            tracer.Trace( "Interrupt usage by the app:\n" );
+            tracer.Trace( "  int     ah       calls    name\n" );
+            for ( size_t i = 0; i < cEntries; i++ )
+            {
+                IntCalled & ic = g_InterruptsCalled[ i ];
+                const char * pintstr = get_interrupt_string( ic.i, (uint8_t) ic.c, ah_used );
+                if ( ah_used )
+                    tracer.Trace( "   %02x     %02x  %10d    %s\n", ic.i, ic.c, ic.calls, pintstr );
+                else
+                    tracer.Trace( "   %02x         %10d    %s\n", ic.i, ic.calls, pintstr );
+            }
+        }
+    }
+    catch ( bad_alloc & e )
+    {
+        printf( "caught exception bad_alloc -- out of RAM. If in RVOS use -h or -m to add RAM. %s\n", e.what() );
+    }
+    catch ( exception & e )
+    {
+        printf( "caught a standard execption: %s\n", e.what() );
+    }
+    catch( ... )
+    {
+        printf( "caught a generic exception\n" );
     }
 
     tracer.Trace( "exit code of %s: %d\n", g_thisApp, g_appTerminationReturnCode );
