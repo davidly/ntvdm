@@ -441,8 +441,11 @@ class ConsoleConfiguration
                 tracer.Trace( "old and new console output mode: %04x, %04x\n", oldOutputConsoleMode, dwMode );
                 SetConsoleMode( consoleOutputHandle, dwMode );
             #else
-                printf( "%c[1 q", 27 ); // 1 == cursor blinking block. 
-                fflush( stdout );
+                if ( isatty( fileno( stdout ) ) )
+                {
+                    printf( "%c[1 q", 27 ); // 1 == cursor blinking block. 
+                    fflush( stdout );
+                }
             #endif
 
                 outputEstablished = true;
@@ -474,8 +477,11 @@ class ConsoleConfiguration
             if ( outputEstablished )
             {
                 #ifndef _WIN32
-                    printf( "%c[0m", 27 ); // turn off display attributes
-                    fflush( stdout );
+                    if ( isatty( fileno( stdout ) ) )
+                    {
+                        printf( "%c[0m", 27 ); // turn off display attributes
+                        fflush( stdout );
+                    }
                 #endif
 
                 if ( clearScreen )
@@ -500,10 +506,13 @@ class ConsoleConfiguration
 
         void SendClsSequence()
         {
-            printf( "\x1b[2J" ); // clear the screen
-            printf( "\x1b[1G" ); // cursor to top line
-            printf( "\x1b[1d" ); // cursor to left side
-            fflush( stdout );
+            if ( isatty( fileno( stdout ) ) )
+            {
+                printf( "\x1b[2J" ); // clear the screen
+                printf( "\x1b[1G" ); // cursor to top line
+                printf( "\x1b[1d" ); // cursor to left side
+                fflush( stdout );
+            }
         } //SendClsSequence
 
         void ClearScreen()
