@@ -16,7 +16,7 @@ const
   pieceX = 1;
   pieceO = 2;
 
-  iterations = 100;
+  iterations = 10;
 
 type
   boardType = array[ 0..8 ] of integer;
@@ -44,6 +44,7 @@ begin
   {  dumpBoard; }
   p := pieceBlank;
   t := board[ 0 ];
+
   if pieceBlank <> t then
   begin
     if ( ( ( t = board[1] ) and ( t = board[2] ) ) or
@@ -197,6 +198,7 @@ begin
   for i := 0 to 8 do
     board[i] := pieceBlank;
 
+  WriteLn( 'begin' );
   get_time( timeStart );
 
   for i := 1 to loops do
@@ -213,3 +215,4 @@ begin
   WriteLn( 'moves evaluated: ', evaluated );
   WriteLn( 'iterations: ', loops );
 end.
+

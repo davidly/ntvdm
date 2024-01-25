@@ -22,7 +22,7 @@
 37 DIM sb%(10)
 38 mc% = 0
 39 PRINT "start time: "; TIME$
-40 FOR l% = 1 TO 100
+40 FOR l% = 1 TO 10
 41 mc% = 0
 42 al% = 2
 43 be% = 9

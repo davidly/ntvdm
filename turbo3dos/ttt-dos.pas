@@ -16,7 +16,7 @@ const
   pieceX = 1;
   pieceO = 2;
 
-  iterations = 100;
+  iterations = 1;
 
 type
   boardType = array[ 0..8 ] of integer;
@@ -187,3 +187,4 @@ begin
   WriteLn( 'moves evaluated: ', evaluated );
   WriteLn( 'iterations: ', loops );
 end.
+
