@@ -1037,8 +1037,10 @@ int main( argc, argv ) int argc; char * argv[];
         {
             /* execute the command then exit */
 
+/*
             for ( j = 2; j < argc; j++ )
                 printf( "argument %d: %s\n", j, argv[ j ] );
+*/
 
             if ( argc < 3 )
             {
