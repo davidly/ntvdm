@@ -338,7 +338,7 @@ struct i8086
             return flat_address( get_seg_value(), * (uint16_t *) ( _pcode + 2 ) );
         }
 
-        return flat_address( get_displacement_seg(), get_displacement() );// no offset; just a value from register(s)
+        return flat_address( get_displacement_seg(), get_displacement() ); // no offset; just a value from register(s)
     } //get_rm_ptr_common
 
     uint16_t * get_rm_ptr16()
@@ -374,7 +374,7 @@ struct i8086
             return get_displacement() + offset;
         }
  
-        if  ( 2 == _mod )
+        if ( 2 == _mod )
         {
             _bc += 2;
             uint16_t offset = * (uint16_t *) ( _pcode + 2 );
