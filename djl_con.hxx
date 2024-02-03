@@ -35,14 +35,27 @@ class ConsoleConfiguration
         static int throttled_kbhit() { return kbhit(); }
         static int portable_getch() { return getch(); }
         static char * portable_gets_s( char * buf, size_t bufsize ) { return gets( buf ); }
-        void RestoreConsole( bool clearScreen = true )
+
+        void RestoreConsoleInput()
         {
             if ( 0 != prev_int_23 )
             {
                 _dos_setvect( 0x23, prev_int_23 );
                 prev_int_23 = 0;
             }
+        } //RestoreConsoleInput
+
+        void RestoreConsoleOutput( bool clearScreen = true )
+        {
+            outputEstablished = false;
+        } //RestoreConsoleOutput
+
+        void RestoreConsole( bool clearScreen = true )
+        {
+            RestoreConsoleInput();
+            RestoreConsoleOutput( clearScreen );
         } //RestoreConsole
+
         bool IsOutputEstablished() { return outputEstablished; }
 };
 
@@ -383,6 +396,7 @@ class ConsoleConfiguration
 
         void EstablishConsoleOutput( int16_t width = 80, int16_t height = 24 )
         {
+            tracer.Trace( "  EstablishConsoleOutput width %u height %u, outputEstablished %d\n", width, height, outputEstablished );
             if ( outputEstablished )
                 return;
 
@@ -470,10 +484,8 @@ class ConsoleConfiguration
             }
         } //RestoreConsoleInput
         
-        void RestoreConsole( bool clearScreen = true )
+        void RestoreConsoleOutput( bool clearScreen = true )
         {
-            RestoreConsoleInput();
-
             if ( outputEstablished )
             {
                 #ifndef _WIN32
@@ -502,6 +514,12 @@ class ConsoleConfiguration
 
                 outputEstablished = false;
             }
+        } //RestoreConsoleOutput
+
+        void RestoreConsole( bool clearScreen = true )
+        {
+            RestoreConsoleInput();
+            RestoreConsoleOutput( clearScreen );
         } //RestoreConsole
 
         void SendClsSequence()

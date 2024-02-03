@@ -251,11 +251,10 @@ struct IntCalled
 };
 
 const uint8_t DefaultVideoAttribute = 7;                          // light grey text
-const uint32_t ScreenColumns = 80;                                // this is the only mode supported
-const uint32_t ScreenRows = 25;                                   // this is the only mode supported
+const uint8_t DefaultVideoMode = 3;                               // 3=80x25 16 colors
+const uint32_t ScreenColumns = 80;      
+const uint32_t DefaultScreenRows = 25;         
 const uint32_t ScreenColumnsM1 = ScreenColumns - 1;               // columns minus 1
-const uint32_t ScreenRowsM1 = ScreenRows - 1;                     // rows minus 1
-const uint32_t ScreenBufferSize = 2 * ScreenColumns * ScreenRows; // char + attribute
 const uint32_t ScreenBufferSegment = 0xb800;                      // location in i8086 physical RAM of CGA display. 16k, 4k per page.
 const uint32_t MachineCodeSegment = 0x0060;                       // machine code for keyboard/etc. starts here
 const uint16_t AppSegment = 0x1000 / 16;                          // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
@@ -281,9 +280,8 @@ static uint16_t g_diskTransferOffset = 0;            // offset of current disk t
 static vector<FileEntry> g_fileEntries;              // vector of currently open files
 static vector<FileEntry> g_fileEntriesFCB;           // vector of currently open files with FCBs
 static vector<DosAllocation> g_allocEntries;         // vector of blocks allocated to DOS apps
-static uint8_t g_videoMode = 3;                      // 2=80x25 16 grey, 3=80x25 16 colors
 static uint16_t g_currentPSP = 0;                    // psp of the currently running process
-static bool g_use80x25 = false;                      // true to force 80x25 with cursor positioning
+static bool g_use80xRowsMode = false;                // true to force 80 x 25/43/50 with cursor positioning
 static bool g_forceConsole = false;                  // true to force teletype mode, with no cursor positioning
 static bool g_int16_1_loop = false;                  // true if an app is looping to get keyboard input. don't busy loop.
 static bool g_KbdPeekAvailable = false;              // true when peek on the keyboard sees keystrokes
@@ -303,7 +301,7 @@ static uint16_t g_int16_0_seg = 0;                   // "
 static char cwd[ MAX_PATH ] = {0};                   // used as a temporary in several locations
 static vector<IntCalled> g_InterruptsCalled;         // track interrupt usage
 static high_resolution_clock::time_point g_tAppStart; // system time at app start
-static uint8_t g_bufferLastUpdate[ ScreenBufferSize ] = {0}; // used to check for changes in video memory
+static uint8_t g_bufferLastUpdate[ 80 * 50 * 2 ] = {0}; // used to check for changes in video memory. At most we support 80 by 50
 static CKeyStrokes g_keyStrokes;                     // read or write keystrokes between kslog.txt and the app
 static bool g_UseOneThread = false;                  // true if no keyboard thread should be used
 static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
@@ -505,8 +503,8 @@ static void usage( char const * perr )
     printf( "Emulates an 8086 and MS-DOS 3.30 runtime environment.\n" );
     printf( "\n" );
     printf( "  -b               load/run program as the boot sector at 07c0:0000\n" );
-    printf( "  -c               don't automatically change window size.\n" );
-    printf( "  -C               change text area to 80x25 (don't use tty mode).\n" );
+    printf( "  -c               tty mode. don't automatically make text area 80x25.\n" );
+    printf( "  -C               make text area 80x25 (not tty mode). also -C:43 -C:50\n" );
     printf( "  -d               don't clear the display on exit\n" );
     printf( "  -e:env,...       define environment variables.\n" );
     printf( "  -h               load high above 64k and below 0xa0000.\n" );
@@ -660,6 +658,63 @@ void SetActiveDisplayPage( uint8_t page )
     assert( page <= 3 );
     * cpu.flat_address8( 0x40, 0x62 ) = page;
 } //SetActiveDisplayPage
+
+uint8_t GetVideoMode()
+{
+    return * cpu.flat_address8( 0x40, 0x49 );
+} //GetVideoMode
+
+void SetVideoMode( uint8_t mode )
+{
+    * cpu.flat_address8( 0x40, 0x49 ) = mode;
+} //SetVideoMode
+
+uint8_t GetVideoModeOptions()
+{
+    return * cpu.flat_address8( 0x40, 0x87 );
+} //GetVideoModeOptions
+
+void SetVideoModeOptions( uint8_t val )
+{
+    * cpu.flat_address8( 0x40, 0x87 ) = val;
+} //SetVideoModeOptions
+
+uint8_t GetVideoDisplayCombination()
+{
+    return * cpu.flat_address8( 0x40, 0x8a );
+} //GetVideoDisplayCombination
+
+void SetVideoDisplayCombination( uint8_t comb )
+{
+    * cpu.flat_address8( 0x40, 0x8a ) = comb;
+} //SetVideoDisplayCombination
+
+uint8_t GetScreenRows()
+{
+    return 1 + cpu.mbyte( 0x40, 0x84 );
+} //GetScreenRows
+
+uint8_t GetScreenRowsM1()
+{
+    return  cpu.mbyte( 0x40, 0x84 );
+} //GetScreenRowsM1
+
+void SetScreenRows( uint8_t rows )
+{
+    tracer.Trace( "  setting screen rows to %u\n", rows );
+    * cpu.flat_address8( 0x40, 0x84 ) = rows - 1;
+} //SetScreenRows
+
+void TraceBiosInfo()
+{
+    tracer.Trace( "  bios information:\n" );
+    tracer.Trace( "    0x49 display mode:              %#x\n", cpu.mbyte( 0x40, 0x49 ) );
+    tracer.Trace( "    0x62 active display page:       %#x\n", cpu.mbyte( 0x40, 0x62 ) );
+    tracer.Trace( "    0x84 screen rows:               %#x\n", cpu.mbyte( 0x40, 0x84 ) );
+    tracer.Trace( "    0x87 ega feature bits:          %#x\n", cpu.mbyte( 0x40, 0x87 ) );
+    tracer.Trace( "    0x89 video display area:        %#x\n", cpu.mbyte( 0x40, 0x89 ) );
+    tracer.Trace( "    0x8a video display combination: %#x\n", cpu.mbyte( 0x40, 0x8a ) );
+} //TraceBiosInfo
 
 uint8_t * GetVideoMem()
 {
@@ -1232,7 +1287,7 @@ bool keyState( int vkey )
 void UpdateScreenCursorPosition( uint8_t row, uint8_t col )
 {
     tracer.Trace( "  updating screen cursor position to %d %d\n", row, col );
-    assert( g_use80x25 );
+    assert( g_use80xRowsMode );
 #ifdef _WIN32    
     COORD pos = { col, row };
     SetConsoleCursorPosition( g_hConsoleOutput, pos );
@@ -1257,13 +1312,13 @@ void SetCursorPosition( uint8_t row, uint8_t col )
     cursordata[ 0 ] = col;
     cursordata[ 1 ] = row;
 
-    if ( g_use80x25 )
+    if ( g_use80xRowsMode )
         UpdateScreenCursorPosition( row, col );
 } //SetCursorPosition
 
 void UpdateScreenCursorPosition()
 {
-    assert( g_use80x25 );
+    assert( g_use80xRowsMode );
     uint8_t row, col;
     GetCursorPosition( row, col );
     UpdateScreenCursorPosition( row, col );
@@ -1605,7 +1660,7 @@ void traceDisplayBuffers()
     {
         tracer.Trace( "  cga memory buffer %d\n", i );
         uint8_t * pbuf = cpu.flat_address8( ScreenBufferSegment, (uint16_t) ( 0x1000 * i ) );
-        for ( size_t y = 0; y < ScreenRows; y++ )
+        for ( size_t y = 0; y < GetScreenRows(); y++ )
         {
             size_t yoffset = y * ScreenColumns * 2;
             tracer.Trace( "    row %02u: '", y );
@@ -1623,7 +1678,7 @@ void printDisplayBuffer( int buffer )
 {
     printf( "  cga memory buffer %d\n", buffer );
     uint8_t * pbuf = cpu.flat_address8( ScreenBufferSegment, (uint16_t) ( 0x1000 * buffer ) );
-    for ( size_t y = 0; y < ScreenRows; y++ )
+    for ( size_t y = 0; y < GetScreenRows(); y++ )
     {
         size_t yoffset = y * ScreenColumns * 2;
         bool blank = true;
@@ -1654,7 +1709,7 @@ void traceDisplayBufferAsHex()
 {
     tracer.Trace( "cga memory buffer %d\n" );
     uint8_t * pbuf = GetVideoMem();
-    for ( size_t y = 0; y < ScreenRows; y++ )
+    for ( size_t y = 0; y < GetScreenRows(); y++ )
     {
         size_t yoffset = y * ScreenColumns * 2;
         tracer.Trace( "    row %02u: '", y );
@@ -1679,8 +1734,8 @@ static wchar_t awcLowDOSChars[ 32 ] =
 
 void UpdateDisplayRow( uint32_t y )
 {
-    assert( g_use80x25 );
-    if ( y >= ScreenRows )
+    assert( g_use80xRowsMode );
+    if ( y >= GetScreenRows() )
         return;
 
     uint8_t * pbuf = GetVideoMem();
@@ -1724,12 +1779,12 @@ void UpdateDisplayRow( uint32_t y )
     
     BOOL ok = WriteConsoleW( g_hConsoleOutput, awcLine, ScreenColumns, 0, 0 );
     if ( !ok )
-        tracer.Trace( "writeconsole failed with error %d\n", GetLastError() );
+        tracer.Trace( "writeconsole failed row %u with error %d\n", y, GetLastError() );
     
     DWORD dwWritten;
     ok = WriteConsoleOutputAttribute( g_hConsoleOutput, aAttribs, ScreenColumns, pos, &dwWritten );
     if ( !ok )
-        tracer.Trace( "writeconsoleoutputattribute failed with error %d\n", GetLastError() );
+        tracer.Trace( "writeconsoleoutputattribute failed row %u with error %d\n", y, GetLastError() );
 } //UpdateDisplayRow
 
 #else
@@ -1771,8 +1826,8 @@ uint8_t MapAsciiArt( uint8_t x )
 
 void UpdateDisplayRow( uint32_t y )
 {
-    assert( g_use80x25 );
-    if ( y >= ScreenRows )
+    assert( g_use80xRowsMode );
+    if ( y >= GetScreenRows() )
         return;
 
     uint8_t * pbuf = GetVideoMem();
@@ -1828,7 +1883,7 @@ void UpdateDisplayRow( uint32_t y )
 
 bool UpdateDisplay()
 {
-    assert( g_use80x25 );
+    assert( g_use80xRowsMode );
     uint8_t * pbuf = GetVideoMem();
 
     if ( DisplayUpdateRequired() )
@@ -1844,7 +1899,7 @@ bool UpdateDisplay()
                           csbi.srWindow.Left, csbi.srWindow.Top, csbi.srWindow.Right, csbi.srWindow.Bottom );
         #endif
 
-        for ( uint32_t y = 0; y < ScreenRows; y++ )
+        for ( uint32_t y = 0; y < GetScreenRows(); y++ )
         {
             uint32_t yoffset = y * ScreenColumns * 2;
             if ( memcmp( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 ) )
@@ -1874,10 +1929,10 @@ bool throttled_UpdateDisplay( int64_t delay = 50 )
 
 void ClearDisplay()
 {
-    assert( g_use80x25 );
+    assert( g_use80xRowsMode );
     uint8_t * pbuf = GetVideoMem();
 
-    for ( size_t y = 0; y < ScreenRows; y++ )
+    for ( size_t y = 0; y < GetScreenRows(); y++ )
         memcpy( pbuf + ( y * 2 * ScreenColumns ), blankLine, sizeof( blankLine ) );
 } //ClearDisplay
 
@@ -1963,7 +2018,7 @@ const IntInfo interrupt_list[] =
     { 0x10, 0x0f, "get video mode" },
     { 0x10, 0x10, "set palette registers" },
     { 0x10, 0x11, "character generator ega" },
-    { 0x10, 0x12, "alternate select ega" },
+    { 0x10, 0x12, "alternate select ega/vga" },
     { 0x10, 0x13, "write character string" },
     { 0x10, 0x14, "lcd handler" },
     { 0x10, 0x15, "return physical display characteristics" },
@@ -2322,7 +2377,7 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
 
     if ( throttle && !_durationLastPeek.HasTimeElapsedMS( 100 ) )
     {
-        if ( update_display && g_use80x25 && _durationLastUpdate.HasTimeElapsedMS( 333 ) )
+        if ( update_display && g_use80xRowsMode && _durationLastUpdate.HasTimeElapsedMS( 333 ) )
             UpdateDisplay();
 
         if ( sleep_on_throttle )
@@ -2862,7 +2917,7 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
 
     if ( throttle && !_durationLastPeek.HasTimeElapsedMS( 100 ) )
     {
-        if ( update_display && g_use80x25 && _durationLastUpdate.HasTimeElapsedMS( 333 ) )
+        if ( update_display && g_use80xRowsMode && _durationLastUpdate.HasTimeElapsedMS( 333 ) )
             UpdateDisplay();
 
         if ( sleep_on_throttle )
@@ -3470,21 +3525,21 @@ bool GetFileDOSTimeDate( const char * path, uint16_t & dos_time, uint16_t & dos_
     return false;
 } //GetFileDOSTimeDate
 
-void PerhapsFlipTo80x25()
-{
-    static bool firstTime = true;
+static bool s_firstTimeFlip = true;
 
-    if ( firstTime )
+void PerhapsFlipTo80xRows()
+{
+    if ( s_firstTimeFlip )
     {
-        firstTime = false;
+        s_firstTimeFlip = false;
         if ( !g_forceConsole )
         {
-            g_use80x25 = true;
-            g_consoleConfig.EstablishConsoleOutput( ScreenColumns, ScreenRows );
+            g_use80xRowsMode = true;
+            g_consoleConfig.EstablishConsoleOutput( ScreenColumns, GetScreenRows() );
             ClearDisplay();
         }
     }
-} //PerhapsFlipTo80x25
+} //PerhapsFlipTo80xRows
 
 // naming: row/col, upper/lower, left/right
 void scroll_up( uint8_t * pbuf, int lines, int rul, int cul, int rlr, int clr )
@@ -3525,18 +3580,34 @@ void handle_int_10( uint8_t c )
         {
             // set video mode. 0 = 40x25, 3 = 80x25, 13h = graphical. no return value
 
-            PerhapsFlipTo80x25();
+            uint8_t oldScreenRows = GetScreenRows();
+            PerhapsFlipTo80xRows();
             uint8_t mode = cpu.al();
-            tracer.Trace( "  set video mode to %#x\n", mode );
+
+            if ( 0x80 & mode )
+                SetVideoModeOptions( 0x80 | GetVideoModeOptions() );
+
+            mode &= 0x7f; // strip the top bit which prevents ega/mcga/vga from clearing the display
+            tracer.Trace( "  set video mode to %#x, options are %#x\n", mode, GetVideoModeOptions() );
 
             if ( 2 == mode || 3 == mode ) // only 80x25 is supported with buffer address 0xb8000
+                SetVideoMode( 3 ); // it's all we support
+
+            // apps like quickp expect that setting the mode to 3 resets the line count to 25.
+            // apps like qbx call set video mode not expecting the line count to be reset to 25.
+
+            static bool ignorableFirstCall = true;
+
+            if ( 25 != oldScreenRows && !ignorableFirstCall )
             {
-                g_videoMode = 3; // it's all we support
-                uint8_t * pmode = cpu.flat_address8( 0x40, 0x49 ); // update the mode in bios data
-                *pmode = mode;
+                SetScreenRows( 25 );
+                g_consoleConfig.RestoreConsoleOutput( false );
+                s_firstTimeFlip = true;
+                PerhapsFlipTo80xRows();
+                ClearLastUpdateBuffer();
             }
 
-            cpu.set_al( 0x30 );
+            ignorableFirstCall = false;
 
             return;
         }
@@ -3562,14 +3633,14 @@ void handle_int_10( uint8_t c )
         {
             tracer.Trace( "  set cursor position to row %d col %d\n", cpu.dh(), cpu.dl() );
             uint8_t prevRow = 0, prevCol = 0;
-            if ( !g_use80x25 )
+            if ( !g_use80xRowsMode )
                 GetCursorPosition( prevRow, prevCol );
 
             row = cpu.dh();
             col = cpu.dl();
             SetCursorPosition( row, col );
 
-            if ( !g_use80x25 )
+            if ( !g_use80xRowsMode )
             {
                 if ( 0 == col && ( row == ( prevRow + 1 ) ) )
                 {
@@ -3599,7 +3670,7 @@ void handle_int_10( uint8_t c )
             uint8_t page = cpu.al();
             if ( page <= 3 )
             {
-                PerhapsFlipTo80x25();
+                PerhapsFlipTo80xRows();
                 tracer.Trace( "  set video page to %d\n", page );
                 SetActiveDisplayPage( page );
             }
@@ -3617,7 +3688,7 @@ void handle_int_10( uint8_t c )
             // lines are inserted at the bottom with all lines moving up.
 
             int lines = (int) (uint8_t) cpu.al();
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
             {
                 init_blankline( (uint8_t) cpu.bh() );
 
@@ -3634,7 +3705,7 @@ void handle_int_10( uint8_t c )
                     return;
 
                 uint8_t * pbuf = GetVideoMem();
-                if ( 0 == lines || lines >= ScreenRows )
+                if ( 0 == lines || lines >= GetScreenRows() )
                 {
                     if ( 0 == lines )
                     {
@@ -3671,7 +3742,7 @@ void handle_int_10( uint8_t c )
             // lines are inserted at the top with all lines moving down.
 
             int lines = (int) (uint8_t) cpu.al();
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
             {
                 init_blankline( (uint8_t) cpu.bh() );
 
@@ -3687,7 +3758,7 @@ void handle_int_10( uint8_t c )
                     return;
 
                 uint8_t * pbuf = GetVideoMem();
-                if ( 0 == lines || lines >= ScreenRows )
+                if ( 0 == lines || lines >= GetScreenRows() )
                 {
                     if ( 0 == lines )
                     {
@@ -3730,9 +3801,9 @@ void handle_int_10( uint8_t c )
             // read attributes+character at current position. bh == display page
             // returns al character and ah attribute of character
 
-            PerhapsFlipTo80x25();
+            PerhapsFlipTo80xRows();
 
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
             {
                 // gwbasic uses this for input$ to get the character typed.
 
@@ -3762,7 +3833,7 @@ void handle_int_10( uint8_t c )
 
             char ch = cpu.al();
 
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
             {
                 uint8_t * pbuf = GetVideoMem();
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
@@ -3801,7 +3872,7 @@ void handle_int_10( uint8_t c )
             if ( 0x1b == ch ) // escape should be a left arrow, but it just confuses the console
                 ch = ' ';
 
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
             {
                 uint8_t * pbuf = GetVideoMem();
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
@@ -3840,7 +3911,7 @@ void handle_int_10( uint8_t c )
             if ( page > 3 )
                 page = 0;
 
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
             {
                 uint8_t curPage = GetActiveDisplayPage();
                 SetActiveDisplayPage( page );
@@ -3854,10 +3925,10 @@ void handle_int_10( uint8_t c )
                 }
                 else if ( 0x0d == ch ) // CR
                 {
-                    if ( row >= ScreenRowsM1 )
+                    if ( row >= GetScreenRowsM1() )
                     {
                         tracer.Trace( "  carriage scrolling up a line\n"  );
-                        scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
+                        scroll_up( pbuf, 1, 0, 0, GetScreenRowsM1(), ScreenColumnsM1 );
                     }
                     else
                     {
@@ -3901,15 +3972,18 @@ void handle_int_10( uint8_t c )
         }
         case 0xf:
         {
-            // get video mode
+            // get video mode / get video state
 
-            //PerhapsFlipTo80x25();  too aggressive for some apps
+            //PerhapsFlipTo80xRows();  too aggressive for some apps
 
-            cpu.set_al( g_videoMode );
+            uint8_t mode = GetVideoMode();
+            uint8_t options = GetVideoModeOptions();
+
+            cpu.set_al( mode | ( options & 0x80 ) );
             cpu.set_ah( ScreenColumns ); // columns
             cpu.set_bh( GetActiveDisplayPage() ); // active display page
 
-            tracer.Trace( "  returning video mode %u, columns %u, display page %u\n", cpu.al(), cpu.ah(), cpu.bh() );
+            tracer.Trace( "  returning video mode %u, columns %u, display page %u, options %#x\n", cpu.al(), cpu.ah(), cpu.bh(), GetVideoModeOptions() );
             return;
         }
         case 0x10:
@@ -3920,15 +3994,52 @@ void handle_int_10( uint8_t c )
         }
         case 0x11:
         {
-            // character generator (ignore)
+            // character generator
 
-            PerhapsFlipTo80x25();  // QuickPascal calls this, and it's a good indication of 80x25 mode
+            TraceBiosInfo();
+            tracer.Trace( "  character generator routine %#x\n", cpu.al() );
+            PerhapsFlipTo80xRows();  // QuickPascal calls this, and it's a good indication of 80x25 mode
+            switch ( cpu.al() )
+            {
+                case 0x12: // ROM 8x8 double dot character definitions. switch to 80x50 mode
+                {
+                    SetScreenRows( 50 );
+                    g_consoleConfig.RestoreConsoleOutput( false );
+                    s_firstTimeFlip = true;
+                    PerhapsFlipTo80xRows();
+                    ClearLastUpdateBuffer();
+                    break;
+                }
+                case 0x14: // ROM 8x16 double dot. switch to 80x25 mode
+                {
+                    SetScreenRows( 25 );
+                    g_consoleConfig.RestoreConsoleOutput( false );
+                    s_firstTimeFlip = true;
+                    PerhapsFlipTo80xRows();
+                    ClearLastUpdateBuffer();
+                    break;
+                }
+                case 0x30: // get current character generator information
+                {
+                    uint8_t rows = GetScreenRows();
+                    cpu.set_dl( rows - 1 ); // rows less 1
+                    uint8_t points = ( rows == 25 ? 16 : rows == 50 ? 8 : 14 );
+                    cpu.set_cx( points );
+                    cpu.set_es( 0x50 ); // somewhat random
+                    cpu.set_bp( 0 );
+                    tracer.Trace( "  returning dl (rows) %u and cx %u points\n", cpu.dl(), cpu.get_cx() );
+                    break;
+                }
+            }
+
             return;
         }
         case 0x12:
         {
-            // video subsystem configuration. alternate select. return some defaults
+            // video subsystem configuration. alternate select ega/vga. return some defaults
 
+            PerhapsFlipTo80xRows();
+            TraceBiosInfo();
             if ( 0x10 == cpu.bl() )
             {
                 // wordperfect uses this to see how much RAM is installed
@@ -3948,7 +4059,17 @@ void handle_int_10( uint8_t c )
                     cpu.set_bx( 0 );
 
                 // setting this breaks quick pascal cpu.set_cx( 0x5 ); // primary cga 80x25
+                cpu.set_cx( 3 );  // 256k installed
             }
+            else if ( 0x32 == cpu.bl() )
+            {
+                // cpu access to video ram
+
+                tracer.Trace( "  enable cpu access to video RAM: %d\n", cpu.al() );
+                cpu.set_al( 0 ); // indicate failure
+            }
+            else
+                tracer.Trace( "  unhandled code %#x\n", cpu.bl() );
 
             return;
         }
@@ -3961,12 +4082,25 @@ void handle_int_10( uint8_t c )
         }
         case 0x1a:
         {
-            if ( 0 == cpu.al() )
+            // get/set Video Display Combination (VGA)
+
+            PerhapsFlipTo80xRows();  // Turbo basic 1.1 calls this
+
+            if ( 0 == cpu.al() ) // get
             {
-                PerhapsFlipTo80x25();  // Turbo basic 1.1 calls this
-                cpu.set_bl( 2 ); // CGA with color (active display)
-                cpu.set_bh( 2 ); // CGA with color (alternate display)
+                // 2 == CGA color display.  8 == VGA with analog color display
+                cpu.set_al( 0x1a );
+                cpu.set_bl( GetVideoDisplayCombination() );
+                cpu.set_bh( 0 ); // no inactive display
+                tracer.Trace( "  getting video display combination, returning %#x\n", cpu.bl() );
             }
+            else if ( 1 == cpu.al() ) // set
+            {
+                tracer.Trace( "  setting video display combination to %#x\n", cpu.bl() );
+                cpu.set_al( 0x1a );
+            }
+
+            TraceBiosInfo();
             return;
         }
         case 0x1b:
@@ -4007,7 +4141,7 @@ void handle_int_10( uint8_t c )
         {
             // (topview) update real screen from video buffer. No topview support, but why not update the display?
 
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
                 UpdateDisplay();
 
             return;
@@ -4033,7 +4167,7 @@ void handle_int_16( uint8_t c )
         {
             // get character. ascii into al, scancode into ah
 
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
                 UpdateDisplay();
 
             InjectKeystrokes();
@@ -4069,7 +4203,7 @@ void handle_int_16( uint8_t c )
 
             // apps like WordStar draw a bunch of text to video memory then call this, which is the chance to update the display
 
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
             {
                 bool update = throttled_UpdateDisplay();
                 if ( update )
@@ -4365,7 +4499,7 @@ void wait_for_kbd_to_al()
     CKbdBuffer kbd_buf;
     while ( kbd_buf.IsEmpty() )
     {
-        if ( first && g_use80x25 )
+        if ( first && g_use80xRowsMode )
         {
             first = false;
             UpdateDisplay();
@@ -4387,7 +4521,7 @@ void wait_for_kbd_to_al()
 
 void output_character( char ch )
 {
-    if ( g_use80x25 )
+    if ( g_use80xRowsMode )
     {
         uint8_t row, col;
         uint8_t * pbuf = GetVideoMem();
@@ -4407,10 +4541,10 @@ void output_character( char ch )
             col = 0;
         else if ( 0xd == ch ) // LF
         {
-            if ( row >= ScreenRowsM1 )
+            if ( row >= GetScreenRowsM1() )
             {
                 tracer.Trace( "  line feed scrolling up a line\n"  );
-                scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
+                scroll_up( pbuf, 1, 0, 0, GetScreenRowsM1(), ScreenColumnsM1 );
             }
             else
                 row = row + 1;
@@ -4464,7 +4598,7 @@ void handle_int_21( uint8_t c )
             uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
             pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
 
-            if ( g_use80x25)
+            if ( g_use80xRowsMode)
                 UpdateDisplay();
 
             InjectKeystrokes();
@@ -4569,7 +4703,7 @@ void handle_int_21( uint8_t c )
             uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
             pbiosdata[ 0x17 ] = get_keyboard_flags_depressed();
 
-            if ( g_use80x25)
+            if ( g_use80xRowsMode)
                 UpdateDisplay();
 
             InjectKeystrokes();
@@ -4582,7 +4716,7 @@ void handle_int_21( uint8_t c )
             CKbdBuffer kbd_buf;
             while ( kbd_buf.IsEmpty() )
             {
-                if ( first && g_use80x25 )
+                if ( first && g_use80xRowsMode )
                 {
                     first = false;
                     UpdateDisplay();
@@ -5691,7 +5825,7 @@ void handle_int_21( uint8_t c )
                 return;
             }
 
-            assert( 0 != g_allocEntries.size() ); // loading the app creates 1 shouldn't be freed.
+            assert( 0 != g_allocEntries.size() ); // loading the app creates 1 that shouldn't be freed.
             trace_all_allocations();
 
             uint16_t new_paragraphs = cpu.get_dx();
@@ -6027,7 +6161,7 @@ void handle_int_21( uint8_t c )
     
                 if ( 0 == handle )
                 {
-                    if ( g_use80x25 )
+                    if ( g_use80xRowsMode )
                         UpdateDisplay();
     
 #if USE_ASSEMBLY_FOR_KBD
@@ -6067,7 +6201,7 @@ void handle_int_21( uint8_t c )
                          p[x] = acBuffer[x];
                          tracer.Trace( "  returning character %02x = '%c'\n", p[x], printable( p[x] ) );
 
-                         if ( g_use80x25 )
+                         if ( g_use80xRowsMode )
                          {
                              uint32_t offset = row * 2 * ScreenColumns + col * 2;
                              pvideo[ offset ] = printable( p[x] );
@@ -6081,7 +6215,7 @@ void handle_int_21( uint8_t c )
 
                     // gets_s writes to the display directly. redraw everything 
 
-                    if ( g_use80x25 )
+                    if ( g_use80xRowsMode )
                         ClearLastUpdateBuffer();
 #endif
 
@@ -6165,7 +6299,7 @@ void handle_int_21( uint8_t c )
     
                 if ( 1 == handle || 2 == handle )
                 {
-                    if ( g_use80x25 )
+                    if ( g_use80xRowsMode )
                     {
                         uint8_t * pbuf = GetVideoMem();
                         GetCursorPosition( row, col );
@@ -6182,10 +6316,10 @@ void handle_int_21( uint8_t c )
                             }
                             else if ( 0x0d == ch ) // CR
                             {
-                                if ( row >= ScreenRowsM1 )
+                                if ( row >= GetScreenRowsM1() )
                                 {
                                     tracer.Trace( "  carriage scrolling up a line\n"  );
-                                    scroll_up( pbuf, 1, 0, 0, ScreenRowsM1, ScreenColumnsM1 );
+                                    scroll_up( pbuf, 1, 0, 0, GetScreenRowsM1(), ScreenColumnsM1 );
                                 }
                                 else
                                 {
@@ -6460,7 +6594,7 @@ void handle_int_21( uint8_t c )
                         else if ( 1 == handle ) // stdout
                             result = 2;
 
-                        if ( g_use80x25 )
+                        if ( g_use80xRowsMode )
                             result |= 0x80;
 
                         tracer.Trace( "  handle %u result %u\n", handle, result );
@@ -7539,7 +7673,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
         if ( 0x1680 == cpu.get_ax() ) // program idle release timeslice
         {
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
                 UpdateDisplay();
             SleepAndScheduleInterruptCheck();
             cpu.set_al( 0x01 ); // not installed, do NOT install
@@ -8350,7 +8484,8 @@ int main( int argc, char * argv[] )
         bool showPerformance = false;
         char acAppArgs[127] = {0}; // max length for DOS command tail
         bool traceInstructions = false;
-        bool force80x25 = false;
+        bool force80xRows = false;
+        uint8_t rowCount = 25;
         bool clearDisplayOnExit = true;
         bool bootSectorLoad = false;
         bool printVideoMemory = false;
@@ -8396,7 +8531,15 @@ int main( int argc, char * argv[] )
                 else if ( 'c' == parg[1] )
                     g_forceConsole = true;
                 else if ( 'C' == parg[1] )
-                    force80x25 = true;
+                {
+                    force80xRows = true;
+                    if ( ':' == parg[2] )
+                    {
+                        rowCount = (uint8_t) strtoul( parg + 3, 0, 10 );
+                        if ( rowCount > 50 || rowCount < 25 )
+                            rowCount = 25;
+                    }
+                }
                 else if ( 'd' == ca )
                     clearDisplayOnExit = false;
 #ifndef _WIN32
@@ -8577,17 +8720,23 @@ int main( int argc, char * argv[] )
         * (uint16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
         * (uint16_t *) ( pbiosdata + 0x1a ) = 0x1e;           // keyboard buffer head
         * (uint16_t *) ( pbiosdata + 0x1c ) = 0x1e;           // keyboard buffer tail
-        * (uint8_t *)  ( pbiosdata + 0x49 ) = g_videoMode;    // video mode is 80x25, 16 colors
+        * (uint8_t *)  ( pbiosdata + 0x49 ) = DefaultVideoMode; // video mode is 3 == 80x25, 16 colors
         * (uint16_t *) ( pbiosdata + 0x4a ) = ScreenColumns;  // 80
         * (uint16_t *) ( pbiosdata + 0x4c ) = 0x1000;         // video regen buffer size
         * (uint8_t *)  ( pbiosdata + 0x60 ) = 7;              // cursor ending/bottom scan line
         * (uint8_t *)  ( pbiosdata + 0x61 ) = 6;              // cursor starting/top scan line
         * (uint8_t *)  ( pbiosdata + 0x62 ) = 0;              // current display page
         * (uint16_t *) ( pbiosdata + 0x63 ) = 0x3d4;          // base port for 6845 CRT controller. color
+        * (uint16_t *) ( pbiosdata + 0x65 ) = 41;             // 6845 crt mode control register value
+        * (uint16_t *) ( pbiosdata + 0x66 ) = 48;             // cga palette mask
         * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
         * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start
         * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer start
-        * (uint8_t *)  ( pbiosdata + 0x84 ) = ScreenRows;     // 25
+        * (uint8_t *)  ( pbiosdata + 0x84 ) = DefaultScreenRows - 1; // 25 - 1
+        * (uint8_t *)  ( pbiosdata + 0x87 ) = 0x60;           // video mode options for ega+
+        * (uint8_t *)  ( pbiosdata + 0x88 ) = 9;              // ega feature bits
+        * (uint8_t *)  ( pbiosdata + 0x89 ) = 0x51;           // video display area (400 line mode, vga active)
+        * (uint8_t *)  ( pbiosdata + 0x8a ) = 0x8;            // 2 == CGA color, 8 == VGA color
         * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff0 ) ) = 0xea;   // power on entry point (used by mulisp to detect if it's a standard PC) ea = jmp far
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff1 ) ) = 0xc0;   // "
@@ -8705,11 +8854,14 @@ int main( int argc, char * argv[] )
              ends_with( g_acApp, "bc.exe" )  || ends_with( g_acApp, "mulisp.com" ) )
         {
             if ( !g_forceConsole )
-                force80x25 = true;
+                force80xRows = true;
         }
-    
-        if ( force80x25 )
-            PerhapsFlipTo80x25();
+
+        if ( force80xRows )
+        {
+            SetScreenRows( rowCount );
+            PerhapsFlipTo80xRows();
+        }
     
         g_diskTransferSegment = cpu.get_ds();
         g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
@@ -8738,7 +8890,7 @@ int main( int argc, char * argv[] )
     
             // apps like mips.com write to video ram and never provide an opportunity to redraw the display
     
-            if ( g_use80x25 )
+            if ( g_use80xRowsMode )
                 throttled_UpdateDisplay( 200 );
     
             uint32_t dt = GetBiosDailyTimer();
@@ -8792,7 +8944,7 @@ int main( int argc, char * argv[] )
             }
         } while ( true );
     
-        if ( g_use80x25 )  // get any last-second screen updates displayed
+        if ( g_use80xRowsMode )  // get any last-second screen updates displayed
             UpdateDisplay();
     
         high_resolution_clock::time_point tDone = high_resolution_clock::now();

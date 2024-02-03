@@ -2,10 +2,19 @@
 
 #include <time.h>
 using namespace std;
+
+#ifndef WATCOM
 using namespace std::chrono;
+#endif
 
 class CPUCycleDelay
 {
+#ifdef WATCOM // no implementation on DOS
+    public:
+        CPUCycleDelay( uint64_t clockRate ) {}
+        void Reset() {}
+        void Delay( uint64_t cycles_total ) {}
+#else
     private:
         high_resolution_clock::time_point start_execution;
         uint64_t clock_rate;
@@ -48,4 +57,5 @@ class CPUCycleDelay
                 } while ( true );
             }
         } //Delay
+#endif //WATCOM
 }; //CPUCycleDelay

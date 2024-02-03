@@ -132,6 +132,8 @@ struct i8086
     void * flat_address( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return (uint8_t *) flat_address( seg, offset ); }
     uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) flat_address( seg, offset ); }
+    uint16_t mword( uint16_t seg, uint16_t offset ) { return * flat_address16( seg, offset ); }
+    uint8_t mbyte( uint16_t seg, uint16_t offset ) { return * flat_address8( seg, offset ); }
 
   private:
     // the code assumes relative positions of most of these member variables. they can't easily be moved around.
@@ -254,18 +256,20 @@ struct i8086
         uint32_t flat = ( ( (uint32_t) seg ) << 4 ) + offset;
 
         #ifndef NDEBUG
-            //if ( flat < 0x600 )
-            //    tracer.Trace( "referencing low-memory %#x\n", flat );
+            //if ( flat < 0x400 )
+            //    tracer.Trace( "  referencing low-memory %#x\n", flat );
+            //if ( flat >= 0x400 && flat < 0x600)
+            //    tracer.Trace( "  referencing bios data area %#x\n", flat );
             //if ( flat < 0xa00 && flat >= 0x600)
-            //    tracer.Trace( "referencing lowish-memory %#x\n", flat );
+            //    tracer.Trace( "  referencing lowish-memory %#x\n", flat );
             //if ( flat >= 0xb8000 && flat < 0xb8fa0 )
-            //    tracer.Trace( "referencing cga-memory page 0 %#x row %d column %d\n", flat, (flat - 0xb8000) / 160, ( (flat - 0xb8000) % 160 ) / 2 );
+            //    tracer.Trace( "  referencing cga-memory page 0 %#x row %d column %d\n", flat, (flat - 0xb8000) / 160, ( (flat - 0xb8000) % 160 ) / 2 );
             //if ( flat >= 0xb8fa0 && flat < 0xbbe80 )
-            //    tracer.Trace( "referencing cga-memory page 1 %#x\n", flat );
+            //    tracer.Trace( "  referencing cga-memory page 1 %#x\n", flat );
             //if ( flat >= 0xbbe80 && flat < 0x100000 )
-            //    tracer.Trace( "referencing high-memory %#x\n", flat );
+            //    tracer.Trace( "  referencing high-memory %#x\n", flat );
             //if ( flat >= 0x100000 )
-            //    tracer.Trace( "referencing above 1mb %#x\n", flat );
+            //    tracer.Trace( "  referencing above 1mb %#x\n", flat );
         #endif
 
         #if WRAP_HMA_ADDRESSES                // true 8086 behavior at a 9.4% performance cost
@@ -276,7 +280,6 @@ struct i8086
     } //flatten
 
     void unhandled_instruction();
-    uint16_t mword( uint16_t seg, uint16_t offset ) { return * flat_address16( seg, offset ); }
     void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * flat_address16( seg, offset ) = value; }
 
     uint16_t get_displacement()
