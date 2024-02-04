@@ -64,14 +64,15 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * Turbo C Version1.0 and 2.0 (Including debug breakpoints and single-stepping)
  * Turbo Assembler Version 3.2
  * Turbo Link Version 2.0
- * Microsoft Quick C Version 1.0. (Compiling, editing, breakpoints, single-stepping, etc)
- * Microsoft Quick C Version 2.01 and v2.51 (Incremental linking must be is disabled)
-   * ilink.exe reads memory control blocks, which don't exist.
+ * Microsoft Quick C Version 1.0. (Compiling, editing, breakpoints, single-stepping, etc). Requires -h flag
+ * Microsoft Quick C Version 2.01 and v2.51 (Incremental linking must be is disabled). Requires -h flag
+   * ilink.exe reads memory control blocks, which don't exist, so use link.exe instead.
  * Microsoft Quick Pascal Version 1.0
  * Microsoft Word Version 6.0 for DOS. (Set view / preferences / cursor control / speed to 0 to avoid key repeats).
  * Microsoft Works Version 3.0 for DOS.
  * Lotus 1-2-3 Release 1A
  * PC-LISP V3.00
+ * LOGITECH MODULA-2 Compiler, DOS, Rel. 3.40, Mar 90
  * muLISP v5.10 interpreter (released by Microsoft). See note in i8086.hxx for address wrapping workaround.
  * IBM Personal Computer Pascal Compiler Version 2.00 (generated apps require WRAP_HMA_ADDRESSES be true in i8086.hxx)
  * Microsoft COBOL Compiler Version 5.0 (compiler and generated apps). Linker requires 286 but QBX's linker works fine.
@@ -123,6 +124,8 @@ The emulator has been compiled and tested on the following platforms:
  
  * Ubutnu 20.04, gcc 9.4.0, x64 (WSL2)
 
+ * Raspberry PI OS, g++, ARM64 and ARM32
+
 ### Windows
 
 Build with m.bat or mr.bat for debug and release versions on Windows. Or build with g++ instead by using mg.bat or mgr.bat.
@@ -137,25 +140,22 @@ C:\> ntvdm -?
 NT Virtual DOS Machine: emulates an 8086 MS-DOS 3.00 runtime environment enough to run COM/EXE apps
 usage: ntvdm [arguments] <DOS executable> [arg1] [arg2]
   notes:
-            -c     don't auto-detect apps that want 80x25 then set window to that size;
-                   stay in teletype/console mode.
-            -C     always set window to 80x25; don't use teletype mode.
-            -d     don't clear the display on app exit when in 80x25 mode
-            -e     comma-separated list of environment variables. e.g. -e:include=..\include,lib=..\lib
-            -h     workaround for Packed File Corrupt error: load apps High, above 64k
-            -i     trace instructions as they are executed to ntvdm.log (this is verbose!)
-            -p     show performance information
-            -r:X   X is a folder that is mapped to C:\
-            -s:X   speed in Hz. Default is to run as fast as possible.
-                   for 4.77Mhz, use -s:4770000
-                   to roughly match a 4.77Mhz 8088, use -s:4500000
-            -t     enable debug tracing to ntvdm.log
-            -z:X   applies X as a hex mask to SetProcessAffinityMask, e.g.:
-                     /z:11    2 performance cores on an i7-1280P
-                     /z:3000  2 efficiency cores on an i7-1280P
-                     /z:11    2 random good cores on a 5950x
-            -v     output version information and exit.
-            -?     output this help and exit.
+     -b               load/run program as the boot sector at 07c0:0000
+     -c               tty mode. don't automatically make text area 80x25.
+     -C               make text area 80x25 (not tty mode). also -C:43 -C:50
+     -d               don't clear the display on exit
+     -e:env,...       define environment variables.
+     -h               load high above 64k and below 0xa0000.
+     -i               trace instructions to ntvdm.log.
+     -m               after the app ends, print video memory
+     -p               show performance stats on exit.
+     -r:root          root folder that maps to C:\
+     -t               enable debug tracing to ntvdm.log
+     -s:X             set processor speed in Hz.
+                        for 4.77 MHz 8086 use -s:4770000.
+                        for 4.77 MHz 8088 use -s:4500000.
+     -v               output version information and exit.
+     -?               output this help and exit.
 ```
 To execute app.com with debuging output in ntvdm.log:
 ```
@@ -239,13 +239,14 @@ $ ntvdm -?
 Usage: ntvdm [OPTION]... PROGRAM [ARGUMENT]...
 Emulates an 8086 and MS-DOS 3.00 runtime environment.
 
-  -c               don't automatically change window size.
-  -C               change text area to 80x25 (don't use tty mode).
+  -b               load/run program as the boot sector at 07c0:0000
+  -c               tty mode. don't automatically make text area 80x25.
+  -C               make text area 80x25 (not tty mode). also -C:43 -C:50
   -d               don't clear the display on exit
   -u               force DOS paths to be uppercase
   -l               force DOS paths to be lowercase
   -e:env,...       define environment variables.
-  -h               load high above 64k.
+  -h               load high above 64k and below 0xa0000.
   -i               trace instructions to ntvdm.log.
   -t               enable debug tracing to ntvdm.log
   -p               show performance stats on exit.
@@ -283,11 +284,21 @@ $
 To run QuickBASIC.
 ```
 $ cd qbx
-$ ../ntvdm -u -e:include=.\\inc msc.exe demo.c,,\;
+$ ../ntvdm -u -r:. qbx
 ```
 ![QuickBASIC](linux-screenshot.png)
 
 QuickBASIC, like other apps, works best with -r:. and -u flags.
 
+### 43 and 50 line modes
 
+By default NTVDM runs in 25 line mode. Some DOS apps support 43 and 50 line mode
+and others don't. Some apps like Quick Pascal have UI to change the line count,
+and that just works. Other apps like Brief support more than 25 lines, but
+require you use NTVDM's -C argument and Brief's line count argument to make
+that work. For example:
+```
+    ntvdm -C:50 -r:.. b -L50 foo.txt
+```
+Many apps assume 25 lines and won't use more than that even with the -C:50 flag.
 
