@@ -3007,7 +3007,7 @@ uint8_t i8086_invoke_in_al( uint16_t port )
     {
     }
 
-    tracer.Trace( "invoke_in_al, port %02x returning 0\n", port );
+    tracer.Trace( "  invoke_in_al, port %02x returning 0\n", port );
     return 0;
 } //i8086_invoke_in_al
 
@@ -4067,6 +4067,14 @@ void handle_int_10( uint8_t c )
 
                 tracer.Trace( "  enable cpu access to video RAM: %d\n", cpu.al() );
                 cpu.set_al( 0 ); // indicate failure
+            }
+            else if ( 0x30 == cpu.bl() )
+            {
+                // select scan lines for alphanumeric modes. al = 0 for 200, 1 for 350, and 2 for 400.
+                // in theory some apps use this to get to 25, 43, and 50 line mode. But no apps I've tested require it.
+
+                tracer.Trace( "  select scan lines for alphanumeric modes: %u\n", cpu.al() );
+                cpu.set_al( 0x12 ); // indicate success
             }
             else
                 tracer.Trace( "  unhandled code %#x\n", cpu.bl() );
@@ -7209,7 +7217,7 @@ void handle_int_21( uint8_t c )
 
             tracer.Trace( "  old psp %#x, new psp %#x\n", g_currentPSP, cpu.get_bx() );
 
-            // check if it looks valid before setting...
+            // check if it looks valid before setting -- an int 20 instruction to terminate an app like CP/M
 
             DOSPSP * psp = (DOSPSP *) cpu.flat_address( cpu.get_bx(), 0 );
             if ( 0x20cd == psp->int20Code )
@@ -8940,7 +8948,7 @@ int main( int argc, char * argv[] )
             else
             {
                 if ( g_KbdPeekAvailable )
-                    tracer.Trace( "can't schedule a keyboard interrupt because interrupts are disabled!\n" );
+                    tracer.Trace( "can't schedule a keyboard int 9 because interrupts are disabled!\n" );
             }
         } while ( true );
     
