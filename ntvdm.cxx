@@ -6470,13 +6470,13 @@ void handle_int_21( uint8_t c )
                 }
     
                 tracer.Trace( "  move file pointer using handle %04x to %d bytes from %s\n", handle, offset,
-                              0 == origin ? "end" : 1 == origin ? "current" : "end" );
+                              0 == origin ? "beginning" : 1 == origin ? "current" : "end" );
     
                 uint32_t cur = ftell( fp );
                 fseek( fp, 0, SEEK_END );
                 uint32_t size = ftell( fp );
                 fseek( fp, cur, SEEK_SET );
-                tracer.Trace( "  file size is %u\n", size );
+                tracer.Trace( "  file size is %u, current offset is %u\n", size, cur );
     
                 if ( 0 == origin )
                     fseek( fp, offset, SEEK_SET );
@@ -6489,6 +6489,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( cur & 0xffff );
                 cpu.set_dx( ( cur >> 16 ) & 0xffff );
     
+                tracer.Trace( "  updated file offset is %u\n", cur );
                 cpu.set_carry( false );
             }
             else
