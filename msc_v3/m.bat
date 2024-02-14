@@ -11,7 +11,7 @@ rem use "ntvdm link /help" to get command-line arguments
 ntvdm -t link %1,,%1,lib\slibfp+lib\slibc+lib\em
 if %ERRORLEVEL% NEQ 0 goto alldone
 
-ntvdm -p %1
+rem ntvdm -d -C -p %1
 
 :alldone
 
