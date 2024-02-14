@@ -84,6 +84,8 @@ class CDJLTrace
                 int64_t toread = ( ( offset + bytesPerRow ) > beyond ) ? ( length % bytesPerRow ) : bytesPerRow;
         
                 memcpy( buf, pData + offset, toread );
+
+                uint64_t extraSpace = 2;
         
                 for ( int64_t o = offset; o < cap; o++ )
                 {
@@ -93,10 +95,11 @@ class CDJLTrace
                     {
                         *pline++ = ':';
                         *pline++ = ' ';
+                        extraSpace = 0;
                     }
                 }
         
-                uint64_t spaceNeeded = ( bytesPerRow - ( cap - offset ) ) * 3;
+                uint64_t spaceNeeded = extraSpace + ( ( bytesPerRow - ( cap - offset ) ) * 3 );
         
                 for ( uint64_t sp = 0; sp < ( 1 + spaceNeeded ); sp++ )
                     *pline++ = ' ';
