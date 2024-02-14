@@ -2,7 +2,7 @@
 // Written by David Lee in late 2022
 // This only simulates a small subset of DOS and BIOS behavior.
 // I only implemented BIOS/DOS calls used by tested apps, so there are some big gaps.
-// Only CGA text modes 2 and 3 (80x25 greyscale and color) are supported.
+// Only CGA/EGA/VGA text mode 3 (80 x 25/43/50 color) is supported.
 // No graphics, sound, mouse, or anything else not needed for simple command-line apps.
 // tested apps:
 //    Turbo Pascal 1.00A, 2.00B, 3.02A, 4.0, 5.0, 5.5, 6.0, and 7.0, both the apps and the programs they generate.
@@ -1008,7 +1008,7 @@ uint16_t FindFirstFreeFileHandle()
 
 #pragma pack( push, 1 )
 // Note: this app doesn't use the MCB for anything other than making it available for apps
-// that (unfortunately) assume it's there to do their thing (QuickC 2.x are prime examples).
+// that (unfortunately) assume it's there to do their thing (QuickC 1.x and 2.x are prime examples).
 struct DOSMemoryControlBlock
 {
     uint8_t header;        // 'M' for member or 'Z' for last entry in the chain
@@ -2461,7 +2461,7 @@ void InjectKeystrokes()
 const uint8_t ascii_to_scancode[ 128 ] =
 {
       0,  30,  48,  46,  32,  18,  33,  34, // 0
-     14,  15,  28,  37,  38,  28,  49,  24, // 8   note: 10 should be 36 for ^j, but it's overloaded on Linux
+     35,  15,  28,  37,  38,  28,  49,  24, // 8   note: 10 should be 36 for ^j, but it's overloaded on Linux
      25,  16,  19,  31,  20,  22,  47,  17, // 16
      45,  21,  44,   1,  43,  27,   0,   0, // 24
      57,   2,  40,   4,   5,   6,   8,  40, // 32
@@ -2816,10 +2816,17 @@ void consume_keyboard()
                 {
                     uint8_t fnumber = g_consoleConfig.portable_getch();
                     tracer.Trace( "f1-f4 fnumber: %d\n", fnumber );
-
-                    // 80-83 map to scancode 59-62
-                    if ( fnumber >= 80 && fnumber <= 83 )
+                    
+                    if ( fnumber >= 80 && fnumber <= 83 ) // 80-83 map to scancode 59-62
                         kbd_buf.Add( 0, fnumber - 21 );
+                    else if ( 65 == fnumber )
+                        kbd_buf.Add( 0, 0x48 ); // up
+                    else if ( 66 == fnumber )
+                        kbd_buf.Add( 0, 0x50 ); // down
+                    else if ( 67 == fnumber )
+                        kbd_buf.Add( 0, 0x4d ); // right
+                    else if ( 68 == fnumber )
+                        kbd_buf.Add( 0, 0x4b ); // left
                     else
                         tracer.Trace( "unknown ESC O fnumber %d\n", fnumber );
                 }
@@ -3274,6 +3281,9 @@ bool starts_with( const char * str, const char * start )
         uint16_t _min = lt.tm_min; 
         uint16_t _sec = lt.tm_sec; // 2-second granularity not enforced
         dos_time = _sec | ( _min << 5 ) | ( _hour << 11 );
+
+        tracer.Trace( "  tmTimeToDos: lt_tm_mday %u, lt.tm_mon %u, lt.tm_year %u\n", lt.tm_mday, lt.tm_mon, lt.tm_year );
+        tracer.Trace( "  tmTimeToDos: _mday %u _mon %u _year %u\n", _mday, _mon, _year );
     } //tmTimeToDos
 
     bool ProcessFoundFile( DosFindFile * pff, LINUX_FIND_DATA & fd )
