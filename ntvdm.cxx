@@ -2827,6 +2827,10 @@ void consume_keyboard()
                         kbd_buf.Add( 0, 0x4d ); // right
                     else if ( 68 == fnumber )
                         kbd_buf.Add( 0, 0x4b ); // left
+                    else if ( 70 == fnumber ) 
+                        kbd_buf.Add( 0, 0x4f ); // end
+                    else if ( 72 == fnumber ) 
+                        kbd_buf.Add( 0, 0x47 ); // home
                     else
                         tracer.Trace( "unknown ESC O fnumber %d\n", fnumber );
                 }
@@ -2872,6 +2876,16 @@ void consume_keyboard()
                 }
                 else if ( ',' == secondAscii || '.' == secondAscii || '/' == secondAscii || '\'' == secondAscii || '`' == secondAscii )
                     tracer.Trace( "  swallowing ALT + character '%c' == %d\n", secondAscii, secondAscii );
+                else if ( '0' == secondAscii )
+                {
+                    kbd_buf.Add( 0, 129 );
+                    g_altPressedRecently = true;
+                }
+                else if ( secondAscii >= '1' && secondAscii <= '9' )
+                {
+                    kbd_buf.Add( 0, 120 + secondAscii - '1' );
+                    g_altPressedRecently = true;
+                }
                 else
                 {
                     tracer.Trace( "unknown ESC second character %d == '%c'\n", secondAscii, secondAscii );
