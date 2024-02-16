@@ -7668,6 +7668,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         if ( psp )
         {
             printf( "^C" );
+            cpu.set_al( 4 ); // I can't find a standard for the DOS ^c exit code, but this will work
             HandleAppExit();
         }
 
