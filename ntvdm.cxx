@@ -126,14 +126,6 @@ uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad );
 uint16_t LoadOverlay( const char * app, uint16_t segLoadAddress, uint16_t segmentRelocationFactor );
 
-uint16_t round_up_to( uint16_t x, uint16_t multiple )
-{
-    if ( 0 == ( x % multiple ) )
-        return x;
-
-    return x + ( multiple - ( x % multiple ) );
-} //round_up_to
-
 uint16_t GetSegment( uint8_t * p )
 {
     uint64_t ptr = (uint64_t) p;
@@ -2737,7 +2729,7 @@ void consume_keyboard()
                                 else if ( CTRL_DOWN == nextB )
                                     kbd_buf.Add( 0, 147 ); // CTRL + DEL
                                 else if ( SHIFT_DOWN == nextB )
-                                    kbd_buf.Add( 46, 83 );
+                                    kbd_buf.Add( 46, 83 ); // SHIFT + DEL
                             }
                             else if ( 126 == nextA )
                                 kbd_buf.Add( 0, 83 );
@@ -2754,14 +2746,14 @@ void consume_keyboard()
                                 uint8_t nextC = g_consoleConfig.portable_getch();
                                 tracer.Trace( "    nextB: %d, nextC %d\n", nextB, nextC );
                                 if ( CTRL_DOWN == nextB ) // CTRL
-                                    kbd_buf.Add( 0, 132 );
-                                else if ( ALT_DOWN == nextB ) //ALT
+                                    kbd_buf.Add( 0, 132 ); // CTRL + pgup
+                                else if ( ALT_DOWN == nextB ) // ALT
                                 {
                                     kbd_buf.Add( 0, 153 ); // ALT + pgup
                                     g_altPressedRecently = true;
                                 }
                                 else if ( SHIFT_DOWN == nextB )
-                                    kbd_buf.Add( 57, 73 );
+                                    kbd_buf.Add( 57, 73 ); // SHIFT + pgup
                             }
                             else
                                 kbd_buf.Add( 0, 73 );
@@ -2812,7 +2804,7 @@ void consume_keyboard()
                     scanCode = ascii_to_scancode[ secondAscii - 'a' + 1 ];
                     kbd_buf.Add( 0, scanCode );
                 }
-                else if ( 'O' == secondAscii ) // F1-F4
+                else if ( 'O' == secondAscii ) // F1-F4 and keypad
                 {
                     uint8_t fnumber = g_consoleConfig.portable_getch();
                     tracer.Trace( "f1-f4 fnumber: %d\n", fnumber );
@@ -2878,12 +2870,12 @@ void consume_keyboard()
                     tracer.Trace( "  swallowing ALT + character '%c' == %d\n", secondAscii, secondAscii );
                 else if ( '0' == secondAscii )
                 {
-                    kbd_buf.Add( 0, 129 );
+                    kbd_buf.Add( 0, 129 ); // digit 0
                     g_altPressedRecently = true;
                 }
                 else if ( secondAscii >= '1' && secondAscii <= '9' )
                 {
-                    kbd_buf.Add( 0, 120 + secondAscii - '1' );
+                    kbd_buf.Add( 0, 120 + secondAscii - '1' ); // digits 1-9
                     g_altPressedRecently = true;
                 }
                 else
@@ -2900,11 +2892,11 @@ void consume_keyboard()
             }
         }
 #if 0
-        else if ( 8 == asciiChar ) // swap backspace with ^backspace
+        else if ( 8 == asciiChar ) // swap ^h with ^backspace
             kbd_buf.Add( 127, 14 );
 #endif
         else if ( 127 == asciiChar )
-            kbd_buf.Add( 8, 14 ); // swap backspace with ^backspace
+            kbd_buf.Add( 8, 14 ); // swap backspace with ^h
         else
         {
             if ( 0x3 == asciiChar && 0x2e == scanCode )
@@ -4356,7 +4348,7 @@ void HandleAppExit()
     }
     else
     {
-        tracer.Trace( "  ending emulation by telling cpu emulator to stop once it starts running again\n" );
+        tracer.Trace( "  ending emulation by telling the cpu emulator to stop once it starts running again\n" );
         cpu.end_emulation();
         g_haltExecution = true;
     }
@@ -4440,19 +4432,26 @@ bool command_exists( char * pc )
     return false;
 } //command_exists
 
-#ifndef _WIN32
-    const int day_of_week( int year, int month, int day )
-    {
-        return( day                                                     
-                + ((153 * (month + 12 * ((14 - month) / 12) - 3) + 2) / 5)
-                + (365 * (year + 4800 - ((14 - month) / 12)))             
-                + ((year + 4800 - ((14 - month) / 12)) / 4)               
-                - ((year + 4800 - ((14 - month) / 12)) / 100)             
-                + ((year + 4800 - ((14 - month) / 12)) / 400)             
-                - 32045                                                   
-              ) % 7;
-    } //day_of_week
-#endif
+// return sunday=0, monday=1...
+// year: actual year. month: January = 1. day: 1-31
+// taken from https://stackoverflow.com/questions/6054016/c-program-to-find-day-of-week-given-date
+
+const int day_of_week( int year, int month, int day )
+{
+    int monday0 = ( day                                                     
+                    + ((153 * (month + 12 * ((14 - month) / 12) - 3) + 2) / 5)
+                    + (365 * (year + 4800 - ((14 - month) / 12)))             
+                    + ((year + 4800 - ((14 - month) / 12)) / 4)               
+                    - ((year + 4800 - ((14 - month) / 12)) / 100)             
+                    + ((year + 4800 - ((14 - month) / 12)) / 400)             
+                    - 32045                                                   
+                  ) % 7;
+
+    // shift from monday = 0 to sunday = 0
+    if ( 6 == monday0 )
+        return 0;
+    return monday0 + 1;
+} //day_of_week
 
 bool FindCommandInPath( char * pc )
 {
@@ -5556,8 +5555,8 @@ void handle_int_21( uint8_t c )
         }
         case 0x26:
         {
-            // Create PSP. on return: DX = segment address of new PSP
-            // online documentation is conflicting about whether DX on entry points to the new PSP or if
+            // Create PSP. on return: DX = segment address of new PSP.
+            // Online documentation is conflicting about whether DX on entry points to the new PSP or if
             // this function should allocate the PSP, but apps do the former.
             // The current PSP should be copied on top of the new PSP.
             // The only apps I know of that use this are debug.com from MS-DOS 2.2 and Turbo Pascal 5.5
@@ -5779,22 +5778,13 @@ void handle_int_21( uint8_t c )
         {
             // get system date. al is day of week 0-6 0=sunday, cx = year 1980-2099, dh = month 1-12, dl = day 1-31
     
-#ifdef _WIN32            
-            SYSTEMTIME st = {0};
-            GetLocalTime( &st );
-            cpu.set_al( (uint8_t) st.wDayOfWeek );
-            cpu.set_cx( st.wYear );
-            cpu.set_dh( (uint8_t) st.wMonth );
-            cpu.set_dl( (uint8_t) st.wDay );
-#else
             time_t t = time( 0 );
             struct tm current_dt = *localtime( &t );
-            cpu.set_al( (uint8_t) day_of_week( current_dt.tm_year + 1900, current_dt.tm_mon, current_dt.tm_mday ) );
-            tracer.Trace( "year value: %d\n", current_dt.tm_year );
+            cpu.set_al( (uint8_t) day_of_week( current_dt.tm_year + 1900, current_dt.tm_mon + 1, current_dt.tm_mday ) );
             cpu.set_cx( (uint16_t) ( current_dt.tm_year + 1900 ) );
             cpu.set_dh( (uint8_t) current_dt.tm_mon + 1 );
             cpu.set_dl( (uint8_t) current_dt.tm_mday );
-#endif            
+            tracer.Trace( "  returning year %u, month %u, day %u, day of week %u\n", cpu.get_cx(), cpu.dh(), cpu.dl(), cpu.al() );
     
             return;
         }           
@@ -8369,7 +8359,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     bytesNeeded += (uint16_t) 512;
 
     uint16_t remaining;
-    uint16_t segEnvironment = AllocateMemory( round_up_to( bytesNeeded, 16 ) / 16, remaining );
+    uint16_t segEnvironment = AllocateMemory( round_up( bytesNeeded, (uint16_t) 16 ) / 16, remaining );
     if ( 0 == segEnvironment )
     {
         tracer.Trace( "can't allocate %d bytes for environment\n", bytesNeeded );
@@ -8424,7 +8414,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
 
 bool InterruptHookedByApp( uint8_t i )
 {
-    uint16_t seg = ( cpu.flat_address16( 0, 0 ) )[ 2 * i + 1 ]; // lower uint_16 has offset, upper has segment
+    uint16_t seg = ( cpu.flat_address16( 0, 0 ) )[ 2 * i + 1 ]; // lower uint16_t has offset, upper has segment
     return ( InterruptRoutineSegment != seg );
 } //InterruptHookedByApp
 
@@ -8798,21 +8788,23 @@ int main( int argc, char * argv[] )
         *pDeviceControlBlock = 0xffff; // end of list
     
         // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
-        // routines starting at InterruptRoutineSegment. The routines are almost all the same -- fake opcode, interrupt #, retf 2
+        // routines starting at InterruptRoutineSegment.
+        // Each interrupt vector element has 4 bytes for segment and offset.
+        // The routines are almost all the same -- fake opcode, interrupt #, retf 2
         // One exception is tick tock interrupt 0x1c, which just does an iret for performance.
         // Another is keyboard interrupt 9.
         // Interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
         // Other interrupts use far ret 2 (not iret) so as to not trash the flags (Z and C) used as return codes.
-        // Functions are all allocated 5 bytes each.
+        // Functions are all allocated 5 bytes each though in some cases fewer are used.
     
         uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
         uint8_t * pRoutines = cpu.flat_address8( InterruptRoutineSegment, 0 );
         for ( uint32_t intx = 0; intx < 0x40; intx++ )
         {
             uint32_t offset = intx * 5;
-            pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset );
+            pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset ); // rotate 16 to store the segment in the high 2 bytes
             uint8_t * routine = pRoutines + offset;
-    
+
             if ( 8 == intx )
             {
                 routine[ 0 ] = 0xcd; // int
@@ -8831,8 +8823,8 @@ int main( int argc, char * argv[] )
             {
                 routine[ 0 ] = i8086_opcode_interrupt;
                 routine[ 1 ] = (uint8_t) intx;
-                routine[ 2 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored
-                routine[ 3 ] = 2;
+                routine[ 2 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored.
+                routine[ 3 ] = 2;    // 2 is for the 2 bytes of flags pushed during interrupt invocation then ignored.
                 routine[ 4 ] = 0;
             }
         }
@@ -8845,23 +8837,23 @@ int main( int argc, char * argv[] )
     
         memcpy( cpu.flat_address( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
         g_int21_3f_seg = curseg;
-        curseg += ( round_up_to( sizeof( int21_3f_code ), 16 ) / 16 );
+        curseg += ( round_up( (uint16_t) sizeof( int21_3f_code ), (uint16_t) 16 ) / 16 );
     
         memcpy( cpu.flat_address( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
         g_int21_a_seg = curseg;
-        curseg += ( round_up_to( sizeof( int21_a_code ), 16 ) / 16 );
+        curseg += ( round_up( (uint16_t) sizeof( int21_a_code ), (uint16_t) 16 ) / 16 );
     
         memcpy( cpu.flat_address( curseg, 0 ), int21_1_code, sizeof( int21_1_code ) );
         g_int21_1_seg = curseg;
-        curseg += ( round_up_to( sizeof( int21_1_code ), 16 ) / 16 );
+        curseg += ( round_up( (uint16_t) sizeof( int21_1_code ), (uint16_t) 16 ) / 16 );
     
         memcpy( cpu.flat_address( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
         g_int21_8_seg = curseg;
-        curseg += ( round_up_to( sizeof( int21_8_code ), 16 ) / 16 );
+        curseg += ( round_up( (uint16_t) sizeof( int21_8_code ), (uint16_t) 16 ) / 16 );
     
         memcpy( cpu.flat_address( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
         g_int16_0_seg = curseg;
-        curseg += ( round_up_to( sizeof( int16_0_code ), 16 ) / 16 );
+        curseg += ( round_up( (uint16_t) sizeof( int16_0_code ), (uint16_t) 16 ) / 16 );
     
         tracer.Trace( "machine code: 21_3f %04x, 21_a %04x, 21_1 %04x, 21_8 %04x, 16_0 %04x\n",
                       g_int21_3f_seg, g_int21_a_seg, g_int21_1_seg, g_int21_8_seg, g_int16_0_seg );
@@ -9028,21 +9020,19 @@ int main( int argc, char * argv[] )
             printf( "app exit code:    %20d\n", g_appTerminationReturnCode );
         }
     
+        qsort( g_InterruptsCalled.data(), g_InterruptsCalled.size(), sizeof( IntCalled ), compare_int_entries );
+        bool ah_used = false;
+        size_t cEntries = g_InterruptsCalled.size();
+        tracer.Trace( "Interrupt usage by the app:\n" );
+        tracer.Trace( "  int     ah       calls    name\n" );
+        for ( size_t i = 0; i < cEntries; i++ )
         {
-            qsort( g_InterruptsCalled.data(), g_InterruptsCalled.size(), sizeof( IntCalled ), compare_int_entries );
-            bool ah_used = false;
-            size_t cEntries = g_InterruptsCalled.size();
-            tracer.Trace( "Interrupt usage by the app:\n" );
-            tracer.Trace( "  int     ah       calls    name\n" );
-            for ( size_t i = 0; i < cEntries; i++ )
-            {
-                IntCalled & ic = g_InterruptsCalled[ i ];
-                const char * pintstr = get_interrupt_string( ic.i, (uint8_t) ic.c, ah_used );
-                if ( ah_used )
-                    tracer.Trace( "   %02x     %02x  %10d    %s\n", ic.i, ic.c, ic.calls, pintstr );
-                else
-                    tracer.Trace( "   %02x         %10d    %s\n", ic.i, ic.calls, pintstr );
-            }
+            IntCalled & ic = g_InterruptsCalled[ i ];
+            const char * pintstr = get_interrupt_string( ic.i, (uint8_t) ic.c, ah_used );
+            if ( ah_used )
+                tracer.Trace( "   %02x     %02x  %10d    %s\n", ic.i, ic.c, ic.calls, pintstr );
+            else
+                tracer.Trace( "   %02x         %10d    %s\n", ic.i, ic.calls, pintstr );
         }
     }
     catch ( bad_alloc & e )
