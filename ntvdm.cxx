@@ -498,7 +498,7 @@ static void usage( char const * perr )
     printf( "  -c               tty mode. don't automatically make text area 80x25.\n" );
     printf( "  -C               make text area 80x25 (not tty mode). also -C:43 -C:50\n" );
     printf( "  -d               don't clear the display on exit\n" );
-    printf( "  -e:env;...       define environment variables.\n" );
+    printf( "  -e:env,...       define environment variables.\n" );
     printf( "  -h               load high above 64k and below 0xa0000.\n" );
     printf( "  -i               trace instructions to %s.log.\n", g_thisApp );
     printf( "  -m               after the app ends, print video memory\n" );
@@ -525,7 +525,7 @@ static void usage( char const * perr )
 #ifdef _WIN32
     printf( "  %s -u -e:include=.\\inc msc.exe demo.c,,\\;\n", g_thisApp );
     printf( "  %s -u -e:lib=.\\lib link.exe demo,,\\;\n", g_thisApp );
-    printf( "  %s -u -e:include=.\\inc;lib=.\\lib demo.exe one two three\n", g_thisApp );
+    printf( "  %s -u -e:include=.\\inc,lib=.\\lib demo.exe one two three\n", g_thisApp );
     printf( "  %s -r:. QBX\n", g_thisApp );
 #else
     printf( "  %s -u -e:include=.\\\\inc msc.exe demo.c,,\\\\;\n", g_thisApp );
