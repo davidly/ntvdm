@@ -72,7 +72,7 @@ class CDisassemble8086
             if ( 3 == _mod )
                 return reg_strings[ rm_to_use | ( _isword ? 8 : 0 ) ];
         
-            rm_to_use &= 0x7; // mask away the higher bit that my be set for register lookups
+            rm_to_use &= 0x7; // mask away the higher bit that may be set for register lookups
 
             _da( "%s ", _isword ? "word ptr" : "byte ptr" );
         

@@ -63,15 +63,15 @@ class CSimpleThread
             if ( 0 != the_thread )
             {
                 {
-                    tracer.Trace( "signaling the keyboard thread to complete\n" );
+                    tracer.Trace( "signaling a thread to complete\n" );
                     C_pthread_mutex_t_lock mtx_lock( the_mutex );
                     pthread_cond_signal( & the_condition );
                 }
 
-                tracer.Trace( "joining the keyboard thread\n" );
+                tracer.Trace( "joining the thread\n" );
                 pthread_join( the_thread, 0 );
                 the_thread = 0;
-                tracer.Trace( "destroying keyboard thread resources\n" );
+                tracer.Trace( "destroying the thread resources\n" );
                 pthread_cond_destroy( & the_condition );
                 pthread_mutex_destroy( & the_mutex );
             }
