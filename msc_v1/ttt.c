@@ -7,7 +7,10 @@
        QuickC 1.0
        Turbo C 2.0
    The syntax is old and reminds me of 7th grade summer vacation.
+   Much of this code is awkward to satisfy the lowest common denominator of many compilers.
    unsigned long isn't supported in many older compilers, so long is used instead.
+   Early DOS and CP/M require register variabes to be int, not char or other types.
+   The perf improvement of using register-int instead of stack-char is worth it.
 */
 
 #define LINT_ARGS
@@ -22,9 +25,14 @@
 #define true 1
 #define false 0
 
+/* Function Pointers are the fastest implementation for almost every compiler */
+#define UseFunPointers 1
+#define UseWinner2 2
+#define UseLookForWinner 3
+#define WinMethod UseFunPointers
+
 #define ABPrune true         /* alpha beta pruning */
 #define WinLosePrune true    /* stop early on win/lose */
-#define WinFunPointers true  /* use function pointers for each move position */
 #define ScoreWin 6
 #define ScoreTie 5
 #define ScoreLose  4
@@ -36,21 +44,17 @@
 #define PieceO 2
 #define PieceBlank 0
 
-#ifdef CPMTIME
-typedef char ttype;  /* 8-bit cpus are about 8% faster with an 8-bit ttype */
-#else
-typedef int ttype;   /* 16-bit cpus are faster with a 16-bit type */
-#endif
+typedef char ttype;  /* 8-bit and 16-bit cpus do best with char aside from register in locals */
 
 int g_Iterations = DefaultIterations;
+ttype g_board[ 9 ];
 
-char g_board[ 9 ];
+#if WinMethod == UseFunPointers
 
-#if WinFunPointers
-
-char pos0func()
+ttype pos0func()
 {
-    char x = g_board[0];
+    /* using "register int" instead of "ttype" for x is faster on 8086 and Z80 */
+    register int x = g_board[0];
     
     if ( ( x == g_board[1] && x == g_board[2] ) ||
          ( x == g_board[3] && x == g_board[6] ) ||
@@ -59,9 +63,9 @@ char pos0func()
     return PieceBlank;
 }
 
-char pos1func()
+ttype pos1func()
 {
-    char x = g_board[1];
+    register int x = g_board[1];
     
     if ( ( x == g_board[0] && x == g_board[2] ) ||
          ( x == g_board[4] && x == g_board[7] ) )
@@ -69,9 +73,9 @@ char pos1func()
     return PieceBlank;
 } 
 
-char pos2func()
+ttype pos2func()
 {
-    char x = g_board[2];
+    register int x = g_board[2];
     
     if ( ( x == g_board[0] && x == g_board[1] ) ||
          ( x == g_board[5] && x == g_board[8] ) ||
@@ -80,9 +84,9 @@ char pos2func()
     return PieceBlank;
 } 
 
-char pos3func()
+ttype pos3func()
 {
-    char x = g_board[3];
+    register int x = g_board[3];
     
     if ( ( x == g_board[4] && x == g_board[5] ) ||
          ( x == g_board[0] && x == g_board[6] ) )
@@ -90,9 +94,9 @@ char pos3func()
     return PieceBlank;
 } 
 
-char pos4func()
+ttype pos4func()
 {
-    char x = g_board[4];
+    register int x = g_board[4];
     
     if ( ( x == g_board[0] && x == g_board[8] ) ||
          ( x == g_board[2] && x == g_board[6] ) ||
@@ -102,9 +106,9 @@ char pos4func()
     return PieceBlank;
 } 
 
-char pos5func()
+ttype pos5func()
 {
-    char x = g_board[5];
+    register int x = g_board[5];
     
     if ( ( x == g_board[3] && x == g_board[4] ) ||
          ( x == g_board[2] && x == g_board[8] ) )
@@ -112,9 +116,9 @@ char pos5func()
     return PieceBlank;
 } 
 
-char pos6func()
+ttype pos6func()
 {
-    char x = g_board[6];
+    register int x = g_board[6];
     
     if ( ( x == g_board[7] && x == g_board[8] ) ||
          ( x == g_board[0] && x == g_board[3] ) ||
@@ -123,9 +127,9 @@ char pos6func()
     return PieceBlank;
 } 
 
-char pos7func()
+ttype pos7func()
 {
-    char x = g_board[7];
+    register int x = g_board[7];
     
     if ( ( x == g_board[6] && x == g_board[8] ) ||
          ( x == g_board[1] && x == g_board[4] ) )
@@ -133,9 +137,9 @@ char pos7func()
     return PieceBlank;
 } 
 
-char pos8func()
+ttype pos8func()
 {
-    char x = g_board[8];
+    register int x = g_board[8];
     
     if ( ( x == g_board[6] && x == g_board[7] ) ||
          ( x == g_board[2] && x == g_board[5] ) ||
@@ -144,7 +148,7 @@ char pos8func()
     return PieceBlank;
 } 
 
-typedef char pfunc_t();
+typedef ttype pfunc_t();
 
 pfunc_t * winner_functions[9] =
 {
@@ -159,11 +163,106 @@ pfunc_t * winner_functions[9] =
     pos8func,
 };
 
-#else /* WinFunPointers */
+#endif
 
-char LookForWinner()
+#if WinMethod == UseWinner2
+
+ttype winner2( move ) ttype move;
 {
-    char p = g_board[0];
+    register int x;  /* faster than ttype x on the stack */
+
+    switch( move ) /* msc v3 from 1985 generates a jump table! */
+    {
+        case 0:
+        {
+            x = g_board[ 0 ];
+            if ( ( ( x == g_board[1] ) && ( x == g_board[2] ) ) ||
+                 ( ( x == g_board[3] ) && ( x == g_board[6] ) ) ||
+                 ( ( x == g_board[4] ) && ( x == g_board[8] ) ) )
+               return x;
+            break;
+        }
+        case 1:
+        {
+            x = g_board[ 1 ];
+            if ( ( ( x == g_board[0] ) && ( x == g_board[2] ) ) ||
+                 ( ( x == g_board[4] ) && ( x == g_board[7] ) ) )
+                return x;
+            break;
+        }
+        case 2:
+        {
+            x = g_board[ 2 ];
+            if ( ( ( x == g_board[0] ) && ( x == g_board[1] ) ) ||
+                 ( ( x == g_board[5] ) && ( x == g_board[8] ) ) ||
+                 ( ( x == g_board[4] ) && ( x == g_board[6] ) ) )
+                return x;
+            break;
+        }
+        case 3:
+        {
+            x = g_board[ 3 ];
+            if ( ( ( x == g_board[4] ) && ( x == g_board[5] ) ) ||
+                 ( ( x == g_board[0] ) && ( x == g_board[6] ) ) )
+                return x;
+            break;
+        }
+        case 4:
+        {
+            x = g_board[ 4 ];
+            if ( ( ( x == g_board[0] ) && ( x == g_board[8] ) ) ||
+                 ( ( x == g_board[2] ) && ( x == g_board[6] ) ) ||
+                 ( ( x == g_board[1] ) && ( x == g_board[7] ) ) ||
+                 ( ( x == g_board[3] ) && ( x == g_board[5] ) ) )
+                return x;
+            break;
+        }
+        case 5:
+        {
+            x = g_board[ 5 ];
+            if ( ( ( x == g_board[3] ) && ( x == g_board[4] ) ) ||
+                 ( ( x == g_board[2] ) && ( x == g_board[8] ) ) )
+                return x;
+            break;
+        }
+        case 6:
+        {
+            x = g_board[ 6 ];
+            if ( ( ( x == g_board[7] ) && ( x == g_board[8] ) ) ||
+                 ( ( x == g_board[0] ) && ( x == g_board[3] ) ) ||
+                 ( ( x == g_board[4] ) && ( x == g_board[2] ) ) )
+                return x;
+            break;
+        }
+        case 7:
+        {
+            x = g_board[ 7 ];
+            if ( ( ( x == g_board[6] ) && ( x == g_board[8] ) ) ||
+                 ( ( x == g_board[1] ) && ( x == g_board[4] ) ) )
+                return x;
+            break;
+        }
+        case 8:
+        {
+            x = g_board[ 8 ];
+            if ( ( ( x == g_board[6] ) && ( x == g_board[7] ) ) ||
+                 ( ( x == g_board[2] ) && ( x == g_board[5] ) ) ||
+                 ( ( x == g_board[0] ) && ( x == g_board[4] ) ) )
+                return x;
+            break;
+         }
+    }
+
+    return PieceBlank;
+} /*winner2*/
+
+#endif
+
+#if WinMethod == UseLookForWinner
+
+ttype LookForWinner()
+{
+    register int p = g_board[0]; /* faster as register int than ttype on 8086 and Z80 */
     if ( PieceBlank != p )
     {
         if ( p == g_board[1] && p == g_board[2] )
@@ -202,28 +301,26 @@ char LookForWinner()
     return PieceBlank;
 } /*LookForWinner*/
 
-#endif /* WinFunPointers */
+#endif
 
-/* older compilers don't support unsigned long */
-
-long g_Moves = 0;
+int g_IMoves = 0;
 
 ttype MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; ttype move;
 {
-    ttype value, p, score;
-    char pieceMove;
-#if WinFunPointers
-    pfunc_t * pf;
-#endif
+    ttype pieceMove, score;   /* better perf with char than int. out of registers so use stack */
+    register int p, value;    /* better perf with these as an int on Z80, 8080, and 8086 */
 
-    g_Moves++;
+    g_IMoves++;
 
     if ( depth >= 4 )
     {
-#if WinFunPointers /* function pointers are faster on all platforms by 10-20% */
-        pf = winner_functions[ move ];
-        p = (*pf)();
-#else
+#if WinMethod == UseFunPointers
+        p = ( * winner_functions[ move ] )();
+#endif
+#if WinMethod == UseWinner2
+        p = winner2( move );
+#endif
+#if WinMethod == UseLookForWinner
         p = LookForWinner();
 #endif
 
@@ -302,9 +399,11 @@ ttype MinMax( alpha, beta, depth, move ) ttype alpha; ttype beta; ttype depth; t
     return value;
 }  /*MinMax*/
 
+long g_Moves = 0;
+
 int FindSolution( position ) ttype position;
 {
-    int i;
+    register int i;
 
     for ( i = 0; i < 9; i++ )
         g_board[ i ] = PieceBlank;
@@ -312,7 +411,11 @@ int FindSolution( position ) ttype position;
     g_board[ position ] = PieceX;
 
     for ( i = 0; i < g_Iterations; i++ )
+    {
+        g_IMoves = 0;
         MinMax( ScoreMin, ScoreMax, 0, position );
+        g_Moves += g_IMoves;  /* do the 4-byte long addition once per loop to save work */
+    }
 
     return 0;
 } /*FindSolution*/
@@ -352,7 +455,7 @@ long get_ms()
     return h * 3600000 + m * 60000 + s * 1000 + l * 10;
 } /*get_ms*/
 
-#else /* no elif on old compilers */
+#else /* no elif with old compilers */
 
 #ifdef DOSTIME
 
@@ -388,6 +491,8 @@ long get_ms()
 
 #else
 
+/* must do this on actual CP/M machines */
+
 int print_time_now() { return 0; }
 long get_ms() { return 0; }
 
@@ -399,7 +504,7 @@ int main( argc, argv ) int argc; char * argv[];
     long start_time, end_time;
 
     if ( 2 == argc )
-        sscanf( argv[ 1 ], "%d", &g_Iterations );  /* no atoi in MS C 1.0 */
+        sscanf( argv[ 1 ], "%d", &g_Iterations ); /* no atoi in MS C 1.0 */
 
     start_time = get_ms();
 
@@ -408,10 +513,15 @@ int main( argc, argv ) int argc; char * argv[];
     FindSolution( 4 );
 
     end_time = get_ms();
-    printf( "runtime in ms:   %ld\n", end_time - start_time );
 
-    printf( "move count:      %ld\n", g_Moves );        /* 6493 * g_Iterations */
+    printf( "runtime in ms:   %ld\n", end_time - start_time );
+    printf( "move count:      %ld\n", g_Moves ); /* 6493 * g_Iterations */
     printf( "iteration count: %d\n", g_Iterations );
+    printf( "method:          %s\n",
+            ( WinMethod == UseFunPointers ) ? "function pointers" :
+            ( WinMethod == UseWinner2 ) ? "winner2" :
+            ( WinMethod == UseLookForWinner ) ? "look for winner" :
+            "invalid method" );
     return 0;
 } /*main*/
 
