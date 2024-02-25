@@ -287,6 +287,42 @@ class CDJLTrace
         {
             ShowBinaryData( pData, length, indent, false );
         } //PrintBinaryData
+
+        static char * RenderNumberWithCommas( long long n, char * pc )
+        {
+            char actmp[ 32 ];
+            long long orig = n;
+
+            if ( 0 == n )
+            {
+                strcpy( pc, "0" );
+                return pc;
+            }
+            else if ( n < 0 )
+                n = -n;
+
+            pc[ 0 ] = 0;
+
+            while ( 0 != n )
+            {
+                strcpy( actmp, pc );
+                if ( n >= 1000 )
+                    sprintf( pc, ",%03lld", n % 1000 );
+                else
+                    sprintf( pc, "%lld", n );
+                strcat( pc, actmp );
+                n /= 1000;
+            }
+
+            if ( orig < 0 )
+            {
+                strcpy( actmp, pc );
+                strcpy( pc, "-" );
+                strcat( pc, actmp );
+            }
+
+            return pc;
+        } //RenderNumberWithCommas
 }; //CDJLTrace
 
 extern CDJLTrace tracer;

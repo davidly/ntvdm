@@ -565,7 +565,7 @@ class CKbdBuffer
             }
 
             if ( IsFull() )
-                tracer.Trace( "  dropping keystroke on the flooer because the DOS buffer is full\n" );
+                tracer.Trace( "  dropping keystroke on the floor because the DOS buffer is full\n" );
             else
             {
                 pbiosdata[ *ptail ] = asciiChar;
@@ -8418,33 +8418,6 @@ bool InterruptHookedByApp( uint8_t i )
     return ( InterruptRoutineSegment != seg );
 } //InterruptHookedByApp
 
-static void RenderNumber( long long n, char * ac )
-{
-    if ( n < 0 )
-    {
-        strcat( ac, "-" );
-        RenderNumber( -n, ac );
-        return;
-    }
-   
-    if ( n < 1000 )
-    {
-        sprintf( ac + strlen( ac ), "%lld", n );
-        return;
-    }
-
-    RenderNumber( n / 1000, ac );
-    sprintf( ac + strlen( ac ), ",%03lld", n % 1000 );
-    return;
-} //RenderNumber
-
-static char * RenderNumberWithCommas( long long n, char * ac )
-{
-    ac[ 0 ] = 0;
-    RenderNumber( n, ac );
-    return ac;
-} //RenderNumberWithCommas
-
 uint32_t GetBiosDailyTimer()
 {
     // the daily timer bios value should increment 18.206 times per second -- every 54.9251 ms
@@ -8991,16 +8964,16 @@ int main( int argc, char * argv[] )
             char ac[ 100 ];
             long long totalTime = duration_cast<std::chrono::milliseconds>( tDone - tStart ).count();
             printf( "\n" );
-            printf( "elapsed milliseconds: %16s\n", RenderNumberWithCommas( totalTime, ac ) );
+            printf( "elapsed milliseconds: %16s\n", CDJLTrace::RenderNumberWithCommas( totalTime, ac ) );
     
             #ifdef I8086_TRACK_CYCLES
-                printf( "8086 cycles:      %20s\n", RenderNumberWithCommas( total_cycles, ac ) );
+                printf( "8086 cycles:      %20s\n", CDJLTrace::RenderNumberWithCommas( total_cycles, ac ) );
                 printf( "clock rate: " );
                 if ( 0 == clockrate )
                 {
                     printf( "      %20s\n", "unbounded" );
                     uint64_t total_ms = total_cycles / 4770;
-                    printf( "approx ms at 4.77Mhz: %16s  == ", RenderNumberWithCommas( total_ms, ac ) );
+                    printf( "approx ms at 4.77Mhz: %16s  == ", CDJLTrace::RenderNumberWithCommas( total_ms, ac ) );
                     uint16_t days = (uint16_t) ( total_ms / 1000 / 60 / 60 / 24 );
                     uint16_t hours = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 * 24 ) ) / 1000 / 60 / 60 );
                     uint16_t minutes = (uint16_t) ( ( total_ms % ( 1000 * 60 * 60 ) ) / 1000 / 60 );
@@ -9009,7 +8982,7 @@ int main( int argc, char * argv[] )
                     printf( "%u days, %u hours, %u minutes, %u seconds, %llu milliseconds\n", days, hours, minutes, seconds, milliseconds );
                 }
                 else
-                    printf( "      %20s Hz\n", RenderNumberWithCommas( clockrate, ac ) );
+                    printf( "      %20s Hz\n", CDJLTrace::RenderNumberWithCommas( clockrate, ac ) );
             #endif
     
             #ifndef NDEBUG
