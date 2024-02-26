@@ -1316,13 +1316,6 @@ void UpdateScreenCursorPosition()
     UpdateScreenCursorPosition( row, col );
 } //UpdateScreenCursorPosition
 
-char printable( uint8_t x )
-{
-    if ( x < ' ' || x >= 127 )
-        return ' ';
-    return x;
-} //printable
-
 void init_blankline( uint8_t attribute )
 {
     uint8_t * pbyte = (uint8_t *) blankLine;

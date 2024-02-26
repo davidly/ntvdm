@@ -315,3 +315,11 @@ class CFile
         }
 };
 
+inline char printable( uint8_t x )
+{
+    if ( x < ' ' || x >= 127 )
+        return ' ';
+    return x;
+} //printable
+
+
