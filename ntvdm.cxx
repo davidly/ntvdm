@@ -105,7 +105,8 @@ uint64_t int21_1_code[] = {
 0x10690ab4166900b4, 0x0000000000cb01b4, 
 }; 
 uint64_t int21_8_code[] = { 
-0x00cb08b416cd00b4, 
+0xb4c08e0040b85306, 0x8b26fafa74166901, 0x00d03e8026001a1e, 0x2601478a260d7400, 0x9011eb0000d006c6, 0x260975003c078a26, 0x9016eb0100d006c6, 0x832602001a068326, 
+0xc726077c3e001a3e, 0x08b4fb001e001a06, 0x0000000000cb075b, 
 }; 
 uint64_t int21_a_code[] = { 
 0x000144c6f28b5653, 0xcd01b43674003c80, 0x3c16cd00b4fa7416, 0x7400017c800c7508, 0x339010eb014cfeec, 0x3c024088015c8adb, 0xd08a0144fe10740d, 0x3a01448a21cd02b4, 
@@ -120,7 +121,7 @@ uint64_t int21_3f_code[] = {
 0x0000000000000000, 
 }; 
 // end of machine code 
-
+      
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad );
@@ -4245,9 +4246,9 @@ void handle_int_16( uint8_t c )
             }
 
             if ( cpu.get_zero() )
-                tracer.Trace( "  returning carry flag 1; no character available\n" );
+                tracer.Trace( "  returning zero flag true; no character available\n" );
             else
-                tracer.Trace( "  returning carry flag %d, ax %04x, ascii '%c'\n", cpu.get_zero(), cpu.get_ax(), printable( cpu.al() ) );
+                tracer.Trace( "  returning zero flag false; char available, ax %04x, ascii '%c'\n", cpu.get_ax(), printable( cpu.al() ) );
             return;
         }
         case 2:
@@ -8727,6 +8728,7 @@ int main( int argc, char * argv[] )
         * (uint8_t *)  ( pbiosdata + 0x88 ) = 9;              // ega feature bits
         * (uint8_t *)  ( pbiosdata + 0x89 ) = 0x51;           // video display area (400 line mode, vga active)
         * (uint8_t *)  ( pbiosdata + 0x8a ) = 0x8;            // 2 == CGA color, 8 == VGA color
+        * (uint8_t *)  ( pbiosdata + 0xd0 ) = 0;              // for int 21/8: 1 if consumed ascii and scancode is next.
         * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff0 ) ) = 0xea;   // power on entry point (used by mulisp to detect if it's a standard PC) ea = jmp far
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff1 ) ) = 0xc0;   // "
