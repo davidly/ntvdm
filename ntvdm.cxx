@@ -556,6 +556,7 @@ class CKbdBuffer
 
         bool IsFull() { return ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ); }
         bool IsEmpty() { return ( *phead == *ptail ); }
+        void Trace() { tracer.Trace( "  kbd buffer head = %04x, tail = %04x\n", *phead, *ptail ); }
 
         void Add( uint8_t asciiChar, uint8_t scancode, bool userGenerated = true )
         {
@@ -3708,7 +3709,7 @@ void handle_int_10( uint8_t c )
                 int rlr = (int) (uint8_t) cpu.dh();
                 int clr = (int) (uint8_t) cpu.dl();
 
-                tracer.Trace( "scroll window up %u lines, rul %u, cul %u, rlr %u, clr %u\n",
+                tracer.Trace( "  scroll window up %u lines, rul %u, cul %u, rlr %u, clr %u\n",
                               lines, rul, cul, rlr, clr );
 
                 if ( clr < cul || rlr < rul )
@@ -3761,7 +3762,7 @@ void handle_int_10( uint8_t c )
                 int cul = (int) (uint8_t) cpu.cl();
                 int rlr = (int) (uint8_t) cpu.dh();
                 int clr = (int) (uint8_t) cpu.dl();
-                tracer.Trace( "scroll window down %u lines, rul %u, cul %u, rlr %u, clr %u\n",
+                tracer.Trace( "  scroll window down %u lines, rul %u, cul %u, rlr %u, clr %u\n",
                               lines, rul, cul, rlr, clr );
 
                 if ( clr < cul || rlr < rul )
@@ -4244,6 +4245,8 @@ void handle_int_16( uint8_t c )
                 cpu.set_ah( kbd_buf.CurScancode() );
                 cpu.set_zero( false );
             }
+
+            //kbd_buf.Trace();
 
             if ( cpu.get_zero() )
                 tracer.Trace( "  returning zero flag true; no character available\n" );
@@ -4825,7 +4828,7 @@ void handle_int_21( uint8_t c )
                 consume_keyboard();
     
             cpu.set_ah( cpu.al() );
-            tracer.Trace( "recursing to int 0x21 with command %#x\n", cpu.ah() );
+            tracer.Trace( "  recursing to int 0x21 with command %#x\n", cpu.ah() );
             i8086_invoke_interrupt( 0x21 );
             return;
         }
@@ -7573,7 +7576,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
         {
             // read real time clock. get ticks since system boot. 18.2 ticks per second.
 
-#ifdef _WIN32
+#ifdef _WIN32 // gettimeofday() doesn't exist on Windows
             ULONGLONG milliseconds = GetTickCount64();
 #else
             struct timeval tv = {0};
@@ -7608,17 +7611,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             //          dl: dayligh savings 0 == standard, 1 == daylight
 
             cpu.set_carry( false );
-
-#ifdef _WIN32
-            SYSTEMTIME st = {0};
-            GetLocalTime( &st );
-            cpu.set_ch( toBCD( (uint8_t) st.wHour ) );
-            cpu.set_cl( toBCD( (uint8_t) st.wMinute ) );
-            cpu.set_dh( toBCD( (uint8_t) st.wSecond ) );
-            cpu.set_dl( 0 );
-#else            
             system_clock::time_point now = system_clock::now();
-            uint64_t ms = duration_cast<milliseconds>( now.time_since_epoch() ).count() % 1000;
             time_t time_now = system_clock::to_time_t( now );
             struct tm * plocal = localtime( & time_now );
 
@@ -7626,9 +7619,10 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
             cpu.set_cl( toBCD( (uint8_t) plocal->tm_min ) );
             cpu.set_dh( toBCD( (uint8_t) plocal->tm_sec ) );
             cpu.set_dl( 0 );
-#endif            
             return;
         }
+        else
+            tracer.Trace( "  unimplemented interrupt 1a function %u\n", c );
     }
     else if ( 0x20 == interrupt_num ) // compatibility with CP/M apps for COM executables that jump to address 0 in its data segment
     {
@@ -8429,7 +8423,6 @@ int main( int argc, char * argv[] )
         g_UseOneThread = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
     
         g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
-        g_tAppStart = high_resolution_clock::now();    
 
 #ifdef _WIN32
         g_msAtStart = GetTickCount64(); // struct timeval not availabe on Win32
@@ -8728,7 +8721,7 @@ int main( int argc, char * argv[] )
         * (uint8_t *)  ( pbiosdata + 0x88 ) = 9;              // ega feature bits
         * (uint8_t *)  ( pbiosdata + 0x89 ) = 0x51;           // video display area (400 line mode, vga active)
         * (uint8_t *)  ( pbiosdata + 0x8a ) = 0x8;            // 2 == CGA color, 8 == VGA color
-        * (uint8_t *)  ( pbiosdata + 0xd0 ) = 0;              // for int 21/8: 1 if consumed ascii and scancode is next.
+        * (uint8_t *)  ( pbiosdata + 0xd0 ) = 0;              // for int 21 fun 7/8: 1 if consumed ascii and scancode is next.
         * (uint8_t *)  ( pbiosdata + 0x10f ) = 0;             // where GWBASIC checks if it's in a shelled command.com.
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff0 ) ) = 0xea;   // power on entry point (used by mulisp to detect if it's a standard PC) ea = jmp far
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff1 ) ) = 0xc0;   // "
@@ -8760,7 +8753,7 @@ int main( int argc, char * argv[] )
         // Each interrupt vector element has 4 bytes for segment and offset.
         // The routines are almost all the same -- fake opcode, interrupt #, retf 2
         // One exception is tick tock interrupt 0x1c, which just does an iret for performance.
-        // Another is keyboard interrupt 9.
+        // Another exception is keyboard interrupt 9.
         // Interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
         // Other interrupts use far ret 2 (not iret) so as to not trash the flags (Z and C) used as return codes.
         // Functions are all allocated 5 bytes each though in some cases fewer are used.
@@ -8793,7 +8786,7 @@ int main( int argc, char * argv[] )
                 routine[ 1 ] = (uint8_t) intx;
                 routine[ 2 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored.
                 routine[ 3 ] = 2;    // 2 is for the 2 bytes of flags pushed during interrupt invocation then ignored.
-                routine[ 4 ] = 0;
+                routine[ 4 ] = 0;    // high byte of # of bytes to add to sp.
             }
         }
     
@@ -8871,11 +8864,11 @@ int main( int argc, char * argv[] )
     
         uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
         CPUCycleDelay delay( clockrate );
-        high_resolution_clock::time_point tStart = high_resolution_clock::now();
+        g_tAppStart = high_resolution_clock::now();    
     
         do
         {
-            total_cycles += cpu.emulate( 1000 );
+            total_cycles += cpu.emulate( 2000 );
     
             if ( g_haltExecution )
                 break;
@@ -8890,7 +8883,7 @@ int main( int argc, char * argv[] )
             uint32_t dt = GetBiosDailyTimer();
             bool timer_changed = ( dt != *pDailyTimer );
             if ( timer_changed )
-                *pDailyTimer = dt;
+                *pDailyTimer = dt;      // apps look here even if no timer interrupts happen because they aren't hooked
     
             // check interrupt enable and trap flags externally to avoid side effects in the emulator
     
@@ -8957,7 +8950,7 @@ int main( int argc, char * argv[] )
         if ( showPerformance )
         {
             char ac[ 100 ];
-            long long totalTime = duration_cast<std::chrono::milliseconds>( tDone - tStart ).count();
+            long long totalTime = duration_cast<std::chrono::milliseconds>( tDone - g_tAppStart ).count();
             printf( "\n" );
             printf( "elapsed milliseconds: %16s\n", CDJLTrace::RenderNumberWithCommas( totalTime, ac ) );
     
