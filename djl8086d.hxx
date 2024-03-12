@@ -31,8 +31,8 @@
 
 // display assembler shortcuts: display and append
 
-#define _da( ... ) sprintf( acOut, __VA_ARGS__ )
-#define _daa( ... ) sprintf( acOut + strlen( acOut ), __VA_ARGS__ )
+#define _da( ... ) snprintf( acOut, sizeof( acOut), __VA_ARGS__ )
+#define _daa( ... ) snprintf( acOut + strlen( acOut ), sizeof( acOut ) - strlen( acOut ), __VA_ARGS__ )
 
 class CDisassemble8086
 {
@@ -134,10 +134,10 @@ class CDisassemble8086
                 bool directAddress = ( 0 == _mod && 6 == _rm );
                 bool secondArgReg = ( 3 == _mod );
                 if ( firstArgReg )
-                    sprintf( ac, "%s, %s", reg_strings[ _reg ], getrm( _rm ) );
+                    snprintf( ac, sizeof( ac ), "%s, %s", reg_strings[ _reg ], getrm( _rm ) );
                 else
                 {
-                    sprintf( ac, "%s, ", getrm( secondArgReg ? _reg : _rm ) );
+                    snprintf( ac, sizeof( ac ), "%s, ", getrm( secondArgReg ? _reg : _rm ) );
     
                     if ( !secondArgReg )
                     {
@@ -152,12 +152,12 @@ class CDisassemble8086
                         char acI[ 10 ]; // immediate
                         if ( _isword )
                         {
-                            sprintf( acI, "%04xh", _pcode[ immoffset ] | ( (uint16_t) _pcode[ 1 + immoffset ] << 8 )  );
+                            snprintf( acI, sizeof( acI ), "%04xh", _pcode[ immoffset ] | ( (uint16_t) _pcode[ 1 + immoffset ] << 8 )  );
                             _bc += 2;
                         }
                         else
                         {
-                            sprintf( acI, "%02xh", _pcode[ immoffset ] );
+                            snprintf( acI, sizeof( acI ), "%02xh", _pcode[ immoffset ] );
                             _bc += 1;
                         }
                         strcat( ac, acI );
@@ -167,7 +167,7 @@ class CDisassemble8086
                 }
             }
             else
-                sprintf( ac, "%s, %s", getrm( _rm ), reg_strings[ _reg ] );
+                snprintf( ac, sizeof( ac ), "%s, %s", getrm( _rm ), reg_strings[ _reg ] );
         
             return ac;
         } //opargs

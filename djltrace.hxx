@@ -307,9 +307,9 @@ class CDJLTrace
             {
                 strcpy( actmp, pc );
                 if ( n >= 1000 )
-                    sprintf( pc, ",%03lld", n % 1000 );
+                    snprintf( pc, 5, ",%03lld", n % 1000 );
                 else
-                    sprintf( pc, "%lld", n );
+                    snprintf( pc, 4, "%lld", n );
                 strcat( pc, actmp );
                 n /= 1000;
             }

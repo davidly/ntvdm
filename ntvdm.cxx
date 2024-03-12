@@ -4387,7 +4387,11 @@ uint8_t HighestDrivePresent()
 #endif
 } //HighestDrivePresent
 
-void star_to_question( char * pstr, int len )
+#if defined( __GNUC__ ) && !defined( __APPLE__ )     // bogus warning in g++ (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
+
+void star_to_question( char * pstr, const int len )
 {
     for ( int i = 0; i < len; i++ )
     {
@@ -5760,8 +5764,8 @@ void handle_int_21( uint8_t c )
                 else
                     cpu.set_al( 0 );
     
-                star_to_question( pfcb->name, 8 );
-                star_to_question( pfcb->ext, 3 );
+                star_to_question( pfcb->name, sizeof( pfcb->name ) );
+                star_to_question( pfcb->ext, sizeof( pfcb->ext ) );
             }
     
             cpu.set_si( cpu.get_si() + (uint16_t) ( pf - pfile_original ) );
@@ -8592,13 +8596,8 @@ int main( int argc, char * argv[] )
             }
         }
     
-#ifdef _WIN32
-        static wchar_t logFile[ MAX_PATH ];
-        wsprintf( logFile, L"%S.log", g_thisApp );
-#else
         static char logFile[ MAX_PATH + 10 ];
-        sprintf( logFile, "%s.log", g_thisApp );
-#endif    
+        snprintf( logFile, sizeof( logFile ), "%s.log", g_thisApp );
         tracer.Enable( trace, logFile, true );
         tracer.SetQuiet( true );
         cpu.trace_instructions( traceInstructions );
