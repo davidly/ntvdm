@@ -15,6 +15,21 @@
 #include <malloc.h>
 #include <string.h>
 #include <assert.h>
+#include <signal.h>
+
+#define true 1
+#define false 0
+
+int signaled = true;
+
+void signal_handler( signal ) int signal;
+{
+    if ( SIGINT == signal )
+        printf( "got SIGINT %d -- ^c\n", signal );
+    else
+        printf( "got signal %d\n", signal );
+    signaled = true;
+}
 
 /* use these registers for DOS interrupts */
 
@@ -29,22 +44,41 @@ unsigned short gc()
     return g_regs_out.x.ax;
 } /*gc*/
 
+char printable( x ) char x;
+{
+    if ( x < ' ' || x >= 127 )
+        return ' ';
+    return x;
+}
+
 int main( argc, argv ) int argc; char * argv[];
 {
+    printf( "press keys to see the scancode and ascii values for int16 / 0\n" );
+    fflush( stdout );
+
+    signal( SIGINT, signal_handler );
+
+    printf( "press 'z' to exit\n" );
+    fflush( stdout );
+
     do
     {
         unsigned short ax = gc();
         unsigned short scancode = ax >> 8;
         unsigned short ascii = ax & 0xff;
-        printf( "ax (sc/asc): %#04x, scancode %d, ascii %d == '%c'\n", ax, scancode, ascii, ascii );
+        printf( "ax (sc/asc): %#04x, scancode %d, ascii %d == '%c'\n", ax, scancode, ascii, printable( ascii ) );
         fflush( stdout );
         if ( 'z' == ( ax & 0xff ) )
             break;
+
+        if ( signaled )
+        {
+            signaled = false;
+            signal( SIGINT, signal_handler );
+        }
     } while ( 1 );
 
     printf( "exiting\n" );
     return 0;
 } /*main*/
-
-
 
