@@ -2448,7 +2448,7 @@ void InjectKeystrokes()
 const uint8_t ascii_to_scancode[ 128 ] =
 {
       0,  30,  48,  46,  32,  18,  33,  34, // 0   _ a - g
-     35,  23,  28,  37,  38,  50,  49,  24, // 8   h - o  note: 10 should be 36 for ^j, but it's overloaded on Linux
+     35,  23,  28,  37,  38,  28,  49,  24, // 8   h - o  note: 10 should be 36 for ^j, but it's overloaded on Linux. same for ^m should be 50 but is 28.
      25,  16,  19,  31,  20,  22,  47,  17, // 16  p - w
      45,  21,  44,   1,  43,  27,   0,   0, // 24  x y z
      57,   2,  40,   4,   5,   6,   8,  40, // 32
