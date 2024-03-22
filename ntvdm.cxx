@@ -5862,6 +5862,7 @@ void handle_int_21( uint8_t c )
             {
                 g_appTerminationReturnCode = cpu.al();
                 tracer.Trace( "  tsr termination return code: %d\n", g_appTerminationReturnCode );
+                cpu.set_carry( false ); // indicate that the Create Process int x21 x4b (EXEC/Load and Execute Program) succeeded.
                 tracer.Trace( "  tsr's environment block: %04x\n", psp->segEnvironment );
                 g_currentPSP = psp->segParent;
                 cpu.set_cs( ( psp->int22TerminateAddress >> 16 ) & 0xffff );
