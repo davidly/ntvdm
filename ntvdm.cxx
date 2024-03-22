@@ -1280,7 +1280,7 @@ bool keyState( int vkey )
 
 void UpdateScreenCursorPosition( uint8_t row, uint8_t col )
 {
-    tracer.Trace( "  updating screen cursor position to %d %d\n", row, col );
+    //tracer.Trace( "  updating screen cursor position to %d %d\n", row, col );
     assert( g_use80xRowsMode );
 #ifdef _WIN32    
     COORD pos = { col, row };
@@ -5854,6 +5854,7 @@ void handle_int_21( uint8_t c )
             uint16_t new_paragraphs = cpu.get_dx();
             tracer.Trace( "  TSR and keep %#x paragraphs resident\n", new_paragraphs );
             g_allocEntries[ entry ].para_length = new_paragraphs;
+            reset_mcb_tags();
             trace_all_allocations();
 
             DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
@@ -6258,15 +6259,12 @@ void handle_int_21( uint8_t c )
             {
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
-                tracer.Trace( "  read from file using handle %u fp %p %04x bytes at address %02x:%02x. offset just beyond: %02x\n",
-                              cpu.get_bx(), fp, len, cpu.get_ds(), cpu.get_dx(), cpu.get_dx() + len );
+                tracer.Trace( "  read from file using handle %u, %04x bytes at address %02x:%02x. offset just beyond: %02x\n",
+                              cpu.get_bx(), len, cpu.get_ds(), cpu.get_dx(), cpu.get_dx() + len );
                 uint32_t cur = ftell( fp );
                 uint32_t size = portable_filelen( fp );
                 cpu.set_ax( 0 );
-                tracer.Trace( "  cur: %u, size %u\n", cur, size );
-
-                cur = ftell( fp );
-                tracer.Trace( "  latest cur: %u\n", cur );
+                tracer.Trace( "  current file position: %u, file size %u\n", cur, size );
     
                 if ( cur < size )
                 {
@@ -6326,7 +6324,7 @@ void handle_int_21( uint8_t c )
                     {
                         uint8_t * pbuf = GetVideoMem();
                         GetCursorPosition( row, col );
-                        tracer.Trace( "  starting to write pbuf %p, %u chars at row %u col %u, page %d\n", pbuf, cpu.get_cx(), row, col, GetActiveDisplayPage() );
+                        tracer.Trace( "  starting to write %u chars at row %u col %u, page %d\n", cpu.get_cx(), row, col, GetActiveDisplayPage() );
         
                         for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                         {
@@ -6458,8 +6456,10 @@ void handle_int_21( uint8_t c )
         case 0x42:
         {
             // move file pointer (lseek)
-            // bx == handle, cx:dx: 32-bit offset, al=mode. 0=beginning, 1=current. 2=end
-            // on success, set cx:dx to the current offset from the start of the file.
+            // bx == handle, cx:dx: 32-bit signed offset, al=mode. 0=beginning, 1=current. 2=end
+            // on success, set dx:ax to the current offset from the start of the file. and clear carry flag
+            // on failure, set carry flag and set ax to a DOS error code
+
 
             uint16_t handle = cpu.get_bx();
             handle = MapFileHandleCobolHack( handle );
