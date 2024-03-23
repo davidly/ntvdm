@@ -140,9 +140,8 @@ struct FileEntry
     char path[ MAX_PATH ];
     FILE * fp;
     uint16_t handle; // DOS handle, not host OS
-    bool writeable;
+    uint8_t mode; // 0=ro, 1=wo, 2=rw. upper bits are used for sharing/private
     uint16_t seg_process; // process that opened the file
-    uint16_t refcount;
 
     void Trace()
     {
@@ -746,6 +745,18 @@ bool isFilenameChar( char c )
     return ( ( l >= 'a' && l <= 'z' ) || ( l >= '0' && l <= '9' ) || '_' == c || '^' == c || '$' == c || '~' == c || '!' == c || '*' == c );
 } //isFilenameChar
 
+static const char * get_access_mode( uint8_t mode )
+{
+    uint8_t m = mode & 3;
+    if ( 0 == mode )
+        return "read only";
+    if ( 1 == mode )
+        return "write only";
+    if ( 2 == mode )
+        return "read write";
+    return "invalid mode";
+} //get_access_mode
+
 static void trace_all_open_files()
 {
     size_t cEntries = g_fileEntries.size();
@@ -753,8 +764,8 @@ static void trace_all_open_files()
     for ( size_t i = 0; i < cEntries; i++ )
     {
         FileEntry & fe = g_fileEntries[ i ];
-        tracer.Trace( "    file entry %d, fp %p, handle %u, writable %d, process %u, refcount %u, path %s\n", i,
-                      fe.fp, fe.handle, fe.writeable, fe.seg_process, fe.refcount, fe.path );
+        tracer.Trace( "    file entry %d, fp %p, handle %u, mode %s, process %u, path %s\n",
+                      i, fe.fp, fe.handle, get_access_mode( fe.mode ), fe.seg_process, fe.path );
     }
 } //trace_all_open_files
 
@@ -765,8 +776,8 @@ static void trace_all_open_files_fcb()
     for ( size_t i = 0; i < cEntries; i++ )
     {
         FileEntry & fe = g_fileEntriesFCB[ i ];
-        tracer.Trace( "    fcb file entry %d, fp %p, handle %u, writable %d, process %u, refcount %u, path %s\n", i,
-                      fe.fp, fe.handle, fe.writeable, fe.seg_process, fe.refcount, fe.path );
+        tracer.Trace( "    fcb file entry %d, fp %p, handle %u, mode %s, process %u, path %s\n",
+                      i, fe.fp, fe.handle, get_access_mode( fe.mode ), fe.seg_process, fe.path );
     }
 } //trace_all_open_files_fcb
 
@@ -4909,9 +4920,8 @@ void handle_int_21( uint8_t c )
                     strcpy( fe.path, filename );
                     fe.fp = fp;
                     fe.handle = 0; // FCB files don't have handles
-                    fe.writeable = true;
+                    fe.mode = 2;
                     fe.seg_process = g_currentPSP;
-                    fe.refcount = 1;
                     g_fileEntriesFCB.push_back( fe );
                     tracer.Trace( "  successfully opened file\n" );
                     trace_all_open_files_fcb();
@@ -5320,9 +5330,8 @@ void handle_int_21( uint8_t c )
                     strcpy( fe.path, filename );
                     fe.fp = fp;
                     fe.handle = 0;
-                    fe.writeable = true;
+                    fe.mode = 2;
                     fe.seg_process = g_currentPSP;
-                    fe.refcount = 1;
                     g_fileEntriesFCB.push_back( fe );
                     trace_all_open_files_fcb();
 
@@ -6041,9 +6050,8 @@ void handle_int_21( uint8_t c )
                 strcpy( fe.path, path );
                 fe.fp = fp;
                 fe.handle = FindFirstFreeFileHandle();
-                fe.writeable = true;
+                fe.mode = 2; // read / write
                 fe.seg_process = g_currentPSP;
-                fe.refcount = 1;
                 g_fileEntries.push_back( fe );
                 cpu.set_ax( fe.handle );
                 cpu.set_carry( false );
@@ -6071,59 +6079,40 @@ void handle_int_21( uint8_t c )
             const char * path = DOSToHostPath( original_path );
             tracer.TraceBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "  open file '%s'\n", path );
-            uint8_t openmode = cpu.al();
+            uint8_t openmode = cpu.al() & 3; // ignore sharing mode and private bits
             cpu.set_ax( 2 );
 
-            size_t index = FindFileEntryFromPath( path );
-            if ( -1 != index )
+            if ( !_stricmp( original_path, "CON" ) ||
+                 !_stricmp( original_path, "\\DEV\\CON" ) ||
+                 !_stricmp( original_path, "/dev/con" ) )
             {
-                // file is already open. return the same handle and add to refcount.
-
-                cpu.set_ax( g_fileEntries[ index ].handle );
+                cpu.set_ax( ( 0 == openmode ) ? 0 : 1 ); // need to be able to write to stdout
                 cpu.set_carry( false );
-                g_fileEntries[ index ].refcount++;
-                fseek( g_fileEntries[ index ].fp, 0, SEEK_SET ); // rewind it to the start
+                tracer.Trace( "  successfully using built-in handle %d for CON\n", cpu.get_ax() );
+                return;
+            }
 
-                tracer.Trace( "  successfully found already open file, using existing handle %04x\n", cpu.get_ax() );
+            FILE * fp = fopen( path, ( 0 == openmode ) ? "rb" : "r+b" );
+            if ( fp )
+            {
+                FileEntry fe = {0};
+                strcpy( fe.path, path );
+                fe.fp = fp;
+                fe.handle = FindFirstFreeFileHandle();
+                fe.mode = openmode;
+                fe.seg_process = g_currentPSP;
+                g_fileEntries.push_back( fe );
+                cpu.set_ax( fe.handle );
+                cpu.set_carry( false );
+                tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.get_ax() );
                 trace_all_open_files();
+                UpdateHandleMap();
             }
             else
             {
-                bool readOnly = ( 0 == openmode );
-
-                if ( !_stricmp( original_path, "CON" ) ||
-                     !_stricmp( original_path, "\\DEV\\CON" ) ||
-                     !_stricmp( original_path, "/dev/con" ) )
-                {
-                    cpu.set_ax( readOnly ? 0 : 1 );
-                    cpu.set_carry( false );
-                    tracer.Trace( "  successfully using built-in handle %d for CON\n", cpu.get_ax() );
-                    return;
-                }
-
-                FILE * fp = fopen( path, readOnly ? "rb" : "r+b" );
-                if ( fp )
-                {
-                    FileEntry fe = {0};
-                    strcpy( fe.path, path );
-                    fe.fp = fp;
-                    fe.handle = FindFirstFreeFileHandle();
-                    fe.writeable = !readOnly;
-                    fe.seg_process = g_currentPSP;
-                    fe.refcount = 1;
-                    g_fileEntries.push_back( fe );
-                    cpu.set_ax( fe.handle );
-                    cpu.set_carry( false );
-                    tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.get_ax() );
-                    trace_all_open_files();
-                    UpdateHandleMap();
-                }
-                else
-                {
-                    tracer.Trace( "  ERROR: open file sz failed with error %d = %s\n", errno, strerror( errno ) );
-                    cpu.set_ax( 2 );
-                    cpu.set_carry( true );
-                }
+                tracer.Trace( "  ERROR: open file sz failed with error %d = %s\n", errno, strerror( errno ) );
+                cpu.set_ax( 2 );
+                cpu.set_carry( true );
             }
     
             return;
@@ -6146,19 +6135,13 @@ void handle_int_21( uint8_t c )
                 size_t index = FindFileEntryIndex( handle );
                 if ( -1 != index )
                 {
-                    assert( g_fileEntries[ index ].refcount > 0 );
-                    g_fileEntries[ index ].refcount--;
-                    tracer.Trace( "  file close, new refcount %u\n", g_fileEntries[ index ].refcount );
-                    if ( 0 == g_fileEntries[ index ].refcount )
+                    FILE * fp = RemoveFileEntry( handle );
+                    if ( fp )
                     {
-                        FILE * fp = RemoveFileEntry( handle );
-                        if ( fp )
-                        {
-                            tracer.Trace( "  close file handle %04x, fp %p\n", handle, fp );
-                            fclose( fp );
-                            cpu.set_carry( false );
-                            UpdateHandleMap();
-                        }
+                        tracer.Trace( "  close file handle %04x, fp %p\n", handle, fp );
+                        fclose( fp );
+                        cpu.set_carry( false );
+                        UpdateHandleMap();
                     }
                 }
                 else
@@ -6271,12 +6254,12 @@ void handle_int_21( uint8_t c )
                 {
                     uint32_t toRead = get_min( (uint32_t) len, size - cur );
                     memset( p, 0, toRead );
-                    tracer.Trace( "  attempting to read %u bytes \n", toRead );
+                    tracer.Trace( "  attempting to read %u == %04x bytes \n", toRead, toRead );
                     size_t numRead = fread( p, 1, toRead, fp );
                     if ( numRead )
                     {
                         cpu.set_ax( (uint16_t) toRead );
-                        tracer.Trace( "  successfully read %04x (%u) bytes\n", toRead, toRead );
+                        tracer.Trace( "  successfully read %u == %04x bytes\n", numRead, numRead );
                         tracer.TraceBinaryData( p, toRead, 4 );
                     }
                     else
@@ -6694,16 +6677,15 @@ void handle_int_21( uint8_t c )
             {
                 FileEntry & entry = g_fileEntries[ index ];
 
-                FILE * fp = fopen( entry.path, entry.writeable ? "r+b" : "rb" );
+                FILE * fp = fopen( entry.path, ( 0 != entry.mode ) ? "r+b" : "rb" );
                 if ( fp )
                 {
                     FileEntry fe = {0};
                     strcpy( fe.path, entry.path );
                     fe.fp = fp;
                     fe.handle = FindFirstFreeFileHandle();
-                    fe.writeable = entry.writeable;
+                    fe.mode = entry.mode;
                     fe.seg_process = g_currentPSP;
-                    fe.refcount = 1;
                     g_fileEntries.push_back( fe );
                     cpu.set_ax( fe.handle );
                     cpu.set_carry( false );
