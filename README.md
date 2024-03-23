@@ -80,6 +80,7 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * Microsoft FORTRAN77, the linker, and generated apps.
  * Microsoft (R) C Optimizing Compiler Version 5.10 with Microsoft (R) Overlay Linker  Version 3.65
  * Microsoft Pascal v1.10 (this requires using ntvdm's -h flag due to bugs in pas2.exe and generated apps)
+ * Digital Research CB-86 v2.0 BASIC compiler. Note that this compiler requires source files be 0x1a / ^z terminated.
 
 ### Software
 
