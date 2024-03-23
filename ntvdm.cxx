@@ -1810,7 +1810,7 @@ uint8_t MapAsciiArt( uint8_t x )
         return ' ';
     if ( 7 == x ) // round dot for radio buttons
         return '+';
-    if ( 0xc4 == x || 0x1a == x || 0x1b == x || 0xcd == x || 0x10 == x )
+    if ( 0xc4 == x || 0x1a == x || 0x1b == x || 0xcd == x || 0x10 == x || 0x11 == x )
         return '-';
     if ( 0xb3 == x || 0xba == x || 0x17 == x || 0x18 == x || 0x19 == x )
         return '|';
@@ -1819,6 +1819,12 @@ uint8_t MapAsciiArt( uint8_t x )
         return '+';
     if ( 0xb0 == x || 0xb1 == x || 0xb2 == x || 4 == x || 0xfe == x || 0x12 == x )
         return ' ';
+    if ( 0xdb == x || 0xb2 == x ) // inverted full square
+        return '#'; 
+    if ( 0x1e == x || 0x1f == x ) // up / down arrow
+        return '|';
+    if ( 0x08 == x ) // small square
+        return '*';
     return x;
 } //MapAsciiArt
 
