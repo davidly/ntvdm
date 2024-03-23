@@ -748,13 +748,13 @@ bool isFilenameChar( char c )
 static const char * get_access_mode( uint8_t mode )
 {
     uint8_t m = mode & 3;
-    if ( 0 == mode )
-        return "read only";
-    if ( 1 == mode )
-        return "write only";
-    if ( 2 == mode )
-        return "read write";
-    return "invalid mode";
+    if ( 0 == m )
+        return "read-only";
+    if ( 1 == m )
+        return "write-only";
+    if ( 2 == m )
+        return "read/write";
+    return "invalid";
 } //get_access_mode
 
 static void trace_all_open_files()
@@ -1261,7 +1261,7 @@ bool FreeMemory( uint16_t segment )
     {
         // The Microsoft Basic compiler BC.EXE 7.10 attempts to free segment 0x80, which it doesn't own.
         // Turbo Pascal v5.5 exits a process never created except via int21 0x55, which frees that PSP,
-        // which isn't allocated, and the environment blocked it contains (0).
+        // which isn't allocated, and the environment block it contains (0).
 
         tracer.Trace( "  ERROR: memory corruption possible; can't find freed segment %04x\n", segment );
         return false;
