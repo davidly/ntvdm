@@ -3277,9 +3277,8 @@ bool starts_with( const char * str, const char * start )
             wc = ac;
         }
 
-        if ( !strcmp( wc.c_str(), "*.*" ) &&
-             ( !strcmp( input.c_str(), "." ) || !strcmp( input.c_str(), ".." ) ) )
-             return true;
+        if ( !strcmp( wc.c_str(), "*.*" ) )
+            return true;
 
         tracer.Trace( "  modified wildcard from '%s' to '%s'\n", wildcard.c_str(), wc.c_str() );
         std::regex rgx = wildcardToRegex( wc, false );
@@ -6476,7 +6475,7 @@ void handle_int_21( uint8_t c )
     
                 tracer.Trace( "  move file pointer using handle %04x to %d bytes from %s\n", handle, offset,
                               0 == origin ? "beginning" : 1 == origin ? "current" : "end" );
-    
+
                 uint32_t cur = ftell( fp );
                 fseek( fp, 0, SEEK_END );
                 uint32_t size = ftell( fp );
@@ -8716,7 +8715,16 @@ int main( int argc, char * argv[] )
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff2 ) ) = 0x12;   // "
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff3 ) ) = 0x00;   // "
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff4 ) ) = 0xf0;   // "
-        * (uint8_t *)  ( cpu.flat_address8( 0xffff, 0xe ) ) = 0xff;      // original pc
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff5 ) ) = '0';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff6 ) ) = '8';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff7 ) ) = '/';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff8 ) ) = '1';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff9 ) ) = '2';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfffa ) ) = '/';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfffb ) ) = '8';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfffc ) ) = '1';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfffe ) ) = 0xff; // original pc
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xffff ) ) = 0x55; // original pc
     
 #if 0
         // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table.
