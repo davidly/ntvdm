@@ -76,6 +76,7 @@
 #include <time.h>
 #include <string>
 #include <regex>
+#include <wchar.h>
 #endif
 
 #include <assert.h>
@@ -1787,6 +1788,49 @@ void UpdateDisplayRow( uint32_t y )
 
 #else
 
+// map 0000 to ' ' for display purposes. It only happens if a DOS app has a bug and tries to display character 0.
+
+const wchar_t CP437_to_Unicode[ 256 ] =
+{
+    0x0020, 0x263a, 0x263b, 0x2665, 0x2666, 0x2663, 0x2660, 0x2022, 0x25d8, 0x25cb, 0x25d9, 0x2642, 0x2640, 0x266a, 0x266b, 0x263c, // 0
+    0x25b6, 0x25c0, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x2190, 0x221f, 0x2194, 0x25b2, 0x25bc, // 16
+    0x0020, 0x0021, 0x0022, 0x0023, 0x0024, 0x0025, 0x0026, 0x0027, 0x0028, 0x0029, 0x002a, 0x002b, 0x002c, 0x002d, 0x002e, 0x002f, // 32
+    0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, 0x003a, 0x003b, 0x003c, 0x003d, 0x003e, 0x003f, // 48
+    0x0040, 0x0041, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047, 0x0048, 0x0049, 0x004a, 0x004b, 0x004c, 0x004d, 0x004e, 0x004f, // 64
+    0x0050, 0x0051, 0x0052, 0x0053, 0x0054, 0x0055, 0x0056, 0x0057, 0x0058, 0x0059, 0x005a, 0x005b, 0x005c, 0x005d, 0x005e, 0x005f, // 80
+    0x0060, 0x0061, 0x0062, 0x0063, 0x0064, 0x0065, 0x0066, 0x0067, 0x0068, 0x0069, 0x006a, 0x006b, 0x006c, 0x006d, 0x006e, 0x006f, // 96
+    0x0070, 0x0071, 0x0072, 0x0073, 0x0074, 0x0075, 0x0076, 0x0077, 0x0078, 0x0079, 0x007a, 0x007b, 0x007c, 0x007d, 0x007e, 0x2302, // 112
+    0x00c7, 0x00fc, 0x00e9, 0x00e2, 0x00e4, 0x00e0, 0x00e5, 0x00e7, 0x00ea, 0x00eb, 0x00e8, 0x00ef, 0x00ee, 0x00ec, 0x00c4, 0x00c5, // 128
+    0x00c9, 0x00e6, 0x00c6, 0x00f4, 0x00f6, 0x00f2, 0x00fb, 0x00f9, 0x00ff, 0x00d6, 0x00dc, 0x00a2, 0x00a3, 0x00a5, 0x20a7, 0x0192, // 144
+    0x00e1, 0x00ed, 0x00f3, 0x00fa, 0x00f1, 0x00d1, 0x00aa, 0x00ba, 0x00bf, 0x2310, 0x00ac, 0x00bd, 0x00bc, 0x00a1, 0x00ab, 0x00bb, // 160
+    0x2591, 0x2592, 0x2593, 0x2502, 0x2524, 0x2561, 0x2562, 0x2556, 0x2555, 0x2563, 0x2551, 0x2557, 0x255d, 0x255c, 0x255b, 0x2510, // 176
+    0x2514, 0x2534, 0x252c, 0x251c, 0x2500, 0x253c, 0x255e, 0x255f, 0x255a, 0x2554, 0x2569, 0x2566, 0x2560, 0x2550, 0x256c, 0x2567, // 192
+    0x2568, 0x2564, 0x2565, 0x2559, 0x2558, 0x2552, 0x2553, 0x256b, 0x256a, 0x2518, 0x250c, 0x2588, 0x2584, 0x258c, 0x2590, 0x2580, // 208
+    0x03b1, 0x03b2, 0x0393, 0x03c0, 0x03a3, 0x03c3, 0x00b5, 0x03c4, 0x03a6, 0x0398, 0x03a9, 0x03b4, 0x221e, 0x03c6, 0x03b5, 0x2229, // 224
+    0x2261, 0x00b1, 0x2265, 0x2264, 0x2320, 0x2321, 0x00f7, 0x2248, 0x00b0, 0x2219, 0x00b7, 0x221a, 0x207f, 0x00b2, 0x25a0, 0x00a0, // 240
+};
+
+int unicode_to_utf8( char * p, unsigned short u )
+{
+    if ( u <= 0x7f )
+    {
+        p[ 0 ] = (char) u;
+        return 1;
+    }
+
+    if ( u <= 0x7ff )
+    {
+        p[0] = (char) ( 0xc0 | ( ( u >> 6 ) & 0x1f ) );
+        p[1] = (char) ( 0x80 | ( u & 0x3f ) );
+        return 2;
+    }
+
+    p[0] = (char) ( 0xe0 | ( ( u >> 12 ) & 0xf ) );
+    p[1] = (char) ( 0x80 | ( ( u >> 6 ) & 0x3c ) | ( ( u >> 6 ) & 3 ) );
+    p[2] = (char) ( 0x80 | ( u & 0x30 ) | ( u & 0xf ) );
+    return 3;
+} //unicode_to_utf8
+
 void DecodeAttributes( uint8_t a, uint8_t & fg, uint8_t & bg, bool & intense )
 {
     fg = ( a & 7 );
@@ -1804,30 +1848,6 @@ static const uint8_t BGColorMap[ 8 ] =
     40, 44, 42, 46, 41, 45, 43, 47,
 };
 
-uint8_t MapAsciiArt( uint8_t x )
-{
-    if ( 0 == x ) // brief alternately writes 0 then ':' for the clock
-        return ' ';
-    if ( 7 == x ) // round dot for radio buttons
-        return '+';
-    if ( 0xc4 == x || 0x1a == x || 0x1b == x || 0xcd == x || 0x10 == x || 0x11 == x )
-        return '-';
-    if ( 0xb3 == x || 0xba == x || 0x17 == x || 0x18 == x || 0x19 == x )
-        return '|';
-    if ( 0xda == x || 0xc3 == x || 0xb4 == x || 0xbf == x || 0xd9 == x || 0xc0 == x || 0xd5 == x || 0xb8 == x || 0xc9 == x || 0xbb == x || 
-         0xc8 == x || 0xbc == x || 0xd4 == x || 0xbe == x || 0xcb == x || 0xcc == x || 0xca == x || 0xce == x || 0xb9 == x )
-        return '+';
-    if ( 0xb0 == x || 0xb1 == x || 0xb2 == x || 4 == x || 0xfe == x || 0x12 == x )
-        return ' ';
-    if ( 0xdb == x || 0xb2 == x ) // inverted full square
-        return '#'; 
-    if ( 0x1e == x || 0x1f == x ) // up / down arrow
-        return '|';
-    if ( 0x08 == x ) // small square
-        return '*';
-    return x;
-} //MapAsciiArt
-
 void UpdateDisplayRow( uint32_t y )
 {
     assert( g_use80xRowsMode );
@@ -1839,37 +1859,42 @@ void UpdateDisplayRow( uint32_t y )
 
     memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
     uint8_t aAttribs[ ScreenColumns ];
-    char ac[ ScreenColumns ];
+    wchar_t awc[ ScreenColumns ];
     bool sameAttribs = true;
+
     for ( size_t x = 0; x < ScreenColumns; x++ )
     {
         size_t offset = yoffset + x * 2;
-        ac[ x ] = MapAsciiArt( pbuf[ offset ] );
+        awc[ x ] = CP437_to_Unicode[ pbuf[ offset ] ];
         aAttribs[ x ] = pbuf[ 1 + offset ]; 
         if ( aAttribs[ 0 ] != aAttribs[ x ] )
             sameAttribs = false;
     }
 
-    #if false
-        //tracer.Trace( "    updaterow %02u: '%.80s'\n", y, ac );
-        tracer.Trace( "    udrow %02u: '", y );
-        for ( size_t c = 0; c < ScreenColumns; c++ )
-            tracer.Trace( "%c", printable( ac[ c ] ) );
-        tracer.Trace( "'\n" );
-    #endif
+    printf( "%c[%d;1H", 27, y + 1 ); // move to the correct row and column
 
     uint8_t fgRGB, bgRGB;
     bool intense;
-    printf( "%c[%d;1H", 27, y + 1 );
 
     if ( sameAttribs )
     {
         DecodeAttributes( aAttribs[ 0 ], fgRGB, bgRGB, intense );
         printf( "%c[%d;%d;%dm", 27, intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
-        printf( "%.*s", ScreenColumns, ac ); // vt-100 row/col are 1-based
+
+        char acLine[ ScreenColumns * 3 ]; // characters expand to at most 3 UTF-8 bytes each
+        int len = 0;
+
+        for ( size_t x = 0; x < ScreenColumns; x++ )
+        {
+            int l = unicode_to_utf8( & ( acLine[ len ] ), awc[ x ] );
+            len += l;
+        }
+
+        printf( "%.*s", len, acLine );
     }
     else
     {
+        char ac[ 3 ];
         for ( size_t x = 0; x < ScreenColumns; x++ )
         {
             if ( ( 0 == x ) || ( aAttribs[ x ] != aAttribs[ x - 1 ] ) )
@@ -1877,9 +1902,12 @@ void UpdateDisplayRow( uint32_t y )
                 DecodeAttributes( aAttribs[ x ], fgRGB, bgRGB, intense );
                 printf( "%c[%d;%d;%dm", 27, intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
             }
-            putchar( ac[ x ] );
+    
+            int len = unicode_to_utf8( ac, awc[ x ] );
+            printf( "%.*s", len, ac );
         }
     }
+
     UpdateScreenCursorPosition();
 } //UpdateDisplayRow
 
@@ -8450,6 +8478,9 @@ int main( int argc, char * argv[] )
         g_hConsoleOutput = GetStdHandle( STD_OUTPUT_HANDLE );
         g_hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
         g_heventKeyStroke = CreateEvent( 0, FALSE, FALSE, 0 );
+#else
+        setlocale( LC_CTYPE, "en_US.UTF-8" );            // these are needed for printf of utf-8 to work
+        setlocale( LC_COLLATE, "en_US.UTF-8" );    
 #endif
 
         init_blankline( DefaultVideoAttribute );
