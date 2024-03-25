@@ -65,6 +65,8 @@
 #include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
+#include <locale.h>
+#include <wchar.h>
 
 #ifdef _WIN32
 #include <io.h>
@@ -76,7 +78,6 @@
 #include <time.h>
 #include <string>
 #include <regex>
-#include <wchar.h>
 #endif
 
 #include <assert.h>
@@ -1298,7 +1299,7 @@ void UpdateScreenCursorPosition( uint8_t row, uint8_t col )
     COORD pos = { col, row };
     SetConsoleCursorPosition( g_hConsoleOutput, pos );
 #else
-    printf( "%c[%d;%dH", 27, row + 1, col + 1 );    // vt-100 row/col are 1-based
+    printf( "\x1b[%d;%dH", row + 1, col + 1 );    // vt-100 row/col are 1-based
     fflush( stdout );
 #endif
 } //UpdateScreenCursorPosition
@@ -1721,79 +1722,13 @@ void traceDisplayBufferAsHex()
     }
 } //traceDisplayBufferAsHex
 
-// Unicode equivalents of DOS characters < 32. Codepage 437 doesn't automatically make these work in v2 of console.
+// Map 0000 to ' ' for display purposes. It only happens if a DOS app has a bug and tries to display character 0. Like brief.exe.
+// This table otherwise comes from the Wikipedia page on cp 437.
 
-static wchar_t awcLowDOSChars[ 32 ] =
-{ 
-    0,      0x263a, 0x2638, 0x2665, 0x2666, 0x2663, 0x2600, 0x2022, 0x25d8, 0x25cb, 0x25d9, 0x2642, 0x2640, 0x266a, 0x266b, 0x263c,
-    0x25ba, 0x25c4, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x2190, 0x221f, 0x2194, 0x2582, 0x25bc,
-};
-
-#ifdef _WIN32
-
-void UpdateDisplayRow( uint32_t y )
-{
-    assert( g_use80xRowsMode );
-    if ( y >= GetScreenRows() )
-        return;
-
-    uint8_t * pbuf = GetVideoMem();
-    uint32_t yoffset = y * ScreenColumns * 2;
-
-    memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
-    WORD aAttribs[ ScreenColumns ];
-    char ac[ ScreenColumns ];
-    for ( size_t x = 0; x < ScreenColumns; x++ )
-    {
-        size_t offset = yoffset + x * 2;
-        ac[ x ] = pbuf[ offset ];
-        if ( 0 == ac[ x ] )
-            ac[ x ] = ' '; // brief alternately writes 0 then ':' for the clock
-        aAttribs[ x ] = pbuf[ 1 + offset ]; 
-    }
-
-    WCHAR awcLine[ ScreenColumns ];
-    MultiByteToWideChar( 437, 0, ac, ScreenColumns, awcLine, ScreenColumns );
-
-    // CP 437 doesn't handle characters 0 to 31 or 0x7f correctly. 
-
-    for ( size_t x = 0; x < ScreenColumns; x++ )
-    {
-        if ( awcLine[ x ] < 32 )
-            awcLine[ x ] = awcLowDOSChars[ awcLine[ x ] ];
-        else if ( 0x7f == awcLine[ x ] )
-            awcLine[ x ] = 0x2302;
-    }
-
-    #if false
-        //tracer.Trace( "    row %02u: '%.80s'\n", y, ac );
-        tracer.Trace( "    row %02u: '", y );
-        for ( size_t c = 0; c < ScreenColumns; c++ )
-            tracer.Trace( "%c", printable( ac[ c ] ) );
-        tracer.Trace( "'\n" );
-    #endif
-    
-    COORD pos = { 0, (SHORT) y };
-    SetConsoleCursorPosition( g_hConsoleOutput, pos );
-    
-    BOOL ok = WriteConsoleW( g_hConsoleOutput, awcLine, ScreenColumns, 0, 0 );
-    if ( !ok )
-        tracer.Trace( "writeconsole failed row %u with error %d\n", y, GetLastError() );
-    
-    DWORD dwWritten;
-    ok = WriteConsoleOutputAttribute( g_hConsoleOutput, aAttribs, ScreenColumns, pos, &dwWritten );
-    if ( !ok )
-        tracer.Trace( "writeconsoleoutputattribute failed row %u with error %d\n", y, GetLastError() );
-} //UpdateDisplayRow
-
-#else
-
-// map 0000 to ' ' for display purposes. It only happens if a DOS app has a bug and tries to display character 0.
-
-const wchar_t CP437_to_Unicode[ 256 ] =
-{
+static const wchar_t CP437_to_Unicode[ 256 ] =
+{ //     0                               4                               8                               c
     0x0020, 0x263a, 0x263b, 0x2665, 0x2666, 0x2663, 0x2660, 0x2022, 0x25d8, 0x25cb, 0x25d9, 0x2642, 0x2640, 0x266a, 0x266b, 0x263c, // 0
-    0x25b6, 0x25c0, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x2190, 0x221f, 0x2194, 0x25b2, 0x25bc, // 16
+    0x25ba, 0x25c4, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x2190, 0x221f, 0x2194, 0x25b2, 0x25bc, // 16
     0x0020, 0x0021, 0x0022, 0x0023, 0x0024, 0x0025, 0x0026, 0x0027, 0x0028, 0x0029, 0x002a, 0x002b, 0x002c, 0x002d, 0x002e, 0x002f, // 32
     0x0030, 0x0031, 0x0032, 0x0033, 0x0034, 0x0035, 0x0036, 0x0037, 0x0038, 0x0039, 0x003a, 0x003b, 0x003c, 0x003d, 0x003e, 0x003f, // 48
     0x0040, 0x0041, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047, 0x0048, 0x0049, 0x004a, 0x004b, 0x004c, 0x004d, 0x004e, 0x004f, // 64
@@ -1809,6 +1744,46 @@ const wchar_t CP437_to_Unicode[ 256 ] =
     0x03b1, 0x03b2, 0x0393, 0x03c0, 0x03a3, 0x03c3, 0x00b5, 0x03c4, 0x03a6, 0x0398, 0x03a9, 0x03b4, 0x221e, 0x03c6, 0x03b5, 0x2229, // 224
     0x2261, 0x00b1, 0x2265, 0x2264, 0x2320, 0x2321, 0x00f7, 0x2248, 0x00b0, 0x2219, 0x00b7, 0x221a, 0x207f, 0x00b2, 0x25a0, 0x00a0, // 240
 };
+
+// The Linux/MacOS code that uses ANSI escape sequences and utf-8 mostly works for Windows,
+// but CP 437 characters 7 through 13 are translated badly by either the C runtime or the
+// terminal. It's a shame, but two implementations are necessary.
+
+#ifdef _WIN32
+
+void UpdateDisplayRow( uint32_t y )
+{
+    assert( g_use80xRowsMode );
+    if ( y >= GetScreenRows() )
+        return;
+
+    uint8_t * pbuf = GetVideoMem();
+    uint32_t yoffset = y * ScreenColumns * 2;
+    memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
+    WORD aAttribs[ ScreenColumns ];
+    WCHAR awcLine[ ScreenColumns ];
+
+    for ( size_t x = 0; x < ScreenColumns; x++ )
+    {
+        size_t offset = yoffset + x * 2;
+        awcLine[ x ] = CP437_to_Unicode[ pbuf[ offset ] ];
+        aAttribs[ x ] = pbuf[ 1 + offset ]; 
+    }
+
+    COORD pos = { 0, (SHORT) y };
+    SetConsoleCursorPosition( g_hConsoleOutput, pos );
+    
+    BOOL ok = WriteConsoleW( g_hConsoleOutput, awcLine, ScreenColumns, 0, 0 );
+    if ( !ok )
+        tracer.Trace( "writeconsole failed row %u with error %d\n", y, GetLastError() );
+    
+    DWORD dwWritten;
+    ok = WriteConsoleOutputAttribute( g_hConsoleOutput, aAttribs, ScreenColumns, pos, &dwWritten );
+    if ( !ok )
+        tracer.Trace( "writeconsoleoutputattribute failed row %u with error %d\n", y, GetLastError() );
+} //UpdateDisplayRow
+
+#else // everything but Windows
 
 int unicode_to_utf8( char * p, unsigned short u )
 {
@@ -1826,7 +1801,7 @@ int unicode_to_utf8( char * p, unsigned short u )
     }
 
     p[0] = (char) ( 0xe0 | ( ( u >> 12 ) & 0xf ) );
-    p[1] = (char) ( 0x80 | ( ( u >> 6 ) & 0x3c ) | ( ( u >> 6 ) & 3 ) );
+    p[1] = (char) ( 0x80 | ( ( u >> 6 ) & 0x3f ) );
     p[2] = (char) ( 0x80 | ( u & 0x30 ) | ( u & 0xf ) );
     return 3;
 } //unicode_to_utf8
@@ -1858,55 +1833,36 @@ void UpdateDisplayRow( uint32_t y )
     uint32_t yoffset = y * ScreenColumns * 2;
 
     memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
-    uint8_t aAttribs[ ScreenColumns ];
+    uint8_t attribs[ ScreenColumns ];
     wchar_t awc[ ScreenColumns ];
-    bool sameAttribs = true;
 
     for ( size_t x = 0; x < ScreenColumns; x++ )
     {
         size_t offset = yoffset + x * 2;
         awc[ x ] = CP437_to_Unicode[ pbuf[ offset ] ];
-        aAttribs[ x ] = pbuf[ 1 + offset ]; 
-        if ( aAttribs[ 0 ] != aAttribs[ x ] )
-            sameAttribs = false;
+        attribs[ x ] = pbuf[ 1 + offset ]; 
     }
 
-    printf( "%c[%d;1H", 27, y + 1 ); // move to the correct row and column
+    printf( "\x1b[%d;1H", y + 1 ); // move to the correct row and column
 
     uint8_t fgRGB, bgRGB;
     bool intense;
+    static char acLine[ ScreenColumns * 13 ]; // 3 for utf-8 + 10 per attribute escape sequence worst-case per character
+    int len = 0;
 
-    if ( sameAttribs )
+    for ( size_t x = 0; x < ScreenColumns; x++ )
     {
-        DecodeAttributes( aAttribs[ 0 ], fgRGB, bgRGB, intense );
-        printf( "%c[%d;%d;%dm", 27, intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
-
-        char acLine[ ScreenColumns * 3 ]; // characters expand to at most 3 UTF-8 bytes each
-        int len = 0;
-
-        for ( size_t x = 0; x < ScreenColumns; x++ )
+        if ( ( 0 == x ) || ( attribs[ x ] != attribs[ x - 1 ] ) )
         {
-            int l = unicode_to_utf8( & ( acLine[ len ] ), awc[ x ] );
-            len += l;
+            DecodeAttributes( attribs[ x ], fgRGB, bgRGB, intense );
+            len += snprintf( & acLine[ len ], 11, "\x1b[%d;%d;%dm", intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
         }
-
-        printf( "%.*s", len, acLine );
-    }
-    else
-    {
-        char ac[ 3 ];
-        for ( size_t x = 0; x < ScreenColumns; x++ )
-        {
-            if ( ( 0 == x ) || ( aAttribs[ x ] != aAttribs[ x - 1 ] ) )
-            {
-                DecodeAttributes( aAttribs[ x ], fgRGB, bgRGB, intense );
-                printf( "%c[%d;%d;%dm", 27, intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
-            }
     
-            int len = unicode_to_utf8( ac, awc[ x ] );
-            printf( "%.*s", len, ac );
-        }
+        len += unicode_to_utf8( & ( acLine[ len ] ), awc[ x ] );
+        assert( len < _countof( acLine ) );
     }
+
+    printf( "%.*s", len, acLine );
 
     UpdateScreenCursorPosition();
 } //UpdateDisplayRow
@@ -1920,17 +1876,6 @@ bool UpdateDisplay()
 
     if ( DisplayUpdateRequired() )
     {
-        //tracer.Trace( "UpdateDisplay with changes\n" );
-        #if false && _WIN32
-            CONSOLE_SCREEN_BUFFER_INFOEX csbi = { 0 };
-            csbi.cbSize = sizeof( csbi );
-            GetConsoleScreenBufferInfoEx( g_hConsoleOutput, &csbi );
-
-            tracer.Trace( "  UpdateDisplay: pbuf %p, csbi size %d %d, window %d %d %d %d\n",
-                          pbuf, csbi.dwSize.X, csbi.dwSize.Y,
-                          csbi.srWindow.Left, csbi.srWindow.Top, csbi.srWindow.Right, csbi.srWindow.Bottom );
-        #endif
-
         for ( uint32_t y = 0; y < GetScreenRows(); y++ )
         {
             uint32_t yoffset = y * ScreenColumns * 2;
@@ -1941,11 +1886,11 @@ bool UpdateDisplay()
         //if ( tracer.IsEnabled() )
         //    traceDisplayBufferAsHex();
         //traceDisplayBuffers();
+
         UpdateScreenCursorPosition(); // restore cursor position to where it was before
         return true;
     }
 
-    //tracer.Trace( "UpdateDisplay not updated; no changes\n" );
     return false;
 } //UpdateDisplay
 
@@ -3747,7 +3692,7 @@ void handle_int_10( uint8_t c )
             {
                 init_blankline( (uint8_t) cpu.bh() );
 
-                //printf( "%c[%dS", 27, cpu.al() );
+                //printf( "\x1b[%dS", cpu.al() );
                 int rul = (int) (uint8_t) cpu.ch();
                 int cul = (int) (uint8_t) cpu.cl();
                 int rlr = (int) (uint8_t) cpu.dh();
@@ -3801,7 +3746,7 @@ void handle_int_10( uint8_t c )
             {
                 init_blankline( (uint8_t) cpu.bh() );
 
-                //printf( "%c[%dT", 27, cpu.al() );
+                //printf( "\x1b[%dT", cpu.al() );
                 int rul = (int) (uint8_t) cpu.ch();
                 int cul = (int) (uint8_t) cpu.cl();
                 int rlr = (int) (uint8_t) cpu.dh();
@@ -8478,10 +8423,10 @@ int main( int argc, char * argv[] )
         g_hConsoleOutput = GetStdHandle( STD_OUTPUT_HANDLE );
         g_hConsoleInput = GetStdHandle( STD_INPUT_HANDLE );
         g_heventKeyStroke = CreateEvent( 0, FALSE, FALSE, 0 );
-#else
+#endif
+
         setlocale( LC_CTYPE, "en_US.UTF-8" );            // these are needed for printf of utf-8 to work
         setlocale( LC_COLLATE, "en_US.UTF-8" );    
-#endif
 
         init_blankline( DefaultVideoAttribute );
     
