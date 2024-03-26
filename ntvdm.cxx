@@ -298,6 +298,7 @@ static high_resolution_clock::time_point g_tAppStart; // system time at app star
 static uint8_t g_bufferLastUpdate[ 80 * 50 * 2 ] = {0}; // used to check for changes in video memory. At most we support 80 by 50
 static CKeyStrokes g_keyStrokes;                     // read or write keystrokes between kslog.txt and the app
 static bool g_UseOneThread = false;                  // true if no keyboard thread should be used
+static bool g_InRVOS = false;                        // true if running in the RISC-V + Linux emulator RVOS
 static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
 static bool g_SendControlCInt = false;               // set to TRUE when/if a ^C is detected and an interrupt should be sent
 
@@ -1722,6 +1723,13 @@ void traceDisplayBufferAsHex()
     }
 } //traceDisplayBufferAsHex
 
+// hacks for a bug in Windows Terminal. Map 7 through 15 to smiley faces
+
+static const wchar_t CP437_to_Unicode_Windows_Hack[ 16 ] =
+{
+    0x0020, 0x263a, 0x263b, 0x2665, 0x2666, 0x2663, 0x2660, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a,
+};
+
 // Map 0000 to ' ' for display purposes. It only happens if a DOS app has a bug and tries to display character 0. Like brief.exe.
 // This table otherwise comes from the Wikipedia page on cp 437.
 
@@ -1746,8 +1754,8 @@ static const wchar_t CP437_to_Unicode[ 256 ] =
 };
 
 // The Linux/MacOS code that uses ANSI escape sequences and utf-8 mostly works for Windows,
-// but CP 437 characters 7 through 13 are translated badly by either the C runtime or the
-// terminal. It's a shame, but two implementations are necessary.
+// but CP 437 characters 7 through 15 are translated badly by Windows Terminal.
+// It's a shame, but two implementations are necessary to get all of CP 437 on Windows.
 
 #ifdef _WIN32
 
@@ -1840,7 +1848,21 @@ void UpdateDisplayRow( uint32_t y )
     {
         size_t offset = yoffset + x * 2;
         awc[ x ] = CP437_to_Unicode[ pbuf[ offset ] ];
-        attribs[ x ] = pbuf[ 1 + offset ]; 
+        attribs[ x ] = pbuf[ 1 + offset ];
+
+#if defined( __riscv )
+        // When NTVDM built for RISC-V runs in RVOS emulation on Windows, CP 437
+        // characters 7 through 13 are interpreted by Windows Terminal as control
+        // characters, not actual chacters. This is after they are converted to
+        // UTF-8 and sent via write() to stdout. I can't find a way to configure
+        // Windows Terminal to not do this. As a workaround, map those characters
+        // smiley faces, which is how I feel about this hack.
+        // This is also why WriteConsoleW is used instead of ansi escape sequences
+        // on Windows builds.
+
+        if ( g_InRVOS && pbuf[ offset ] >= 7 && pbuf[ offset ] <= 15 )
+            awc[ x ] = CP437_to_Unicode_Windows_Hack[ pbuf[ offset ] ];
+#endif
     }
 
     printf( "\x1b[%d;1H", y + 1 ); // move to the correct row and column
@@ -1862,6 +1884,7 @@ void UpdateDisplayRow( uint32_t y )
         assert( len < _countof( acLine ) );
     }
 
+    //tracer.Trace( "termwrite '%.*s'\n", len, acLine );
     printf( "%.*s", len, acLine );
 
     UpdateScreenCursorPosition();
@@ -8385,7 +8408,8 @@ int main( int argc, char * argv[] )
     try
     {
         char * posval = getenv( "OS" );
-        g_UseOneThread = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
+        g_InRVOS = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
+        g_UseOneThread = g_InRVOS;
     
         g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
 
