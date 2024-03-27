@@ -719,7 +719,7 @@ uint8_t * GetVideoMem()
 
 bool DisplayUpdateRequired()
 {
-    return ( 0 != memcmp( g_bufferLastUpdate, GetVideoMem(), sizeof( g_bufferLastUpdate ) ) );
+    return ( 0 != memcmp( g_bufferLastUpdate, GetVideoMem(), ScreenColumns * GetScreenRows() * 2 ) );
 } //DisplayUpdateRequired
 
 void SleepAndScheduleInterruptCheck()
@@ -1723,11 +1723,14 @@ void traceDisplayBufferAsHex()
     }
 } //traceDisplayBufferAsHex
 
-// hacks for a bug in Windows Terminal. Map 7 through 15 to smiley faces
+// hacks for a bug in Windows Terminal. Map 7 through 15 to smiley faces.
+// Also, 27/0x1b/ESC/left-arrow is treated as ESC so it's mapped to the other left arrow in this table.
+// see this: https://github.com/dotnet/runtime/issues/80644
 
-static const wchar_t CP437_to_Unicode_Windows_Hack[ 16 ] =
+static const wchar_t CP437_to_Unicode_Windows_Hack[ 32 ] =
 {
     0x0020, 0x263a, 0x263b, 0x2665, 0x2666, 0x2663, 0x2660, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a,
+    0x25ba, 0x25c4, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x25c4, 0x221f, 0x2194, 0x25b2, 0x25bc, // 16
 };
 
 // Map 0000 to ' ' for display purposes. It only happens if a DOS app has a bug and tries to display character 0. Like brief.exe.
@@ -1754,7 +1757,7 @@ static const wchar_t CP437_to_Unicode[ 256 ] =
 };
 
 // The Linux/MacOS code that uses ANSI escape sequences and utf-8 mostly works for Windows,
-// but CP 437 characters 7 through 15 are translated badly by Windows Terminal.
+// but CP 437 characters 7 through 15 and 17 are translated badly by Windows Terminal.
 // It's a shame, but two implementations are necessary to get all of CP 437 on Windows.
 
 #ifdef _WIN32
@@ -1785,10 +1788,12 @@ void UpdateDisplayRow( uint32_t y )
     if ( !ok )
         tracer.Trace( "writeconsole failed row %u with error %d\n", y, GetLastError() );
     
-    DWORD dwWritten;
+    DWORD dwWritten; // not optional
     ok = WriteConsoleOutputAttribute( g_hConsoleOutput, aAttribs, ScreenColumns, pos, &dwWritten );
     if ( !ok )
         tracer.Trace( "writeconsoleoutputattribute failed row %u with error %d\n", y, GetLastError() );
+
+    UpdateScreenCursorPosition(); // restore original position of the cursor
 } //UpdateDisplayRow
 
 #else // everything but Windows
@@ -1821,6 +1826,8 @@ void DecodeAttributes( uint8_t a, uint8_t & fg, uint8_t & bg, bool & intense )
     intense = ( 0 != ( a & 8 ) );
 } //DecodeAttributes
 
+// These tables (roughly) map DOS foreground and background colors to ANSI escape sequence colors.
+
 static const uint8_t FGColorMap[ 8 ] =
 {
     30, 34, 32, 36, 31, 35, 33, 37,
@@ -1850,7 +1857,7 @@ void UpdateDisplayRow( uint32_t y )
         awc[ x ] = CP437_to_Unicode[ pbuf[ offset ] ];
         attribs[ x ] = pbuf[ 1 + offset ];
 
-#if defined( __riscv )
+#if defined( __riscv ) || defined( _WIN32 )
         // When NTVDM built for RISC-V runs in RVOS emulation on Windows, CP 437
         // characters 7 through 13 are interpreted by Windows Terminal as control
         // characters, not actual chacters. This is after they are converted to
@@ -1860,8 +1867,13 @@ void UpdateDisplayRow( uint32_t y )
         // This is also why WriteConsoleW is used instead of ansi escape sequences
         // on Windows builds.
 
-        if ( g_InRVOS && pbuf[ offset ] >= 7 && pbuf[ offset ] <= 15 )
-            awc[ x ] = CP437_to_Unicode_Windows_Hack[ pbuf[ offset ] ];
+#if defined( __riscv )
+        if ( g_InRVOS )
+#endif
+        {
+            if ( pbuf[ offset ] >= 7 && pbuf[ offset ] <= 27 )
+                awc[ x ] = CP437_to_Unicode_Windows_Hack[ pbuf[ offset ] ];
+        }
 #endif
     }
 
@@ -1879,15 +1891,15 @@ void UpdateDisplayRow( uint32_t y )
             DecodeAttributes( attribs[ x ], fgRGB, bgRGB, intense );
             len += snprintf( & acLine[ len ], 11, "\x1b[%d;%d;%dm", intense ? 1 : 0, FGColorMap[ fgRGB ], BGColorMap[ bgRGB ] );
         }
-    
+
         len += unicode_to_utf8( & ( acLine[ len ] ), awc[ x ] );
         assert( len < _countof( acLine ) );
     }
 
     //tracer.Trace( "termwrite '%.*s'\n", len, acLine );
-    printf( "%.*s", len, acLine );
+    printf( "%.*s", len, acLine );  // write( 1, acLine, len ) is faster but can't intersperse write() and printf() without flushing.
 
-    UpdateScreenCursorPosition();
+    UpdateScreenCursorPosition(); // this does a fflush( stdout ) to get everything to the screen
 } //UpdateDisplayRow
 
 #endif
@@ -1908,9 +1920,7 @@ bool UpdateDisplay()
 
         //if ( tracer.IsEnabled() )
         //    traceDisplayBufferAsHex();
-        //traceDisplayBuffers();
 
-        UpdateScreenCursorPosition(); // restore cursor position to where it was before
         return true;
     }
 
@@ -1931,6 +1941,7 @@ void ClearDisplay()
 {
     assert( g_use80xRowsMode );
     uint8_t * pbuf = GetVideoMem();
+    init_blankline( DefaultVideoAttribute );
 
     for ( size_t y = 0; y < GetScreenRows(); y++ )
         memcpy( pbuf + ( y * 2 * ScreenColumns ), blankLine, sizeof( blankLine ) );
@@ -3748,6 +3759,7 @@ void handle_int_10( uint8_t c )
                 }
 
                 UpdateDisplay();
+                init_blankline( DefaultVideoAttribute );
             }
             else if ( 0 == lines )
                 g_consoleConfig.ClearScreen(); // works even when not initialized
@@ -3813,6 +3825,7 @@ void handle_int_10( uint8_t c )
                 }
 
                 UpdateDisplay();
+                init_blankline( DefaultVideoAttribute );
             }
             else if ( 0 == lines )
                 g_consoleConfig.ClearScreen(); // works even when not initialized
