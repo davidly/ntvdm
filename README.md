@@ -285,11 +285,11 @@ $
 To run QuickBASIC.
 ```
 $ cd qbx
-$ ../ntvdm -u -r:. qbx
+$ ../ntvdm -u -r:. -C:50 qbx
 ```
-![QuickBASIC](linux-screenshot.png)
+![qbx](https://github.com/davidly/ntvdm/assets/1497921/792005ae-1fb4-453f-952e-e74fc01ee248)
 
-QuickBASIC, like other apps, works best with -r:. and -u flags.
+QuickBASIC, like other apps on Linux, works best with -r:. and -u flags.
 
 ### 43 and 50 line modes
 
