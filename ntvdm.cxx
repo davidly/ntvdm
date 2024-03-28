@@ -2471,27 +2471,28 @@ void InjectKeystrokes()
 
 const uint8_t ascii_to_scancode[ 128 ] =
 {
-      0,  30,  48,  46,  32,  18,  33,  34, // 0   _ a - g
-     35,  15,  28,  37,  38,  28,  49,  24, // 8   h - o  note: 10 should be 36 for ^j, but it's overloaded on Linux. same for ^m should be 50 but is 28. and tab should be 23 but is 15
-     25,  16,  19,  31,  20,  22,  47,  17, // 16  p - w
-     45,  21,  44,   1,  43,  27,   0,   0, // 24  x y z
-     57,   2,  40,   4,   5,   6,   8,  40, // 32
-     10,  11,   9,  13,  51,  12,  52,  53, // 40
-     11,   2,   3,   4,   5,   6,   7,   8, // 48
-      9,  10,  39,  39,  51,  13,  52,  53, // 56
-      3,  30,  48,  46,  32,  18,  33,  34, // 64
-     35,  23,  36,  37,  38,  50,  49,  24, // 72
-     25,  16,  19,  31,  20,  22,  47,  17, // 80
-     45,  21,  44,  26,  43,  27,   7,  12, // 88
-     41,  30,  48,  46,  32,  18,  33,  34, // 96
-     35,  23,  36,  37,  38,  50,  49,  24, // 104
-     25,  16,  19,  31,  20,  22,  47,  17, // 112
-     45,  21,  24,  26,  43,  27,  41,  14, // 120
+      0,  30,  48,  46,  32,  18,  33,  34, // 0    NULL ^a - ^g
+     35,  15,  28,  37,  38,  28,  49,  24, // 8    ^h - ^o  note: ^i=TAB, ^j=LF, ^m=CR are overloaded on Linux, so not 23, 36, and 50
+     25,  16,  19,  31,  20,  22,  47,  17, // 16   ^p - ^w
+     45,  21,  44,   1,  43,  27,   0,   0, // 24   ^x ^y ^z ESC
+     57,   2,  40,   4,   5,   6,   8,  40, // 32   SP ~ " # $ % & '
+     10,  11,   9,  13,  51,  12,  52,  53, // 40   ( ) * + , - . /
+     11,   2,   3,   4,   5,   6,   7,   8, // 48   0 - 7
+      9,  10,  39,  39,  51,  13,  52,  53, // 56   9 0 : ; < = > ?
+      3,  30,  48,  46,  32,  18,  33,  34, // 64   @ A - G
+     35,  23,  36,  37,  38,  50,  49,  24, // 72   H - O
+     25,  16,  19,  31,  20,  22,  47,  17, // 80   P - W
+     45,  21,  44,  26,  43,  27,   7,  12, // 88   X Y Z  [ \ ] ^ _
+     41,  30,  48,  46,  32,  18,  33,  34, // 96   ` a - g
+     35,  23,  36,  37,  38,  50,  49,  24, // 104  h - o
+     25,  16,  19,  31,  20,  22,  47,  17, // 112  p - w
+     45,  21,  24,  26,  43,  27,  41,  14, // 120  x y z { | } ~ DEL
 };     
 
 // broken cases on Linux:
 // - no way to determine if keypad + is from the keypad and not the plus key (Brief is sad)
-// - linux translates ^j as ascii 0xa instead of 0x6a, so ^j output is wrong for DOS apps.
+// - linux maps tab, ctrl+enter, and enter to ^i, ^j, and ^m. so those ctrl characters can't return what they should for DOS
+// - linux returns sc/ascii 0f09 for both TAB and ^TAB, so they can't be distinguished as expected for DOS
 // - no global way to track if the ALT key is currently down, so the hacks below with g_altPressedRecently.
 // - ^[ comes through as just an ESC with no indication that the [ key was pressed
 // - this is perhaps the ugliest code ever; I must refactor it.
@@ -2820,7 +2821,16 @@ void consume_keyboard()
 
                     // somewhat massive hack because I don't know how to tell if ALT is pressed on Linux
                     g_altPressedRecently = true;
-                    scanCode = ascii_to_scancode[ secondAscii - 'a' + 1 ];
+
+                    if ( 'i' == secondAscii )
+                        scanCode = 0x17;
+                    else if ( 'j' == secondAscii )
+                        scanCode = 0x24;
+                    else if ( 'm' == secondAscii )
+                        scanCode = 0x32;
+                    else
+                        scanCode = ascii_to_scancode[ secondAscii - 'a' + 1 ];
+
                     kbd_buf.Add( 0, scanCode );
                 }
                 else if ( 'O' == secondAscii ) // F1-F4 and keypad
