@@ -71,7 +71,7 @@ begin:
     cmp al, CR
     je append_lf                      ; if it's a CR, we're done getting new chars
 
-    cmp al, BS                       ; if it's not BS, display it
+    cmp al, BS                        ; if it's not BS, display it
     jnz display_char
     cmp cs: [output_len], 1           ; if it's 1 char only, don't show BS else show it
     je check_if_full

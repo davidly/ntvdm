@@ -1,4 +1,4 @@
-// machine code for various interrupts. generated with mint.bat. 
+// machine code for various interrupts. generated with tasm\mint.bat. 
 uint64_t int16_0_code[] = { 
 0x01b4c08e0040b806, 0x068326fafa741669, 0x001a3e832602001a, 0x001a06c726077c3e, 0x000000cb07fb001e, 
 }; 

@@ -795,7 +795,7 @@ not_inlined void i8086::op_lahf()
     set_ah( fl );
 } //op_lahf
 
-not_inlined bool i8086::op_f6()
+not_inlined bool i8086::op_f6() // return true if divide by 0
 {
     _bc++;
 
@@ -867,10 +867,8 @@ not_inlined bool i8086::op_f6()
             set_al( ( lhs / (int16_t) (int8_t) rhs ) & 0xff );
             set_ah( lhs % (int16_t) (int8_t) rhs );
 
-            // documentation says these bits are undefined, but real hardware does this.
-            //bool oldZero = fZero;
-            //set_PSZ16( ax );
-            //fZero = oldZero;
+            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
+            // Some other emulators set O, S, and C flags.
         }
         else
             return true;
@@ -881,7 +879,7 @@ not_inlined bool i8086::op_f6()
     return false;
 } //op_f6
 
-not_inlined bool i8086::op_f7()
+not_inlined bool i8086::op_f7() // return true if divide by 0
 {
     _bc++;
 
@@ -956,16 +954,15 @@ not_inlined bool i8086::op_f7()
             ax = (uint16_t) ( (int32_t) (int16_t) lhs / (int32_t) (int16_t) rhs );
             dx = (uint16_t) ( (int32_t) lhs % (int32_t) (int16_t) rhs );
 
-            // documentation says these bits are undefined, but real hardware does this.
-            //bool oldZero = fZero;
-            //set_PSZ16( ax );
-            //fZero = oldZero;
+            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
+            // Some other emulators set O, S, and C flags.
         }
         else
             return true;
     }
     else
         unhandled_instruction();
+
     return false;
 } //op_f7
 
