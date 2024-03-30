@@ -6,10 +6,11 @@
 //         https://onlinedisassembler.com/odaweb/
 //         https://www2.math.uni-wuppertal.de/~fpf/Uebungen/GdR-SS02/opcode_i.html
 //         https://www.pcjs.org/documents/manuals/intel/8086/
+//         https://www.righto.com/2023/02/8086-modrm-addressing.html
 // Cycle counts are approximate -- within 25% of actual values. It doesn't account for misalignment,
 // ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
-// I tested cycle counts against physical 80186 and 8088 machines. It's somewhere in between.
+// I tested cycle counts against physical 80186 and 8088 machines. This is somewhere in between.
 
 #include <djl_os.hxx>
 
@@ -74,7 +75,7 @@ void i8086::trace_state()
 
 // base cycle count per opcode; will be higher for multi-byte instructions, memory references,
 // ea calculations, jumps taken, loops taken, rotate cl-times, and reps
-const uint8_t i8086_cycles[ 256 ] =
+static const uint8_t i8086_cycles[ 256 ] =
 {
     /*00*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14,  0,
     /*10*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14, 12,
@@ -945,7 +946,7 @@ not_inlined bool i8086::op_f7()
         else
             return true;
     }
-    else if ( 7 == _reg ) // idiv dx:ax / src. ax = result, dx = remainder
+    else if ( 7 == _reg ) // idiv dx:ax / src. signed division. ax = result, dx = remainder (same sign as result)
     {
         AddCycles( 184 ); // assume worst-case
         uint16_t rhs = * get_rm_ptr16();
@@ -953,7 +954,7 @@ not_inlined bool i8086::op_f7()
         {
             uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
             ax = (uint16_t) ( (int32_t) (int16_t) lhs / (int32_t) (int16_t) rhs );
-            dx = (int32_t) lhs % (int32_t) rhs;
+            dx = (uint16_t) ( (int32_t) lhs % (int32_t) (int16_t) rhs );
 
             // documentation says these bits are undefined, but real hardware does this.
             //bool oldZero = fZero;

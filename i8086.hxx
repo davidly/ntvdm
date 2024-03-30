@@ -160,14 +160,14 @@ struct i8086
     {
         _bc = 1;
         _pcode = pcode;
-        * (uint16_t *) & _b0 = * (uint16_t *) pcode;
+        * (uint16_t *) & _b0 = * (uint16_t *) pcode; // updates both _b0 and _b1 with one copy
         _rm = ( _b1 & 7 );
         _reg = ( ( _b1 >> 3 ) & 7 );
         _mod = ( _b1 >> 6 );
     } //decode_instruction
 
     bool isword() { return ( _b0 & 1 ); } // true if the instruction is dealing with a word, not a byte (there are several exceptions)
-    bool toreg() { return ( _b0 & 2 ); } // decode on the fly since it's rarely used. instruction is writing to a register.
+    bool toreg() { return ( _b0 & 2 ); } // decode on the fly since it's rarely used. instruction is writing to a register, not memory
     uint16_t b12() { return * (uint16_t *) ( _pcode + 1 ); } // bytes 1 and 2 from the start of the opcode
     uint16_t b34() { return * (uint16_t *) ( _pcode + 3 ); } // bytes 3 and 4 from the start of the opcode
 

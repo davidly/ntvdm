@@ -2233,7 +2233,7 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
     else if ( 0x0f == sc ) // Tab
     {
         if ( falt ) { scancode = 0xa5; asciiChar = 0; }
-        else if ( fctrl ) { scancode = 0x94; asciiChar = 0; }
+        else if ( fctrl ) { scancode = 0x94; asciiChar = 0; } // MS-DOS ignores this keystroke
         else if ( fshift ) { asciiChar = 0x00; }
     }
     else if ( 0x35 == sc ) // keypad /
@@ -2322,8 +2322,8 @@ bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scanc
     }
     else if ( 0x53 == sc ) // Del
     {
-        if ( falt ) { scancode = 0xa3; asciiChar = 0; }
-        else if ( fctrl ) { scancode = 0x93; asciiChar = 0; }
+        if ( falt ) { scancode = 0xa3; asciiChar = 0; } // MS-DOS ignores this keystroke
+        else if ( fctrl ) { scancode = 0x93; asciiChar = 0; } // MS-DOS ignores this keystroke
         else if ( fshift ) { asciiChar = 0x2e; }
     }
     else if ( 0x57 == sc || 0x58 == sc ) // F11 - F12
@@ -2492,8 +2492,8 @@ const uint8_t ascii_to_scancode[ 128 ] =
 // broken cases on Linux:
 // - no way to determine if keypad + is from the keypad and not the plus key (Brief is sad)
 // - linux maps tab, ctrl+enter, and enter to ^i, ^j, and ^m. so those ctrl characters can't return what they should for DOS
-// - linux returns sc/ascii 0f09 for both TAB and ^TAB, so they can't be distinguished as expected for DOS
-// - no global way to track if the ALT key is currently down, so the hacks below with g_altPressedRecently.
+// - linux returns sc/ascii 0f09 for both TAB and ^TAB, so they can't be distinguished. But DOS does nothing for ^TAB anyway.
+// - no global way to track if the ALT key is currently down, so the hacks below with g_altPressedRecently exist.
 // - ^[ comes through as just an ESC with no indication that the [ key was pressed
 // - this is perhaps the ugliest code ever; I must refactor it.
 // - ^; comes through as a plain ESC
@@ -2613,6 +2613,8 @@ void consume_keyboard()
                                     kbd_buf.Add( 0, 117 );
                                 else if ( next >= 80 && next <= 83) // F1-F4
                                     kbd_buf.Add( 0, next + 14 );
+                                else
+                                    tracer.Trace( "    unhandled CTRL F1-F4 etc.\n" );
                             }
                             else if ( SHIFT_DOWN == following ) // SHIFT pressed for F1-F4, etc.
                             {
@@ -2632,6 +2634,8 @@ void consume_keyboard()
                                     kbd_buf.Add( 49, 79 );
                                 else if ( next >= 80 && next <= 83) // F1-F4
                                     kbd_buf.Add( 0, next + 4 );
+                                else
+                                    tracer.Trace( "    unhandled SHIFT F1-F4 etc.\n" );
                             }
                             else
                             {
@@ -2639,6 +2643,8 @@ void consume_keyboard()
                                     kbd_buf.Add( 0, 63 ); // F5
                                 else if ( fnumber >= 55 && fnumber <= 57 ) // F6..F8
                                     kbd_buf.Add( 0, fnumber + 9 );
+                                else
+                                    tracer.Trace( "    unhandled unmodified fnumber\n" );
                             }
                         }
                         else if ( '2' == thirdAscii ) // INS + F9-F12
@@ -2743,11 +2749,11 @@ void consume_keyboard()
                                 tracer.Trace( "    DEL nextB %d, nextC %d\n", nextB, nextC );
                                 if ( ALT_DOWN == nextB )
                                 {
-                                    kbd_buf.Add( 0, 163 ); // ALT + DEL
+                                    kbd_buf.Add( 0, 163 ); // ALT + DEL  // MS-DOS ignores this keystroke
                                     g_altPressedRecently = true;
                                 }
                                 else if ( CTRL_DOWN == nextB )
-                                    kbd_buf.Add( 0, 147 ); // CTRL + DEL
+                                    kbd_buf.Add( 0, 147 ); // CTRL + DEL  // MS-DOS ignores this keystroke
                                 else if ( SHIFT_DOWN == nextB )
                                     kbd_buf.Add( 46, 83 ); // SHIFT + DEL
                             }
@@ -2885,7 +2891,7 @@ void consume_keyboard()
                     kbd_buf.Add( 0, 55 ); // ALT '*'
                     g_altPressedRecently = true;
                 }
-                else if ( 127 == secondAscii ) // ALT + DEL
+                else if ( 127 == secondAscii ) // ALT + DEL   // MS-DOS ignores this keystroke
                 {
                     kbd_buf.Add( 0, 14 );
                     g_altPressedRecently = true;

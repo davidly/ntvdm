@@ -88,6 +88,7 @@ class ConsoleConfiguration
         bool inputEstablished, outputEstablished;
 
 #ifdef _WIN32
+        // this function takes Windows keyboard input and produces Linux keyboard input
         bool process_key_event( INPUT_RECORD & rec, char * pout )
         {
             *pout = 0;
@@ -133,6 +134,19 @@ class ConsoleConfiguration
             else if ( 0x01 == sc ) // ESC
             {
                 // can't test on Windows if ( falt ) ;
+            }
+            else if ( 0x0e == sc ) // Backspace
+            {
+                if ( falt )
+                {
+                    pout[ 0 ] = 0x1b;
+                    pout[ 1 ] = 0x7f;
+                    pout[ 2 ] = 0;
+                }
+                else if ( fctrl )
+                    pout[ 0 ] = 8;
+                else
+                    pout[ 0 ] = 0x7f; // shift and no shift
             }
             else if ( 0x0f == sc ) // Tab
             {
