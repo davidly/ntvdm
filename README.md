@@ -51,7 +51,7 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * GWBASIC
  * Microsoft QuickBasic 1.1
  * Microsoft QuickBasic 7.1 (Including Microsoft Basic compiler 7.10)
- * Microsoft Brief 3.1. (Requires -k to be passed on the Brief command line)
+ * Borland Brief 3.1. (Requires -k to be passed on the Brief command line)
  * WordStar Professional Release 4 for DOS
  * Microsoft 8086 Object Linker Version 3.01 (C) Copyright Microsoft Corp 1983, 1984, 1985
  * Microsoft C Compiler Version 1.04 & Microsoft Object Linker Version 1.10 (1981)
