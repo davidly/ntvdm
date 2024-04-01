@@ -64,7 +64,7 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * Turbo C Version1.0 and 2.0 (Including debug breakpoints and single-stepping)
  * Turbo Assembler Version 3.2
  * Turbo Link Version 2.0
- * Microsoft Quick C Version 1.0. (Compiling, editing, breakpoints, single-stepping, etc). Requires -h flag
+ * Microsoft Quick C Version 1.0 & 1.01. (Compiling, editing, breakpoints, single-stepping, etc). Requires -h flag
  * Microsoft Quick C Version 2.01 and v2.51 (Incremental linking must be is disabled). Requires -h flag
    * ilink.exe reads memory control blocks, which don't exist, so use link.exe instead.
  * Microsoft Quick Pascal Version 1.0
@@ -73,8 +73,8 @@ between the 8088 and 8086 (5%-50%) this seems quite close.
  * Lotus 1-2-3 Release 1A
  * PC-LISP V3.00
  * LOGITECH MODULA-2 Compiler, DOS, Rel. 3.40, Mar 90
- * muLISP v5.10 interpreter (released by Microsoft). See note in i8086.hxx for address wrapping workaround.
- * IBM Personal Computer Pascal Compiler Version 2.00 (generated apps require WRAP_HMA_ADDRESSES be true in i8086.hxx)
+ * muLISP v5.10 interpreter (released by Microsoft). 
+ * IBM Personal Computer Pascal Compiler Version 2.00 (generated apps require 8086 hma address wrapping)
  * Microsoft COBOL Compiler Version 5.0 (compiler and generated apps). Linker requires 286 but QBX's linker works fine.
  * Digital Research PL/I-86 Compiler Version 1.0, link86, and generated apps.
  * Microsoft FORTRAN77, the linker, and generated apps.
@@ -112,6 +112,8 @@ The emulator has been compiled and tested on the following platforms:
  * Windows 11, Visual Studio 2022, x64
 
  * Windows 11, Visual Studio 2022, ARM64
+
+ * MacOS on M1 and M3 MacBook Air, ARM64.
 
  * Debian 12 (Bookworm), g++ 12.2.0, x64
 
@@ -251,7 +253,7 @@ Emulates an 8086 and MS-DOS 3.00 runtime environment.
   -i               trace instructions to ntvdm.log.
   -t               enable debug tracing to ntvdm.log
   -p               show performance stats on exit.
-  -r:X   X is a folder that is mapped to C:\
+  -r:X             X is a folder that is mapped to C:\
   -s:X             set processor speed in Hz.
                      for 4.77 MHz 8086 use -s:4770000.
                      for 4.77 MHz 8088 use -s:4500000.
