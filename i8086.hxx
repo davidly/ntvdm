@@ -505,8 +505,8 @@ extern i8086 cpu;
 
 extern void i8086_invoke_interrupt( uint8_t interrupt );          // called by default for all interrupts
 extern void i8086_invoke_halt();                                  // called when the HLT instruction is executed
-extern uint8_t i8086_invoke_in_al( uint16_t port );               // called for the instructions: in al, dx and in al, im8
-extern uint16_t i8086_invoke_in_ax( uint16_t port );              // called for the instructions: in ax, dx and in ax, im8
-extern void i8086_invoke_out_al( uint16_t port, uint8_t val );    // called for the instructions: out al, dx and out al, im8
-extern void i8086_invoke_out_ax( uint16_t port, uint16_t val );   // called for the instructions: out ax, dx and out ax, im8
+extern uint8_t i8086_invoke_in_byte( uint16_t port );             // called for the instructions: in of size byte
+extern uint16_t i8086_invoke_in_word( uint16_t port );            // called for the instructions: in of size word
+extern void i8086_invoke_out_byte( uint16_t port, uint8_t val );  // called for the instructions: out of size byte
+extern void i8086_invoke_out_word( uint16_t port, uint16_t val ); // called for the instructions: out of size word
 extern void i8086_hard_exit( const char * pcerror, uint8_t arg ); // called for fatal errors

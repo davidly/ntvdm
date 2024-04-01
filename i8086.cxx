@@ -849,10 +849,7 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
             set_al( (uint8_t) ( lhs / (uint16_t) rhs ) );
             set_ah( lhs % rhs );
 
-            // documentation says these bits are undefined, but real hardware does this.
-            //bool oldZero = fZero;
-            //set_PSZ16( ax );
-            //fZero = oldZero;
+            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV. "
         }
         else
             return true;
@@ -936,10 +933,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
             ax = (uint16_t) ( lhs / (uint32_t) rhs );
             dx = lhs % rhs;
 
-            // documentation says these bits are undefined, but real hardware does this.
-            //bool oldZero = fZero;
-            //set_PSZ16( ax );
-            //fZero = oldZero;
+            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV. "
         }
         else
             return true;
@@ -1803,10 +1797,10 @@ _prefix_set:
                 _bc++;
                 break;
             }
-            case 0xe4: { set_al( i8086_invoke_in_al( _b1 ) ); _bc++; break; } // in al, immed8
-            case 0xe5: { ax = i8086_invoke_in_ax( _b1 ); _bc++; break; } // in ax, immed8
-            case 0xe6: { i8086_invoke_out_al( _b1, al() ); _bc++; break; } // out al, immed8
-            case 0xe7: { i8086_invoke_out_ax( _b1, ax ); _bc++; break; } // out ax, immed8
+            case 0xe4: { set_al( i8086_invoke_in_byte( _b1 ) ); _bc++; break; } // in al, immed8
+            case 0xe5: { ax = i8086_invoke_in_word( _b1 ); _bc++; break; } // in ax, immed8
+            case 0xe6: { i8086_invoke_out_byte( _b1, al() ); _bc++; break; } // out al, immed8
+            case 0xe7: { i8086_invoke_out_word( _b1, ax ); _bc++; break; } // out ax, immed8
             case 0xe8: // call rel16
             {
                 uint16_t return_address = ip + 3;
@@ -1817,8 +1811,8 @@ _prefix_set:
             case 0xe9: { ip += ( 3 + (int16_t) b12() ); continue; } // jmp near
             case 0xea: { ip = b12(); cs = b34(); continue; } // jmp far
             case 0xeb: { ip += ( 2 + (int16_t) (int8_t) _b1 ); continue; } // jmp short i8
-            case 0xec: { set_al( i8086_invoke_in_al( dx ) ); break; } // in al, dx
-            case 0xed: { ax = i8086_invoke_in_ax( dx ); break; } // in ax, dx
+            case 0xec: { set_al( i8086_invoke_in_byte( dx ) ); break; } // in al, dx
+            case 0xed: { ax = i8086_invoke_in_word( dx ); break; } // in ax, dx
             case 0xee: { break; } // out al, dx
             case 0xef: { break; } // out ax, dx
             case 0xf0: { break; } // lock prefix. ignore since interrupts won't happen

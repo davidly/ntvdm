@@ -10,16 +10,16 @@
 //    ba BASIC compiler in my ttt repo
 //    Wordstar Release 4
 //    GWBASIC.COM.
-//    QBASIC 7.1.
-//    Apps the QBASIC compiler creates.
+//    QBASIC 7.1. and apps the QBASIC compiler creates.
 //    Brief 3.1. Use b.exe's -k flag for compatible keyboard handling. (automatically set in code below)
 //    ExeHdr: Microsoft (R) EXE File Header Utility  Version 2.01
 //    Link.exe: Microsoft (R) Segmented-Executable Linker  Version 5.10
 //    BC.exe: Microsoft Basic compiler 7.10 (part of Quick Basic 7.1)
+//    Microsoft BASIC Compiler v 5.36 (bascom.com)
 //    Microsoft 8086 Object Linker Version 3.01 (C) Copyright Microsoft Corp 1983, 1984, 1985
 //    Microsoft C v1, v2, and v3
 //    Turbo C 1.0 and 2.0
-//    QuickC 1.0 and 2.x. ilink.exe in 2.x doesn't work because it relies on undocumented MCB behavior.
+//    QuickC 1.0, 1.01, and 2.x. ilink.exe in 2.x doesn't work because it relies on undocumented MCB behavior.
 //    Quick Pascal 1.0
 //    Lotus 1-2-3 v1.0a
 //    Word for DOS 6.0.
@@ -2995,10 +2995,10 @@ void i8086_hard_exit( const char * pcerror, uint8_t arg )
     exit( 1 );
 } //i8086_hard_exit
 
-uint8_t i8086_invoke_in_al( uint16_t port )
+uint8_t i8086_invoke_in_byte( uint16_t port )
 {
     static uint8_t port40 = 0;
-    //tracer.Trace( "invoke_in_al port %#x\n", port );
+    //tracer.Trace( "invoke_in_byte port %#x\n", port );
 
     if ( 0x3da == port )
     {
@@ -3038,13 +3038,13 @@ uint8_t i8086_invoke_in_al( uint16_t port )
     }
     else if ( 0x60 ==  port ) // keyboard data
     {
-        tracer.Trace( "  invoke_in_al port 60 keyboard data\n" );
+        tracer.Trace( "  invoke_in_byte port 60 keyboard data\n" );
         uint8_t asciiChar, scancode;
         if ( peek_keyboard( asciiChar, scancode ) )
         {
             // lie and say keyup so apps like Word 6.0 don't auto-repeat until the next keydown
             scancode |= 0x80;
-            //tracer.Trace( "invoke_in_al, port %02x peeked a character and is returning %02x\n", port, scancode );
+            //tracer.Trace( "invoke_in_byte, port %02x peeked a character and is returning %02x\n", port, scancode );
             return scancode;
         }
     }
@@ -3055,28 +3055,28 @@ uint8_t i8086_invoke_in_al( uint16_t port )
     {
     }
 
-    tracer.Trace( "  invoke_in_al, port %02x returning 0\n", port );
+    tracer.Trace( "  invoke_in_byte, port %02x returning 0\n", port );
     return 0;
-} //i8086_invoke_in_al
+} //i8086_invoke_in_byte
 
-uint16_t i8086_invoke_in_ax( uint16_t port )
+uint16_t i8086_invoke_in_word( uint16_t port )
 {
-    tracer.Trace( "invoke_in_ax port %#x\n", port );
+    tracer.Trace( "invoke_in_word port %#x\n", port );
     return 0;
-} //i8086_invoke_in_ax
+} //i8086_invoke_in_word
 
-void i8086_invoke_out_al( uint16_t port, uint8_t val )
+void i8086_invoke_out_byte( uint16_t port, uint8_t val )
 {
-    tracer.Trace( "invoke_out_al port %#x, val %#x\n", port, val );
+    tracer.Trace( "invoke_out_byte port %#x, val %#x\n", port, val );
 
     if ( 0x20 == port && 0x20 == val ) // End Of Interrupt to 8259A PIC. Enable subsequent interrupts
         g_int9_pending = false;
-} //i8086_invoke_out_al
+} //i8086_invoke_out_byte
 
-void i8086_invoke_out_ax( uint16_t port, uint16_t val )
+void i8086_invoke_out_word( uint16_t port, uint16_t val )
 {
-    tracer.Trace( "invoke_out_ax port %#x, val %#x\n", port, val );
-} //i8086_invoke_out_ax
+    tracer.Trace( "invoke_out_word port %#x, val %#x\n", port, val );
+} //i8086_invoke_out_word
 
 void i8086_invoke_halt()
 {
