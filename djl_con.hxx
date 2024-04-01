@@ -365,6 +365,14 @@ class ConsoleConfiguration
         
                     SetConsoleCursorInfo( consoleOutputHandle, &info );
                 }
+             #else
+                if ( outputEstablished )
+                {
+                    if ( 0 == size )
+                        printf( "\x1b[?25l" );
+                    else
+                        printf( "\x1b[?25h" );
+                }
              #endif
         } //SetCursorInfo
 
