@@ -4813,7 +4813,7 @@ void handle_int_21( uint8_t c )
         }
         case 9:
         {
-            // print string. prints chars up to a dollar sign $
+            // print string $ terminated. prints chars up to a dollar sign $
     
             char * p = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.TraceBinaryData( (uint8_t *) p, 0x40, 2 );
@@ -8045,6 +8045,8 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
     }
     else // EXE
     {
+        long file_size = portable_filelen( file.get() );
+
         ExeHeader head = { 0 };
         size_t blocks_read = fread( & head, sizeof( head ), 1, file.get() );
         if ( 1 != blocks_read )
@@ -8073,6 +8075,21 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             imageSize -= ( 512 - head.bytes_in_last_block );
         imageSize -= codeStart; // don't include the header
         tracer.Trace( "  image size of code and initialized data: %u, code starts at %u\n", imageSize, codeStart );
+
+        if ( file_size > ( imageSize + codeStart ) )
+        {
+            uint32_t difference = (uint32_t) file_size - ( imageSize + codeStart );
+            if ( difference < 512 )
+            {
+                // DOS does something like this -- it loads more than it should or apps like those that qbasic3 generates won't run
+               
+                imageSize += difference;
+                tracer.Trace( "  extending load image for an app for compatibility. file_size %ld, difference = %u, imageSize %u\n",
+                              file_size, difference, imageSize );
+            }
+            else
+                tracer.Trace( "  the exe file size is really big for some reason; ignoring\n" );
+        }
 
         uint16_t paragraphs_free = 0;
         uint16_t requested_paragraphs = 0xffff;
@@ -8128,9 +8145,6 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
             return 0;
         }
 
-        tracer.Trace( "  start of the code:\n" );
-        tracer.TraceBinaryData( pcode, get_min( imageSize, (uint32_t) 0x100 ), 4 );
-
         if ( 0 != head.num_relocs )
         {
             vector<ExeRelocation> relocations( head.num_relocs );
@@ -8151,6 +8165,9 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
                 *target += CodeSegment;
             }
         }
+
+        tracer.Trace( "  start of the code:\n" );
+        tracer.TraceBinaryData( pcode, get_min( imageSize, (uint32_t) 0x100 ), 4 );
 
         if ( setupRegs )
         {
