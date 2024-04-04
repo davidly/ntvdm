@@ -8076,19 +8076,28 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         imageSize -= codeStart; // don't include the header
         tracer.Trace( "  image size of code and initialized data: %u, code starts at %u\n", imageSize, codeStart );
 
+        // DOS does something like this -- it loads more than it should or apps like those that quickbasic3 generates won't run
+               
         if ( file_size > ( imageSize + codeStart ) )
         {
             uint32_t difference = (uint32_t) file_size - ( imageSize + codeStart );
             if ( difference < 512 )
             {
-                // DOS does something like this -- it loads more than it should or apps like those that qbasic3 generates won't run
-               
                 imageSize += difference;
                 tracer.Trace( "  extending load image for an app for compatibility. file_size %ld, difference = %u, imageSize %u\n",
                               file_size, difference, imageSize );
             }
             else
                 tracer.Trace( "  the exe file size is really big for some reason; ignoring\n" );
+        }
+
+        // DOS does this too -- it loads less than it should or apps like those that quickbasic2 generates won't run
+
+        if ( file_size < ( imageSize + codeStart ) )
+        {
+            tracer.Trace( "  reducing load image for an app for compatibility. file_size %ld, imageSize + codeStart %u\n",
+                          file_size, imageSize + codeStart );
+            imageSize = (uint32_t) file_size - codeStart;
         }
 
         uint16_t paragraphs_free = 0;
