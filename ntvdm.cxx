@@ -6833,7 +6833,6 @@ void handle_int_21( uint8_t c )
 
             uint16_t largest_block = 0;
             uint16_t alloc_seg = AllocateMemory( cpu.get_bx(), largest_block );
-            cpu.set_bx( largest_block );
 
             if ( 0 != alloc_seg )
             {
@@ -6842,6 +6841,7 @@ void handle_int_21( uint8_t c )
             }
             else
             {
+                cpu.set_bx( largest_block );
                 cpu.set_carry( true );
                 cpu.set_ax( 8 ); // insufficient memory
             }
