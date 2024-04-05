@@ -8045,7 +8045,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
     }
     else // EXE
     {
-        long file_size = portable_filelen( file.get() );
+        uint32_t file_size = (uint32_t) portable_filelen( file.get() );
 
         ExeHeader head = { 0 };
         size_t blocks_read = fread( & head, sizeof( head ), 1, file.get() );
@@ -8080,11 +8080,11 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
                
         if ( file_size > ( imageSize + codeStart ) )
         {
-            uint32_t difference = (uint32_t) file_size - ( imageSize + codeStart );
+            uint32_t difference = file_size - ( imageSize + codeStart );
             if ( difference < 512 )
             {
                 imageSize += difference;
-                tracer.Trace( "  extending load image for an app for compatibility. file_size %ld, difference = %u, imageSize %u\n",
+                tracer.Trace( "  extending load image for an app for compatibility. file_size %u, difference = %u, imageSize %u\n",
                               file_size, difference, imageSize );
             }
             else
@@ -8095,9 +8095,9 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
 
         if ( file_size < ( imageSize + codeStart ) )
         {
-            tracer.Trace( "  reducing load image for an app for compatibility. file_size %ld, imageSize + codeStart %u\n",
+            tracer.Trace( "  reducing load image for an app for compatibility. file_size %u, imageSize + codeStart %u\n",
                           file_size, imageSize + codeStart );
-            imageSize = (uint32_t) file_size - codeStart;
+            imageSize = file_size - codeStart;
         }
 
         uint16_t paragraphs_free = 0;
