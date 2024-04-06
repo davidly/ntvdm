@@ -6741,7 +6741,14 @@ void handle_int_21( uint8_t c )
             // force duplicate handle. BX: existing handle, CX: new handle
             // on return, CF set on error with error code in AX
 
-            if ( cpu.get_bx() <= 4 && cpu.get_cx() <= 4 )
+            trace_all_open_files();
+            uint16_t hbx = MapFileHandleCobolHack( cpu.get_bx() );
+            uint16_t hcx = MapFileHandleCobolHack( cpu.get_cx() );
+            cpu.set_carry( true );
+
+            tracer.Trace( "  if CX %02x is open, close it. Duplicate BX %02x and put new handle in CX\n", hcx, hbx );
+
+            if ( hcx <= 4 && hcx <= 4 )
             {
                 // probably mapping stderr to stdout, etc. Ignore
 
@@ -6749,9 +6756,62 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                tracer.Trace( "    ERROR: force duplicate for non-built-in handle is unhandled\n" );
-                cpu.set_carry( true );
-                cpu.set_ax( 2 );
+                if ( hcx > 4 )
+                {
+                    size_t index = FindFileEntryIndex( hcx );
+                    if ( -1 != index )
+                    {
+                        FILE * fp = RemoveFileEntry( hcx );
+                        if ( fp )
+                        {
+                            tracer.Trace( "  closed CX file handle %04x, fp %p\n", hcx, fp );
+                            fclose( fp );
+                            UpdateHandleMap();
+                        }
+                    }
+                    else
+                        tracer.Trace( "  can't find CX handle to close\n" );
+                }
+
+                if ( hbx <= 4 )
+                {
+                    cpu.set_cx( hbx );
+                    cpu.set_carry( false );
+                    tracer.Trace( "  fake duplicate of built-in handle\n" );
+                    return;
+                }
+
+                size_t index = FindFileEntryIndex( hbx );
+                if ( -1 != index )
+                {
+                    FileEntry & entry = g_fileEntries[ index ];
+    
+                    FILE * fp = fopen( entry.path, ( 0 != entry.mode ) ? "r+b" : "rb" );
+                    if ( fp )
+                    {
+                        FileEntry fe = {0};
+                        strcpy( fe.path, entry.path );
+                        fe.fp = fp;
+                        fe.handle = FindFirstFreeFileHandle();
+                        fe.mode = entry.mode;
+                        fe.seg_process = g_currentPSP;
+                        g_fileEntries.push_back( fe );
+                        cpu.set_cx( fe.handle );
+                        cpu.set_carry( false );
+                        tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", hbx, cpu.get_cx() );
+                        trace_all_open_files();
+                    }
+                    else
+                    {
+                        cpu.set_ax( 2 ); // file not found
+                        tracer.Trace( "  ERROR: attempt to duplicate file handle failed opening file %s error %d: %s\n", entry.path, errno, strerror( errno ) );
+                    }
+                }
+                else
+                {
+                    cpu.set_ax( 2 ); // file not found
+                    tracer.Trace( "  ERROR: attempt to duplicate non-existent handle %04x\n", hbx );
+                }
             }
 
             return;
