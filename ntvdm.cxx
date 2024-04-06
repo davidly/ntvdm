@@ -409,12 +409,29 @@ int begins_with( const char * str, const char * start )
     return true;
 } //begins_with
 
+void remove_double_backslash( char * p )
+{
+    char * ps;
+
+    while ( ps = strstr( p, "\\\\" ) )
+    {
+        size_t len = strlen( ps );
+        memmove( ps, ps + 1, len );
+    }
+} //remove_double_backslash
+
 const char * DOSToHostPath( const char * p )
 {
+    tracer.Trace( "  original dos path: '%s'\n", p );
     const char * poriginal = p;
     char dos_path[ MAX_PATH ];
     strcpy( dos_path, p );
     slash_to_backslash( dos_path ); // DOS lets apps use forward slashes (Brief does this)
+
+    // DOS permits double backslashes in paths. Reduce them to single slash
+
+    remove_double_backslash( dos_path );
+
     p = dos_path;
 
     static char host_path[ MAX_PATH ];
