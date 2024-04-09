@@ -125,7 +125,7 @@ uint64_t int21_3f_code[] = {
 // end of machine code 
       
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
-uint16_t LoadBinary( const char * app, const char * acAppArgs, uint16_t segment, bool setupRegs,
+uint16_t LoadBinary( const char * app, const char * acAppArgs, uint8_t lenAppArgs, uint16_t segment, bool setupRegs,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad );
 uint16_t LoadOverlay( const char * app, uint16_t segLoadAddress, uint16_t segmentRelocationFactor );
 
@@ -411,13 +411,15 @@ int begins_with( const char * str, const char * start )
 
 void remove_double_backslash( char * p )
 {
-    char * ps;
-
-    while ( ps = strstr( p, "\\\\" ) )
+    do
     {
+        char * ps = strstr( p, "\\\\" );
+        if ( !ps )
+            break;
+
         size_t len = strlen( ps );
         memmove( ps, ps + 1, len );
-    }
+    } while( true );
 } //remove_double_backslash
 
 const char * DOSToHostPath( const char * p )
@@ -1057,6 +1059,7 @@ static void trace_all_allocations()
         tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x, (MCB %04x - %04x)  header %c, psp %04x, paras %04x\n", i,
                       da.seg_process, da.segment, da.para_length, da.segment - 1, da.segment - 1 + da.para_length - 1,
                       pmcb->header, pmcb->psp, pmcb->paras );
+        //tracer.TraceBinaryData( (uint8_t *) cpu.flat_address( da.segment, 0 ), get_min( 0x1000, da.para_length * 16 ), 8 );
     }
 } //trace_all_allocations
 
@@ -1394,7 +1397,7 @@ struct DOSPSP
     uint32_t int24CriticalError;
     uint16_t segParent;              // parent process segment address of PSP
     uint8_t  fileHandles[20];        // unused by emulator
-    uint16_t segEnvironment;
+    uint16_t segEnvironment;         // offset 0x2c
     uint32_t ssspEntry;              // ss:sp on entry to last int21 function. undocumented
     uint16_t handleArraySize;        // undocumented
     uint32_t handleArrayPointer;     // undocumented
@@ -1407,7 +1410,7 @@ struct DOSPSP
     uint16_t parentSS;               // not DOS standard -- I use it to restore SS on child app exit
     uint16_t parentSP;               // not DOS standard -- I use it to restore SP on child app exit
     uint8_t  countCommandTail;       // # of characters in command tail. This byte and beyond later used as Disk Transfer Address
-    uint8_t  commandTail[127];       // command line characters after executable, CR terminated
+    uint8_t  commandTail[127];       // command line characters after executable, CR=0xd terminated
 
     void TraceHandleMap()
     {
@@ -1429,7 +1432,8 @@ struct DOSPSP
         tracer.Trace( "    topOfMemory: %04x\n", topOfMemory );
         tracer.Trace( "    segParent: %04x\n", segParent );
         tracer.Trace( "    return address: %04x\n", int22TerminateAddress );
-        tracer.Trace( "    command tail: len %u, '%.*s'\n", countCommandTail, countCommandTail, commandTail );
+        tracer.Trace( "    command tail: len %u, '%.*s'\n", (uint32_t) countCommandTail, (uint32_t) countCommandTail, commandTail );
+        //tracer.TraceBinaryData( (uint8_t *) &countCommandTail, 0x80, 8 );
         tracer.Trace( "    handleArraySize: %u\n", (uint32_t) handleArraySize );
         tracer.Trace( "    handleArrayPointer: %04x\n", handleArrayPointer );
 
@@ -6965,7 +6969,7 @@ void handle_int_21( uint8_t c )
             }
 
             size_t cEntries = g_allocEntries.size();
-            assert( 0 != cEntries ); // loading the app creates 1 shouldn't be freed.
+            assert( 0 != cEntries ); // loading the app creates 1 that shouldn't be freed.
             assert( 0 != cpu.get_bx() ); // not legal to allocate 0 bytes
             trace_all_allocations();
 
@@ -6979,21 +6983,28 @@ void handle_int_21( uint8_t c )
                     maxParas--;        // reserve space for the MCB
             }
 
-            tracer.Trace( "  maximum reallocation paragraphs: %04x, requested size %04x\n", maxParas, cpu.get_bx() );
+            uint16_t requestedSize = cpu.get_bx();
+            tracer.Trace( "  maximum reallocation paragraphs: %04x, requested size %04x\n", maxParas, requestedSize );
 
-            if ( cpu.get_bx() > maxParas )
+            if ( ends_with( g_acApp, "pc.exe" ) && ( requestedSize < 0x4000 ) )
+            {
+                tracer.Trace( "  not going to let PowerC v1.0.0 and v2.2.0 free its own stack\n" );
+                requestedSize = 0x4000;
+            }
+
+            if ( requestedSize > maxParas )
             {
                 cpu.set_carry( true );
                 cpu.set_ax( 8 ); // insufficient memory
-                tracer.Trace( "  insufficient RAM for allocation request of %04x, telling caller %04x is available\n", cpu.get_bx(), maxParas );
+                tracer.Trace( "  insufficient RAM for allocation request of %04x, telling caller %04x is available\n", requestedSize, maxParas );
                 cpu.set_bx( maxParas );
             }
             else
             {
                 cpu.set_carry( false );
-                tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length - 1, cpu.get_bx() );
-                g_allocEntries[ entry ].para_length = 1 + cpu.get_bx(); // para_length includes the MCB
-                update_mcb_length( cpu.get_es() - 1, cpu.get_bx() );
+                tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length - 1, requestedSize );
+                g_allocEntries[ entry ].para_length = 1 + requestedSize; // para_length includes the MCB
+                update_mcb_length( cpu.get_es() - 1, requestedSize );
                 reset_mcb_tags();
                 trace_all_allocations();
             }
@@ -7002,7 +7013,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x4b:
         {
-            // load or execute program
+            // load or execute overlay or program
             // input: al: 0 = program, 1 = (undocumented) load and set cs:ip + ss:sp, 3 = overlay/load, 4 = msc spawn p_nowait
             //        ds:dx: ascii pathname
             //        es:bx: parameter block (except for mode 3)
@@ -7100,7 +7111,7 @@ void handle_int_21( uint8_t c )
             uint16_t segChildEnv = AllocateEnvironment( pae->segEnvironment, acCommandPath, 0 );
             if ( 0 != segChildEnv )
             {
-                uint16_t seg_psp = LoadBinary( acCommandPath, acTail, segChildEnv, ( 0 == mode ),
+                uint16_t seg_psp = LoadBinary( acCommandPath, acTail, *commandTail, segChildEnv, ( 0 == mode ),
                                                & pae->func1SS, & pae->func1SP, & pae->func1CS, & pae->func1IP, false );
                 if ( 0 != seg_psp )
                 {
@@ -7807,7 +7818,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
                   interrupt_num, interrupt_num, cpu.ah(), cpu.ah(), cpu.al(), cpu.al() );
 } //i8086_invoke_interrupt
 
-void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnvironment )
+void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs, uint16_t segEnvironment )
 {
     DOSPSP * psp = (DOSPSP *) cpu.flat_address( segment, 0 );
     memset( psp, 0, sizeof( DOSPSP ) );
@@ -7816,10 +7827,9 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint16_t segEnviro
     psp->topOfMemory = g_segHardware - 1;     // top of memorysegment in paragraph form
     psp->comAvailable = 0xffff;               // .com programs bytes available in segment
     psp->int22TerminateAddress = firstAppTerminateAddress;
-    uint8_t len = (uint8_t) strlen( acAppArgs );
-    psp->countCommandTail = len;
-    strcpy( (char *) psp->commandTail, acAppArgs );
-    psp->commandTail[ len ] = 0x0d;           // DOS has a CR / 0x0d at the end of the command tail, not a null
+    psp->countCommandTail = lenAppArgs;
+    memcpy( psp->commandTail, acAppArgs, lenAppArgs ); // can't memcpy because apps like PowerC v2 pass binary data of address in parent address space where argument resides
+    psp->commandTail[ lenAppArgs ] = 0x0d;           // DOS has a CR / 0x0d at the end of the command tail, not a null
     psp->segEnvironment = segEnvironment;
     memset( 1 + (char *) & ( psp->firstFCB ), ' ', 11 );
     memset( 1 + (char *) & ( psp->secondFCB ), ' ', 11 );
@@ -7997,7 +8007,7 @@ uint16_t LoadOverlay( const char * app, uint16_t CodeSegment, uint16_t segReloca
     return 0;
 } //LoadOverlay
 
-uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint16_t segEnvironment )
+uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint8_t lenAppArgs, uint16_t segEnvironment )
 {
     // create a dummy PSP
     uint16_t paragraphs_free = 0;
@@ -8009,7 +8019,7 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint16_t 
     }
 
     tracer.Trace( "  loading boot sector, BSSegment is %04x\n", BSSegment );
-    InitializePSP( BSSegment, acAppArgs, segEnvironment );
+    InitializePSP( BSSegment, acAppArgs, lenAppArgs, segEnvironment );
 
     CFile file( fopen( acApp, "rb" ) );
     if ( 0 == file.get() )
@@ -8048,11 +8058,11 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint16_t 
     return BSSegment;
 } //LoadAsBootSector
 
-uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnvironment, bool setupRegs,
+uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppArgs, uint16_t segEnvironment, bool setupRegs,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad )
 {
     if ( bootSectorLoad )
-        return LoadAsBootSector( acApp, acAppArgs, segEnvironment );
+        return LoadAsBootSector( acApp, acAppArgs, lenAppArgs, segEnvironment );
 
     CFile file( fopen( acApp, "rb" ) );
     if ( 0 == file.get() )
@@ -8075,7 +8085,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
         }
 
         psp = ComSegment;
-        InitializePSP( ComSegment, acAppArgs, segEnvironment );
+        InitializePSP( ComSegment, acAppArgs, lenAppArgs, segEnvironment );
         tracer.Trace( "  loading com, ComSegment is %04x\n", ComSegment );
 
         long file_size = portable_filelen( file.get() );
@@ -8214,7 +8224,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint16_t segEnv
 
         tracer.Trace( "  loading exe, DataSegment is %04x\n", DataSegment );
         psp = DataSegment;
-        InitializePSP( DataSegment, acAppArgs, segEnvironment );
+        InitializePSP( DataSegment, acAppArgs, lenAppArgs, segEnvironment );
 
         tracer.Trace( "  loading app %s\n", acApp );
         tracer.Trace( "  looks like an MZ exe... size from blocks %u, bytes in last block %u\n",
@@ -8956,7 +8966,7 @@ int main( int argc, char * argv[] )
         if ( 0 == segEnvironment )
             i8086_hard_exit( "unable to create environment for the app\n", 0 );
     
-        g_currentPSP = LoadBinary( g_acApp, acAppArgs, segEnvironment, true, 0, 0, 0, 0, bootSectorLoad );
+        g_currentPSP = LoadBinary( g_acApp, acAppArgs, (uint8_t) strlen( acAppArgs ), segEnvironment, true, 0, 0, 0, 0, bootSectorLoad );
         if ( 0 == g_currentPSP )
             i8086_hard_exit( "unable to load executable\n", 0 );
     
