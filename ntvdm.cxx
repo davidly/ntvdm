@@ -305,9 +305,11 @@ static bool g_SendControlCInt = false;               // set to true when/if a ^C
 
 
 // Set to true to fill dos memory allocations with patterns to detect apps that use memory they previously freed.
-// These include Microsoft C v4, QuickC v1 and v2.01, Pascal v4, Basic Compiler v5, GWBASIC, Fortran v3.31 and v5,
-// and Link v5.10. Previous and subsequent versions of these tools don't have these bugs.
-// Zortech C v1 and v2, Turbo Pascal v3, and Logitech Modula 2 v1.10 have similar bugs or create apps that have the bugs. 
+// These include Microsoft Pascal v4, GWBASIC, BASIC compiler v7.10, Fortran v5, and Link v5.10.
+// Zortech C v1 and v2 have similar bugs.
+// QuickC 2.x free memory then execute it just before running compiled binaries.
+// Turbo Pascal v7.0 frees memory then executes it just before shelling out to command.com
+// Previous and subsequent versions of these tools don't have these bugs.
 
 static bool g_fillDOSMemoryBlocks = false;
 
@@ -6966,7 +6968,8 @@ void handle_int_21( uint8_t c )
         }
         case 0x4a:
         {
-            // modify memory allocation.
+            // modify memory allocation. es = segment to modify, bx = paragraphs new size,
+            // returns: carry = true on failure. ax = error code on failure. bx = maximum valid request on failure.
             // lots of opportunity for improvement here.
 
             size_t entry = FindAllocationEntry( cpu.get_es() );
@@ -7020,7 +7023,11 @@ void handle_int_21( uint8_t c )
                     if ( requestedSize > currentSize )
                         memset( cpu.flat_address( cpu.get_es() + currentSize, 0 ), 'e', ( requestedSize - currentSize ) * 16 ); // extended
                     else if ( requestedSize < currentSize )
-                        memset( cpu.flat_address( cpu.get_es() + requestedSize, 0 ), 'g', ( currentSize - requestedSize ) * 16 ); // gone (free due to reduction)
+                    {
+                        uint32_t len = ( (uint32_t) currentSize - (uint32_t) requestedSize ) * 16;
+                        tracer.Trace( "setting mem to g/0x67 starting at para %04x, len %u = %05x\n", cpu.get_es() + requestedSize, len, len );
+                        memset( cpu.flat_address( cpu.get_es() + requestedSize, 0 ), 'g', len ); // gone (free due to reduction)
+                    }
                 }
 
                 g_allocEntries[ entry ].para_length = 1 + requestedSize; // para_length includes the MCB
@@ -8093,13 +8100,17 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
     uint16_t psp = 0;
     if ( IsBinaryCOM( acApp, file.get() ) )
     {
-        // allocate 64k for the .COM file
+        // allocate all available RAM for the .COM file
 
         uint16_t paragraphs_free = 0;
-        uint16_t ComSegment = AllocateMemory( 0x1000, paragraphs_free );
+        uint16_t ComSegment = AllocateMemory( 0xffff, paragraphs_free );
+        assert( 0 == ComSegment );
+
+        uint16_t paragraphs_to_allocate = paragraphs_free;
+        ComSegment = AllocateMemory( paragraphs_to_allocate, paragraphs_free );
         if ( 0 == ComSegment )
         {
-            tracer.Trace( "  insufficient ram available RAM to load .com, in paragraphs: %04x required, %04x available\n", 0x1000, paragraphs_free );
+            tracer.Trace( "  insufficient ram available RAM to load .com, in paragraphs: %04x required, %04x available\n", paragraphs_to_allocate, paragraphs_free );
             return 0;
         }
 
