@@ -18,7 +18,7 @@ and int0x1c in applications like Microsoft QuickBasic and Brief Editor.
 However it does not provide support for graphics, sound, mouse, or anything
 else that is not needed for simple text-mode apps.
 
-It also includes a disassembler that is used wnen tracing program execution
+It also includes a disassembler that is used when tracing program execution
 which is useful when debugging why apps don't work properly.
 
 The  performance of the 8086 processor emulation is about the same as other
