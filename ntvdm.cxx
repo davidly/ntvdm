@@ -47,6 +47,7 @@
 //         https://grandidierite.github.io/dos-interrupts/
 //         https://fd.lod.bz/rbil/interrup/dos_kernel/2152.html
 //         https://faydoc.tripod.com/structures/13/1378.htm
+//         https://www.pcjs.org/documents/books/mspl13/msdos/encyclopedia/section5/
 //
 // Memory map:
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
@@ -94,6 +95,13 @@
 
 using namespace std;
 using namespace std::chrono;
+
+// Set to true to fill dos memory allocations with patterns to detect apps that use memory they previously freed.
+// These include Microsoft C v4, QuickC v1 and v2.01, Pascal v4, Basic Compiler v5, GWBASIC, Fortran v3.31 and v5,
+// and Link v5.10. Previous and subsequent versions of these tools don't have these bugs.
+// Zortech C v1 and v2, Turbo Pascal v3, and Logitech Modula 2 v1.10 have similar bugs or create apps that have the bugs. 
+
+#define DEBUG_APP_ALLOCATIONS false
 
 // using assembly for keyboard input enables timer interrupts while spinning for a keystroke
 
@@ -233,7 +241,7 @@ struct ExeRelocation
 struct DosAllocation
 {
     uint16_t segment;          // segment handed out to the app, 1 past the MCB
-    uint16_t para_length;      // length in paragraphs including MCB
+    uint16_t para_length;      // length in paragraphs including MCB.
     uint16_t seg_process;      // the process PSP that allocated the memory or 0 prior to the app running
 };
 
@@ -300,7 +308,7 @@ static CKeyStrokes g_keyStrokes;                     // read or write keystrokes
 static bool g_UseOneThread = false;                  // true if no keyboard thread should be used
 static bool g_InRVOS = false;                        // true if running in the RISC-V + Linux emulator RVOS
 static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
-static bool g_SendControlCInt = false;               // set to TRUE when/if a ^C is detected and an interrupt should be sent
+static bool g_SendControlCInt = false;               // set to true when/if a ^C is detected and an interrupt should be sent
 
 #ifndef _WIN32
 static bool g_forcePathsUpper = false;               // helpful for Linux
@@ -1040,7 +1048,7 @@ struct DOSMemoryControlBlock
 {
     uint8_t header;        // 'M' for member or 'Z' for last entry in the chain
     uint16_t psp;          // PSP of owning process or 0 if free or 8 if allocated by DOS
-    uint16_t paras;        // # of paragraphs for the allocation excluding the MCB
+    uint16_t paras;        // # of paragraphs for the allocation excluding the MCB to the next allocation (not the actual length)
     uint8_t reserved[3];
     uint8_t appname[8];    // ascii name of app, null-terminated if < 8 chars long
     // beyond here is the segment handed to the app for the allocation
@@ -1056,10 +1064,10 @@ static void trace_all_allocations()
         DosAllocation & da = g_allocEntries[i];
         DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) cpu.flat_address( da.segment - 1, 0 );
 
-        tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para size %04x, (MCB %04x - %04x)  header %c, psp %04x, paras %04x\n", i,
+        tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para len %04x, (MCB %04x - %04x)  header %c, psp %04x, paras %04x\n", i,
                       da.seg_process, da.segment, da.para_length, da.segment - 1, da.segment - 1 + da.para_length - 1,
                       pmcb->header, pmcb->psp, pmcb->paras );
-        //tracer.TraceBinaryData( (uint8_t *) cpu.flat_address( da.segment, 0 ), get_min( 0x1000, da.para_length * 16 ), 8 );
+        //tracer.TraceBinaryData( (uint8_t *) cpu.flat_address( da.segment, 0 ), get_min( 0x1000, ( da.para_length - 1 ) * 16 ), 8 );
     }
 } //trace_all_allocations
 
@@ -1069,7 +1077,7 @@ size_t FindAllocationEntry( uint16_t segment )
     {
         if ( segment == g_allocEntries[ i ].segment )
         {
-            tracer.Trace( "  found allocation entry segment %04x para size %04x\n", g_allocEntries[ i ].segment, g_allocEntries[ i ].para_length );
+            tracer.Trace( "  found allocation entry segment %04x para len %04x\n", g_allocEntries[ i ].segment, g_allocEntries[ i ].para_length );
             return i;
         }
     }
@@ -1123,12 +1131,6 @@ void initialize_mcb( uint16_t segMCB, uint16_t paragraphs )
     pmcb->paras = paragraphs;
     memset( pmcb->appname, 0, sizeof( pmcb->appname ) );
 } //initialize_mcb
-
-void update_mcb_length( uint16_t segMCB, uint16_t paragraphs )
-{
-    DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) cpu.flat_address( segMCB, 0 );
-    pmcb->paras = paragraphs;
-} //update_mcb_length
 
 uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 {
@@ -1266,6 +1268,9 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
     allocatedSeg++; // move past the MCB
 
     DosAllocation da;
+#if DEBUG_APP_ALLOCATIONS
+    memset( cpu.flat_address( allocatedSeg, 0 ), 'a', ( request_paragraphs - 1 ) * 16 );
+#endif
     da.segment = allocatedSeg;
     da.para_length = request_paragraphs;
     da.seg_process = g_currentPSP;
@@ -1291,6 +1296,9 @@ bool FreeMemory( uint16_t segment )
     }
 
     tracer.Trace( "  freeing memory with segment %04x entry %d\n", segment, entry );
+#if DEBUG_APP_ALLOCATIONS
+    memset( cpu.flat_address( segment, 0 ), 'f', ( g_allocEntries[ entry ].para_length - 1 ) * 16 );
+#endif
     g_allocEntries.erase( g_allocEntries.begin() + entry );
     reset_mcb_tags();
 
@@ -4422,7 +4430,7 @@ void HandleAppExit()
         if ( -1 == index )
             break;
 
-        tracer.Trace( "  freeing RAM an app leaked, segment %04x (MCB+1) para length %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
+        tracer.Trace( "  freeing RAM an app leaked, segment %04x (MCB+1) para len %04x\n", g_allocEntries[ index ].segment, g_allocEntries[ index ].para_length );
         FreeMemory( g_allocEntries[ index ].segment );
     } while( true );
 
@@ -6947,7 +6955,6 @@ void handle_int_21( uint8_t c )
             }
 
             bool ok = FreeMemory( cpu.get_es() );
-            trace_all_allocations();
             cpu.set_carry( !ok );
             if ( !ok )
                 cpu.set_ax( 07 ); // memory corruption
@@ -6988,7 +6995,7 @@ void handle_int_21( uint8_t c )
 
             if ( ends_with( g_acApp, "pc.exe" ) && ( requestedSize < 0x4000 ) )
             {
-                tracer.Trace( "  not going to let PowerC v1.0.0 and v2.2.0 free its own stack\n" );
+                tracer.Trace( "  not going to let Mix Power C v1.0.0 and v2.2.0 free its own stack\n" );
                 requestedSize = 0x4000;
             }
 
@@ -7003,8 +7010,16 @@ void handle_int_21( uint8_t c )
             {
                 cpu.set_carry( false );
                 tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length - 1, requestedSize );
+
+#if DEBUG_APP_ALLOCATIONS
+                uint16_t currentSize = g_allocEntries[ entry ].para_length - 1; // don't include the MCB
+                if ( requestedSize > currentSize )
+                    memset( cpu.flat_address( cpu.get_es() + currentSize, 0 ), 'e', ( requestedSize - currentSize ) * 16 ); // extended
+                else if ( requestedSize < currentSize )
+                    memset( cpu.flat_address( cpu.get_es() + requestedSize, 0 ), 'g', ( currentSize - requestedSize ) * 16 ); // gone (free due to reduction)
+#endif
+
                 g_allocEntries[ entry ].para_length = 1 + requestedSize; // para_length includes the MCB
-                update_mcb_length( cpu.get_es() - 1, requestedSize );
                 reset_mcb_tags();
                 trace_all_allocations();
             }
@@ -8487,6 +8502,8 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     char * penvdata = (char *) cpu.flat_address( segEnvironment, 0 );
     char * penv = penvdata;
 
+    memset( penvdata, 0, bytesNeeded );
+
     if ( 0 == segStartingEnv )
     {
         strcpy( penv, pComSpec ); // it needs this or it can't load itself
@@ -8810,7 +8827,7 @@ int main( int argc, char * argv[] )
             }
         }
 
-        // Microsoft Pascal v1.0 requires end of 64k block, not the middle of a block
+        // Microsoft Pascal v1.0's second pass PAS2.EXE requires end of 64k block, not the middle of a block.
         // Overload -h to do this as well -- have a conformant address space for apps.
     
         if ( ends_with( g_acApp, "pas2.exe" ) || g_PackedFileCorruptWorkaround )
