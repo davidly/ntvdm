@@ -555,7 +555,7 @@ not_inlined void i8086::op_sar8( uint8_t * pval, uint8_t shift )
     if ( 1 == shift )
         fOverflow = false;
 
-    set_PSZ16( val );
+    set_PSZ8( val );
     *pval = val;
 } //op_sar8
 
@@ -741,7 +741,7 @@ not_inlined void i8086::op_das()
 
 not_inlined void i8086::op_aas()
 {
-    if ( ( ( al() & 0x0f ) > 0 ) || fAuxCarry )
+    if ( ( ( al() & 0x0f ) > 9 ) || fAuxCarry )
     {
         ax = ax - 6;
         set_ah( ah() - 1 );
@@ -779,7 +779,7 @@ not_inlined void i8086::op_sahf()
     uint8_t fl = ah();
     fSign = ( 0 != ( fl & 0x80 ) );
     fZero = ( 0 != ( fl & 0x40 ) );
-    fAuxCarry = ( 0 != ( fl & 0x20 ) );
+    fAuxCarry = ( 0 != ( fl & 0x10 ) );
     fParityEven = ( 0 != ( fl & 0x04 ) );
     fCarry = ( 0 != ( fl & 1 ) );
 } //op_sahf
@@ -1158,6 +1158,7 @@ _prefix_set:
             case 0x06: { push( es ); break; } // push es
             case 0x07: { es = pop(); break; } // pop es
             case 0x0e: { push( cs ); break; } // push cs
+            case 0x0f: { cs = pop(); break; } // pop cs
             case 0x16: { push( ss ); break; } // push ss
             case 0x17: { ss = pop(); break; } // pop ss
             case 0x1e: { push( ds ); break; } // push ds
@@ -1182,7 +1183,12 @@ _prefix_set:
                 *pval = op_dec16( *pval );
                 break;
             }
-            case 0x50: case 0x51: case 0x52: case 0x53: case 0x54: case 0x55: case 0x56: case 0x57: // push
+            case 0x54: // push sp
+            {
+                push( sp - 2 );
+                break;
+            }
+            case 0x50: case 0x51: case 0x52: case 0x53: case 0x55: case 0x56: case 0x57: // push
             case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f: // pop
             {
                 uint16_t * preg = get_preg16( _b0 & 7 );
@@ -1718,7 +1724,7 @@ _prefix_set:
                     uint8_t tempal = al();
                     set_ah( tempal / _b1 );
                     set_al( tempal % _b1 );
-                    set_PSZ16( ax );
+                    set_PSZ8( al() );
                 }
                 else
                 {
@@ -1731,17 +1737,18 @@ _prefix_set:
             {
                 set_al( ( al() + ( ah() * _b1 ) ) & 0xff );
                 set_ah( 0 );
+                set_PSZ8( al() );
                 _bc++;
                 break;
             }
             case 0xd6: { set_al( fCarry ? 0xff : 0 ); break; } // salc (undocumented. IP protection scheme?)
             case 0xd7: // xlat
             {
-                uint8_t * ptable = flat_address8( get_seg_value(), bx );
-                set_al( ptable[ al() ] );
+                uint8_t * ptable = flat_address8( get_seg_value(), bx + al() );
+                set_al( *ptable );
                 break;
             }
-            case 0xd8: case 0xd9: case 0xda: case 0xdb: case 0xdc: case 0xdd: case 0xde:  // esc (8087 instructions)
+            case 0xd8: case 0xd9: case 0xda: case 0xdb: case 0xdc: case 0xdd: case 0xde: case 0xdf:  // esc (8087 instructions)
             {
                 _bc++;
                 if ( isword() )
