@@ -8217,8 +8217,8 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
         {
             uint32_t request = (uint32_t) head.max_extra_paragraphs + (uint32_t) head.min_extra_paragraphs + (uint32_t) image_paragraphs;
 
-            if ( request < 0xffff );
-                requested_paragraphs = request;
+            if ( request < 0xffff )
+                requested_paragraphs = (uint16_t) request;
 
             tracer.Trace( "  adjusted requested_paragraphs %04x\n", requested_paragraphs );
         }
