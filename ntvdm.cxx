@@ -96,13 +96,6 @@
 using namespace std;
 using namespace std::chrono;
 
-// Set to true to fill dos memory allocations with patterns to detect apps that use memory they previously freed.
-// These include Microsoft C v4, QuickC v1 and v2.01, Pascal v4, Basic Compiler v5, GWBASIC, Fortran v3.31 and v5,
-// and Link v5.10. Previous and subsequent versions of these tools don't have these bugs.
-// Zortech C v1 and v2, Turbo Pascal v3, and Logitech Modula 2 v1.10 have similar bugs or create apps that have the bugs. 
-
-#define DEBUG_APP_ALLOCATIONS false
-
 // using assembly for keyboard input enables timer interrupts while spinning for a keystroke
 
 #define USE_ASSEMBLY_FOR_KBD true
@@ -309,6 +302,14 @@ static bool g_UseOneThread = false;                  // true if no keyboard thre
 static bool g_InRVOS = false;                        // true if running in the RISC-V + Linux emulator RVOS
 static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
 static bool g_SendControlCInt = false;               // set to true when/if a ^C is detected and an interrupt should be sent
+
+
+// Set to true to fill dos memory allocations with patterns to detect apps that use memory they previously freed.
+// These include Microsoft C v4, QuickC v1 and v2.01, Pascal v4, Basic Compiler v5, GWBASIC, Fortran v3.31 and v5,
+// and Link v5.10. Previous and subsequent versions of these tools don't have these bugs.
+// Zortech C v1 and v2, Turbo Pascal v3, and Logitech Modula 2 v1.10 have similar bugs or create apps that have the bugs. 
+
+static bool g_fillDOSMemoryBlocks = false;
 
 #ifndef _WIN32
 static bool g_forcePathsUpper = false;               // helpful for Linux
@@ -529,6 +530,7 @@ static void usage( char const * perr )
     printf( "  -C               make text area 80x25 (not tty mode). also -C:43 -C:50\n" );
     printf( "  -d               don't clear the display on exit\n" );
     printf( "  -e:env,...       define environment variables.\n" );
+    printf( "  -f               fill memory blocks with patterns to find app bugs\n" );
     printf( "  -h               load high above 64k and below 0xa0000.\n" );
     printf( "  -i               trace instructions to %s.log.\n", g_thisApp );
     printf( "  -m               after the app ends, print video memory\n" );
@@ -1267,10 +1269,10 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
     allocatedSeg++; // move past the MCB
 
+    if ( g_fillDOSMemoryBlocks )
+        memset( cpu.flat_address( allocatedSeg, 0 ), 'a', ( request_paragraphs - 1 ) * 16 );
+
     DosAllocation da;
-#if DEBUG_APP_ALLOCATIONS
-    memset( cpu.flat_address( allocatedSeg, 0 ), 'a', ( request_paragraphs - 1 ) * 16 );
-#endif
     da.segment = allocatedSeg;
     da.para_length = request_paragraphs;
     da.seg_process = g_currentPSP;
@@ -1296,9 +1298,10 @@ bool FreeMemory( uint16_t segment )
     }
 
     tracer.Trace( "  freeing memory with segment %04x entry %d\n", segment, entry );
-#if DEBUG_APP_ALLOCATIONS
-    memset( cpu.flat_address( segment, 0 ), 'f', ( g_allocEntries[ entry ].para_length - 1 ) * 16 );
-#endif
+
+    if ( g_fillDOSMemoryBlocks )
+        memset( cpu.flat_address( segment, 0 ), 'f', ( g_allocEntries[ entry ].para_length - 1 ) * 16 );
+
     g_allocEntries.erase( g_allocEntries.begin() + entry );
     reset_mcb_tags();
 
@@ -6963,7 +6966,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x4a:
         {
-            // modify memory allocation. VGA and other hardware start at a0000
+            // modify memory allocation.
             // lots of opportunity for improvement here.
 
             size_t entry = FindAllocationEntry( cpu.get_es() );
@@ -7009,15 +7012,16 @@ void handle_int_21( uint8_t c )
             else
             {
                 cpu.set_carry( false );
-                tracer.Trace( "  allocation length changed from %04x to %04x\n", g_allocEntries[ entry ].para_length - 1, requestedSize );
-
-#if DEBUG_APP_ALLOCATIONS
                 uint16_t currentSize = g_allocEntries[ entry ].para_length - 1; // don't include the MCB
-                if ( requestedSize > currentSize )
-                    memset( cpu.flat_address( cpu.get_es() + currentSize, 0 ), 'e', ( requestedSize - currentSize ) * 16 ); // extended
-                else if ( requestedSize < currentSize )
-                    memset( cpu.flat_address( cpu.get_es() + requestedSize, 0 ), 'g', ( currentSize - requestedSize ) * 16 ); // gone (free due to reduction)
-#endif
+                tracer.Trace( "  allocation length changed from %04x to %04x\n", currentSize, requestedSize );
+
+                if ( g_fillDOSMemoryBlocks )
+                {
+                    if ( requestedSize > currentSize )
+                        memset( cpu.flat_address( cpu.get_es() + currentSize, 0 ), 'e', ( requestedSize - currentSize ) * 16 ); // extended
+                    else if ( requestedSize < currentSize )
+                        memset( cpu.flat_address( cpu.get_es() + requestedSize, 0 ), 'g', ( currentSize - requestedSize ) * 16 ); // gone (free due to reduction)
+                }
 
                 g_allocEntries[ entry ].para_length = 1 + requestedSize; // para_length includes the MCB
                 reset_mcb_tags();
@@ -8211,10 +8215,10 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 
         if ( 0xffff != head.max_extra_paragraphs )
         {
-            if ( head.max_extra_paragraphs < head.min_extra_paragraphs )
-                requested_paragraphs = head.min_extra_paragraphs + image_paragraphs;
-            else if ( ( (uint32_t) head.max_extra_paragraphs + (uint32_t) image_paragraphs ) < (uint32_t) 0xffff )
-                requested_paragraphs = head.max_extra_paragraphs + image_paragraphs;
+            uint32_t request = (uint32_t) head.max_extra_paragraphs + (uint32_t) head.min_extra_paragraphs + (uint32_t) image_paragraphs;
+
+            if ( request < 0xffff );
+                requested_paragraphs = request;
 
             tracer.Trace( "  adjusted requested_paragraphs %04x\n", requested_paragraphs );
         }
@@ -8693,6 +8697,8 @@ int main( int argc, char * argv[] )
                     else
                         usage( "colon required after e argument" );
                 }
+                else if ( 'f' == ca )
+                    g_fillDOSMemoryBlocks = true;
                 else if ( 'h' == ca )
                     g_PackedFileCorruptWorkaround = true;
                 else if ( 'k' == ca )
