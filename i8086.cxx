@@ -693,26 +693,24 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
 
 not_inlined void i8086::op_daa()
 {
+    // Simplified code from https://www.righto.com/2023/01/understanding-x86s-decimal-adjust-after.html
     uint8_t old_al = al();
-    bool oldCarry = fCarry;
-    fCarry = false;
+
+    // This funny check is not actually documented anywhere but checked against real hardware.
+    // What's "documented" is that the check is done against 0x9f or 0x99 depending on the documentation you check :)
+    auto al_check = fAuxCarry ? 0x9F : 0x99;
 
     if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
     {
-        fCarry = oldCarry || ( al() > 9 );
         set_al( al() + 6 );
         fAuxCarry = true;
     }
-    else
-        fAuxCarry = false;
 
-    if ( ( old_al > 0x99 ) || oldCarry )
+    if ( ( old_al > al_check ) || fCarry )
     {
         set_al( al() + 0x60 );
         fCarry = true;
     }
-    else
-        fCarry = false;
 
     set_PSZ8( al() );
 } //op_daa
@@ -720,22 +718,28 @@ not_inlined void i8086::op_daa()
 not_inlined void i8086::op_das()
 {
     uint8_t old_al = al();
+    
+    auto al_check = fAuxCarry ? 0x9F : 0x99;
+
+    // Simplification of this code like the one for `daa` is probable, but hasn't been attempted
     bool oldCarry = fCarry;
     fCarry = false;
     if ( ( ( al() & 0xf ) > 9 ) || ( fAuxCarry ) )
     {
-        fCarry = ( oldCarry || ( al() < 6 ) );
         set_al( al() - 6 );
         fAuxCarry = true;
     }
     else
         fAuxCarry = false;
 
-    if ( ( old_al > 0x99 ) || ( oldCarry ) )
+    if ( ( old_al > al_check ) || ( oldCarry ) )
     {
         set_al( al() - 0x60 );
         fCarry = true;
+    } else {
+        fCarry = false;
     }
+
     set_PSZ8( al() );
 } //op_das
 
@@ -743,11 +747,12 @@ not_inlined void i8086::op_aas()
 {
     if ( ( ( al() & 0x0f ) > 9 ) || fAuxCarry )
     {
-        ax = ax - 6;
+        // Intel's documentation shows `ax` being affected here, but actual HW behavior seems to use `al` instead
+        auto new_al = al() - 6;
         set_ah( ah() - 1 );
         fAuxCarry = 1;
         fCarry = 1;
-        set_al( al() & 0x0f );
+        set_al( new_al & 0x0f );
     }
     else
     {
@@ -761,7 +766,9 @@ not_inlined void i8086::op_aaa()
 {
     if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
     {
-        ax = ax + 0x106;
+        // Intel's documentation does `ax = ax + 0x106`, but this leads to incorrect behavior when `al` carries into `ah`
+        set_al( al() + 6 );
+        set_ah( ah() + 1 );
         fAuxCarry = true;
         fCarry = true;
     }
