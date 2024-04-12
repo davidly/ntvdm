@@ -482,12 +482,16 @@ void i8086::op_sal8( uint8_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    *pval <<= ( shift - 1 );
-    fCarry = ( 0 != ( *pval & 0x80 ) );
-    *pval <<= 1;
+    if (shift > 8) {
+        *pval = 0;
+    } else {
+        *pval <<= ( shift - 1 );
+        fCarry = ( 0 != ( *pval & 0x80 ) );
+        *pval <<= 1;
 
-    //if ( 1 == shift )
-        fOverflow = ! ( ( 0 != ( *pval & 0x80 ) ) == fCarry );
+        if ( 1 == shift )
+            fOverflow = ! ( ( 0 != ( *pval & 0x80 ) ) == fCarry );
+    }
 
     set_PSZ8( *pval );
 } //op_sal8
@@ -497,16 +501,16 @@ void i8086::op_sal16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    *pval <<= ( shift - 1 );
-    fCarry = ( 0 != ( *pval & 0x8000 ) );
-    *pval <<= 1;
+    if (shift > 16) {
+        *pval = 0;
+    } else {
+        *pval <<= ( shift - 1 );
+        fCarry = ( 0 != ( *pval & 0x8000 ) );
+        *pval <<= 1;
 
-    // the 8086 doc says that Overflow is only defined when shift == 1.
-    // actual 8088 CPUs and some emulators set overflow if shift > 0.
-    // so the same is done here for sal16
-
-    //if ( 1 == shift )
-        fOverflow = ! ( ( 0 != ( *pval & 0x8000 ) ) == fCarry );
+        if ( 1 == shift )
+            fOverflow = ! ( ( 0 != ( *pval & 0x8000 ) ) == fCarry );
+    }
 
     set_PSZ16( *pval );
 } //op_sal16
@@ -516,10 +520,15 @@ void i8086::op_shr8( uint8_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    fOverflow = ( 0 != ( *pval & 0x80 ) );
-    *pval >>= ( shift - 1 );
-    fCarry = ( 0 != ( *pval & 1 ) );
-    *pval >>= 1;
+    if (shift > 8) {
+        *pval = 0;
+    } else {
+        fOverflow = ( 0 != ( *pval & 0x80 ) );
+        *pval >>= ( shift - 1 );
+        fCarry = ( 0 != ( *pval & 1 ) );
+        *pval >>= 1;
+    }
+
     set_PSZ8( *pval );
 } //op_shr8
 
@@ -528,10 +537,15 @@ void i8086::op_shr16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    fOverflow = ( 0 != ( *pval & 0x8000 ) );
-    *pval >>= ( shift - 1 );
-    fCarry = ( 0 != ( *pval & 1 ) );
-    *pval >>= 1;
+    if (shift > 16) {
+        *pval = 0;
+    } else {
+        fOverflow = ( 0 != ( *pval & 0x8000 ) );
+        *pval >>= ( shift - 1 );
+        fCarry = ( 0 != ( *pval & 1 ) );
+        *pval >>= 1;
+    }
+
     set_PSZ16( *pval );
 } //op_shr16
 
@@ -1701,7 +1715,7 @@ _prefix_set:
                 _bc++;
                 AddMemCycles( 12 );
                 uint8_t *pval = get_rm_ptr8();
-                uint8_t amount = cl() & 0x1f;
+                uint8_t amount = cl();
                 AddCycles( 4 * amount );
                 op_rotate8( pval, _reg, amount );
                 break;
@@ -1711,7 +1725,7 @@ _prefix_set:
                 _bc++;
                 AddMemCycles( 12 );
                 uint16_t *pval = get_rm_ptr16();
-                uint8_t amount = cl() & 0x1f;
+                uint8_t amount = cl();
                 AddCycles( 4 * amount );
                 op_rotate16( pval, _reg, amount );
                 break;
