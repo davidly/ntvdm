@@ -1017,7 +1017,14 @@ not_inlined bool i8086::op_ff()
     {
         AddCycles( 22 );
         uint16_t * pval = get_rm_ptr16();
-        push( *pval );
+
+        auto val = *pval;
+        // SP special case
+        if (_mod == 3 && _rm == 4) {
+            val -= 2;
+        }
+        push( val );
+
         _bc++;
     }
     else
