@@ -1019,7 +1019,7 @@ not_inlined bool i8086::op_ff()
         uint16_t * pval = get_rm_ptr16();
 
         auto val = *pval;
-        // SP special case
+        // SP special case (for `push <reg>` behavior, might be undocumented)
         if (_mod == 3 && _rm == 4) {
             val -= 2;
         }
