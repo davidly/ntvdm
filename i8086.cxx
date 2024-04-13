@@ -1043,10 +1043,10 @@ not_inlined bool i8086::op_ff()
     {
         AddCycles( 18 );
         AddMemCycles( 9 );
-        uint16_t * pfunc = get_rm_ptr16();
+        uint16_t func = * get_rm_ptr16();
         uint16_t return_address = ip + _bc + 1;
         push( return_address );
-        ip = *pfunc;
+        ip = func;
         return true;
     }
     else if ( 3 == _reg ) // call mem16:16 (inter segment)

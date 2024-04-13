@@ -93,6 +93,7 @@ struct i8086
         _bc = _b0 = _b1 = _mod = _reg = _rm = 0;
         fCarry = fParityEven = fAuxCarry = fZero = fSign = fTrap = fInterrupt = fDirection = fOverflow = fIgnoreTrap = false;
         cycles = 0;
+        reset_disassembler();
     } //reset
 
     void reset_disassembler();
