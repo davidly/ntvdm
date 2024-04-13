@@ -53,6 +53,7 @@ bool i8086::external_interrupt( uint8_t interrupt_num )
 
 void i8086::unhandled_instruction()
 {
+    trace_state();
     i8086_hard_exit( "unhandled 8086 instruction %02x\n", _b0 );
 } //unhandled_instruction
 
@@ -482,9 +483,10 @@ void i8086::op_sal8( uint8_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    if (shift > 8) {
+    if ( shift > 8 )
         *pval = 0;
-    } else {
+    else
+    {
         *pval <<= ( shift - 1 );
         fCarry = ( 0 != ( *pval & 0x80 ) );
         *pval <<= 1;
@@ -501,9 +503,10 @@ void i8086::op_sal16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    if (shift > 16) {
+    if ( shift > 16 )
         *pval = 0;
-    } else {
+    else
+    {
         *pval <<= ( shift - 1 );
         fCarry = ( 0 != ( *pval & 0x8000 ) );
         *pval <<= 1;
@@ -520,9 +523,10 @@ void i8086::op_shr8( uint8_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    if (shift > 8) {
+    if ( shift > 8 )
         *pval = 0;
-    } else {
+    else
+    {
         fOverflow = ( 0 != ( *pval & 0x80 ) );
         *pval >>= ( shift - 1 );
         fCarry = ( 0 != ( *pval & 1 ) );
@@ -537,9 +541,10 @@ void i8086::op_shr16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    if (shift > 16) {
+    if ( shift > 16 )
         *pval = 0;
-    } else {
+    else
+    {
         fOverflow = ( 0 != ( *pval & 0x8000 ) );
         *pval >>= ( shift - 1 );
         fCarry = ( 0 != ( *pval & 1 ) );
@@ -750,9 +755,9 @@ not_inlined void i8086::op_das()
     {
         set_al( al() - 0x60 );
         fCarry = true;
-    } else {
-        fCarry = false;
     }
+    else
+        fCarry = false;
 
     set_PSZ8( al() );
 } //op_das
@@ -1039,11 +1044,11 @@ not_inlined bool i8086::op_ff()
         AddCycles( 22 );
         uint16_t * pval = get_rm_ptr16();
 
-        auto val = *pval;
-        // SP special case (for `push <reg>` behavior, might be undocumented)
-        if (_mod == 3 && _rm == 4) {
+        uint16_t val = *pval;
+        
+        if ( 3 == _mod && 4 == _rm ) // SP special case (for `push <reg>` behavior, might be undocumented)
             val -= 2;
-        }
+
         push( val );
 
         _bc++;
@@ -1211,11 +1216,6 @@ _prefix_set:
                 *pval = op_dec16( *pval );
                 break;
             }
-            case 0x54: // push sp
-            {
-                push( sp - 2 );
-                break;
-            }
             case 0x50: case 0x51: case 0x52: case 0x53: case 0x55: case 0x56: case 0x57: // push
             case 0x58: case 0x59: case 0x5a: case 0x5b: case 0x5c: case 0x5d: case 0x5e: case 0x5f: // pop
             {
@@ -1224,6 +1224,11 @@ _prefix_set:
                     push( *preg );
                 else 
                     *preg = pop();
+                break;
+            }
+            case 0x54: // push sp
+            {
+                push( sp - 2 );
                 break;
             }
             case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt. default interrupt routines execute this to get to C++ code
