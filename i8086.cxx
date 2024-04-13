@@ -1054,10 +1054,13 @@ not_inlined bool i8086::op_ff()
         AddCycles( 34 );
         AddMemCycles( 17 );
         uint16_t * pdata = get_rm_ptr16();
-        push( cs );
-        push( ip + _bc + 1 );
+
+        uint16_t save_cs = cs;
+        uint16_t save_ip = ip + _bc + 1;
         ip = pdata[ 0 ];
         cs = pdata[ 1 ];
+        push( save_cs );
+        push( save_ip );
         return true;
     }
     else if ( 4 == _reg ) // jmp reg16/mem16 (intra segment)
@@ -1087,7 +1090,6 @@ not_inlined bool i8086::op_ff()
             val -= 2;
 
         push( val );
-
         _bc++;
     }
     else
