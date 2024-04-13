@@ -263,6 +263,9 @@ class CDisassemble8086
                 case 0x0c: _da( "or     al, %02xh", _b1 ); _bc = 2; break;
                 case 0x0d: _da( "or     ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x0e: _da( "push   cs" ); break;
+#ifdef UNDOCUMENTED_8086
+                case 0x0f: _da( "pop    cs" ); break;
+#endif
                 case 0x14: _da( "adc    al, %02xh", _b1 ); _bc = 2; break;
                 case 0x15: _da( "adc    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x16: _da( "push   ss" ); break;

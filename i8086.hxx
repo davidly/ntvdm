@@ -45,6 +45,7 @@ struct i8086
     uint16_t get_cs() { return cs; }
     uint16_t get_ss() { return ss; }
     uint16_t get_ds() { return ds; }
+    uint16_t get_flags() { materializeFlags(); return flags; }
 
     void set_ax( uint16_t val ) { ax = val; }
     void set_bx( uint16_t val ) { bx = val; }
@@ -59,6 +60,7 @@ struct i8086
     void set_cs( uint16_t val ) { cs = val; }
     void set_ss( uint16_t val ) { ss = val; }
     void set_ds( uint16_t val ) { ds = val; }
+    void set_flags( uint16_t val ) { flags = val; unmaterializeFlags(); }
 
     void set_carry( bool f ) { fCarry = f; }
     void set_zero( bool f ) { fZero = f; }
@@ -83,13 +85,23 @@ struct i8086
     uint8_t trace_opcode_usage( void );                    // trace trends in opcode usage
 #endif
 
-    i8086() : ax( 0 ), bx( 0 ), cx( 0 ), dx(0 ), si( 0 ), di( 0 ), bp( 0 ), sp( 0 ), ip( 0 ),
-              es( 0 ), cs( 0 ), ss( 0 ), ds( 0 ), flags( 0 ),
-              prefix_segment_override( 0xff ), prefix_repeat_opcode( 0xff ),
-              _pcode( 0 ), _bc( 0 ), _b0( 0 ), _b1( 0 ), _mod( 0 ), _reg( 0 ), _rm( 0 ),
-              fCarry( false ), fParityEven( false ), fAuxCarry( false ), fZero( false ), fSign( false ),
-              fTrap( false ), fInterrupt( false ), fDirection( false ), fOverflow( false ), fIgnoreTrap( false ), cycles( 0 )
+    void reset()
     {
+        ax = bx = cx = dx = si = di = bp = sp = ip = es = cs = ss = ds = flags = 0;
+        prefix_segment_override = prefix_repeat_opcode = 0xff;
+        _pcode = 0;
+        _bc = _b0 = _b1 = _mod = _reg = _rm = 0;
+        fCarry = fParityEven = fAuxCarry = fZero = fSign = fTrap = fInterrupt = fDirection = fOverflow = fIgnoreTrap = false;
+        cycles = 0;
+    } //reset
+
+    void reset_disassembler();
+
+    i8086()
+    {
+        reset();
+        reset_disassembler();
+
         reg8_pointers[ 0 ] = (uint8_t *) & ax;  // al
         reg8_pointers[ 1 ] = (uint8_t *) & cx;  // cl
         reg8_pointers[ 2 ] = (uint8_t *) & dx;  // dl

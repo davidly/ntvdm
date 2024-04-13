@@ -11,6 +11,9 @@
 // ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
 // I tested cycle counts against physical 80186 and 8088 machines. This is somewhere in between.
+// outstanding bugs:
+//   -- does not handle pop or push at 1 byte from segment wrap
+//   -- does not handle les for segment wraps
 
 #include <djl_os.hxx>
 
@@ -56,6 +59,11 @@ void i8086::unhandled_instruction()
     trace_state();
     i8086_hard_exit( "unhandled 8086 instruction %02x\n", _b0 );
 } //unhandled_instruction
+
+void i8086::reset_disassembler()
+{
+    g_Disassembler.ClearLastIP();
+} //reset_disassembler.ClearLasetIP();
 
 void i8086::trace_state()
 {
@@ -701,7 +709,7 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     push( flags );
     fInterrupt = false; // will be set again if/when flags are popped on iret
     fTrap = false;
-    fAuxCarry = false;
+//    fAuxCarry = false;
     push( cs );
     push( ip + instruction_length );
 
@@ -872,10 +880,17 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         if ( 0 != rhs )
         {
             uint16_t lhs = ax;
-            set_al( (uint8_t) ( lhs / (uint16_t) rhs ) );
-            set_ah( lhs % rhs );
-
-            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV. "
+            uint16_t result = lhs / (uint16_t) rhs;
+            tracer.Trace( "lhs %u, rhs %u, result %u\n", lhs, rhs, result );
+            if ( result <= 0xff )
+            {
+                set_al( (uint8_t) result );
+                set_ah( lhs % rhs );
+    
+                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV. "
+            }
+            else
+                return true;
         }
         else
             return true;
@@ -887,11 +902,17 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         if ( 0 != rhs )
         {
             int16_t lhs = ax;
-            set_al( ( lhs / (int16_t) (int8_t) rhs ) & 0xff );
-            set_ah( lhs % (int16_t) (int8_t) rhs );
-
-            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
-            // Some other emulators set O, S, and C flags.
+            int16_t result = lhs / (int16_t) (int8_t) rhs;
+            if ( result < 127 && result > -127 )
+            {
+                set_al( ( lhs / (int16_t) (int8_t) rhs ) & 0xff );
+                set_ah( lhs % (int16_t) (int8_t) rhs );
+    
+                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
+                // Some other emulators set O, S, and C flags.
+            }
+            else
+                return true;
         }
         else
             return true;
@@ -956,8 +977,14 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
         if ( 0 != rhs )
         {
             uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
-            ax = (uint16_t) ( lhs / (uint32_t) rhs );
-            dx = lhs % rhs;
+            uint32_t result = lhs / (uint32_t) rhs;
+            if ( result <= 0xffff )
+            {
+                ax = (uint16_t) result;
+                dx = lhs % rhs;
+            }
+            else
+                return true;
 
             // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV. "
         }
@@ -971,11 +998,21 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
         if ( 0 != rhs )
         {
             uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
-            ax = (uint16_t) ( (int32_t) (int16_t) lhs / (int32_t) (int16_t) rhs );
-            dx = (uint16_t) ( (int32_t) lhs % (int32_t) (int16_t) rhs );
+            int32_t l = (int32_t) lhs;
+            int32_t r = (int32_t) (int16_t) rhs;
+            int32_t result = l / r;
+            tracer.Trace( "l %d, r %d, result %d = %#x\n", l, r, result, result );
 
-            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
-            // Some other emulators set O, S, and C flags.
+            if ( result < 32767 && result > -32767 )
+            {
+                ax = (uint16_t) result;
+                dx = (uint16_t) ( (int32_t) lhs % (int32_t) (int16_t) rhs );
+    
+                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
+                // Some other emulators set O, S, and C flags.
+            }
+            else
+                return true;
         }
         else
             return true;
@@ -1191,7 +1228,9 @@ _prefix_set:
             case 0x06: { push( es ); break; } // push es
             case 0x07: { es = pop(); break; } // pop es
             case 0x0e: { push( cs ); break; } // push cs
+#ifdef UNDOCUMENTED_8086
             case 0x0f: { cs = pop(); break; } // pop cs
+#endif
             case 0x16: { push( ss ); break; } // push ss
             case 0x17: { ss = pop(); break; } // pop ss
             case 0x1e: { push( ds ); break; } // push ds
