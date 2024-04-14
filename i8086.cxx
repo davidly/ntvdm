@@ -7,6 +7,7 @@
 //         https://www2.math.uni-wuppertal.de/~fpf/Uebungen/GdR-SS02/opcode_i.html
 //         https://www.pcjs.org/documents/manuals/intel/8086/
 //         https://www.righto.com/2023/02/8086-modrm-addressing.html
+//         https://www.righto.com/2023/07/undocumented-8086-instructions.html
 // Cycle counts are approximate -- within 25% of actual values. It doesn't account for misalignment,
 // ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
@@ -71,12 +72,6 @@ void i8086::reset_disassembler()
 
 void i8086::trace_state()
 {
-//    tracer.Trace( "1af4:fe7ah %04x\n", mword( 0x1af4, 0xfe7a ) );
-//    tracer.Trace( "es: [di+8] 309c: [8] " ); tracer.TraceBinaryData( memory + flatten( 0x309c, 8 ), 2, 0 );
-//    tracer.Trace( "bp-2 1f13:ad04-2 " ); tracer.TraceBinaryData( memory + flatten( 0x1f13, 0xad04 - 2 ), 2, 0 );
-//    tracer.Trace( "x594 + 24: " ); tracer.TraceBinaryData( memory + flatten( 0x3c9b, 0x594 + 24 ), 4, 0 );
-//    tracer.TraceBinaryData( memory + flatten( 0, 4 * 0x1c ), 4, 0 );
-
     uint8_t * pcode = flat_address8( cs, ip );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
     tracer.TraceQuiet( "ip %4x, opc %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
@@ -90,19 +85,19 @@ void i8086::trace_state()
 // ea calculations, jumps taken, loops taken, rotate cl-times, and reps
 static const uint8_t i8086_cycles[ 256 ] =
 {
-    /*00*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14,  0,
+    /*00*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14, 14,
     /*10*/     3,  3,  3,  3,  4,  4, 14, 12,    3,  3,  3,  3,  4,  4, 14, 12,
     /*20*/     3,  3,  3,  3,  4,  4,  2,  4,    3,  3,  3,  3,  4,  4,  2,  4,
     /*30*/     3,  3,  3,  3,  4,  4,  2,  4,    3,  3,  3,  3,  4,  4,  2,  4,
     /*40*/     3,  3,  3,  3,  3,  3,  3,  3,    3,  3,  3,  3,  3,  3,  3,  3,
     /*50*/    15, 15, 15, 15, 15, 15, 15, 15,   12, 12, 12, 12, 12, 12, 12, 12,
-    /*60*/     0,  0,  0,  0,  0,  0,  0,  0,    0,  0,  0,  0,  0,  0,  0,  0,
+    /*60*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  1,  4,  4,  4,  4,  4,  4,
     /*70*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
     /*80*/     4,  4,  4,  4,  5,  5,  4,  4,    2,  2,  2,  2,  2,  4,  2, 12, // lea as 4, not 2; docs can't be right
     /*90*/     4,  4,  4,  4,  4,  4,  4,  4,    2,  5, 36,  4, 14, 12,  4,  4,
     /*a0*/    14, 14, 14, 14, 18, 26, 30, 30,    5,  5, 11, 15, 16, 16, 19, 19,
     /*b0*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
-    /*c0*/     0,  0, 24, 20, 24, 24, 14, 14,    0,  0, 33, 34, 72, 71,  4, 44,
+    /*c0*/    24, 20, 24, 20, 24, 24, 14, 14,   33, 34, 33, 34, 72, 71,  4, 44,
     /*d0*/     2,  2,  8,  8, 83, 60,  2, 11,    1,  1,  1,  1,  1,  1,  1,  1,
     /*e0*/     6,  5,  5,  6, 14, 14, 14, 14,   23, 15, 15, 15, 12, 12, 12, 12,
     /*f0*/     1,  0,  9,  9,  2,  3,  5,  5,    2,  2,  2,  2,  2,  2,  3,  2,
@@ -307,7 +302,8 @@ void i8086::op_rol8( uint8_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    uint8_t val = *pval;
+    uint8_t original = *pval;
+    uint8_t val = original;
     for ( uint8_t sh = 0; sh < shift; sh++ )
     {
         bool highBit = ( 0 != ( 0x80 & val ) );
@@ -319,9 +315,7 @@ void i8086::op_rol8( uint8_t * pval, uint8_t shift )
         fCarry = highBit;
     }
 
-    if ( 1 == shift )
-        fOverflow = ( ( 0 != ( val & 0x80 ) ) ^ fCarry );
-
+    fOverflow = ( ( val & 0x80 ) != ( original & 0x80 ) ); // only defined when shift is 1
     *pval = val;
 } //op_rol8
 
@@ -346,9 +340,7 @@ void i8086::op_rol16( uint16_t * pval, uint8_t shift )
         fCarry = highBit;
     }
 
-    // Overflow only defined for 1-bit shifts, but actual hardware and emulators do this
-
-    fOverflow = ( ( val & 0x8000 ) != ( original & 0x8000 ) );
+    fOverflow = ( ( val & 0x8000 ) != ( original & 0x8000 ) ); // only defined when shift is 1
     *pval = val;
 } //op_rol16
 
@@ -680,6 +672,35 @@ void i8086::op_scas16()
     update_index16( di );
 } //op_scas16
 
+#if I8086_UNDOCUMENTED
+void i8086::op_setmo8( uint8_t * pval, uint8_t shift )
+{
+    if ( 0 == shift )
+        return;
+
+    uint8_t val = 0xff;
+    fCarry = false;
+    fOverflow = false;
+    set_PSZ8( val );
+    *pval = val;
+} //op_setmo8
+
+void i8086::op_setmo16( uint16_t * pval, uint8_t shift )
+{
+    if ( 0 == shift )
+    {
+        fOverflow = false;
+        return;
+    }
+
+    uint16_t val = 0xffff;
+    fCarry = false;
+    fOverflow = false;
+    set_PSZ16( val );
+    *pval = val;
+} //op_setmo16
+#endif
+
 void i8086::op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount )
 {
     switch( operation )
@@ -690,8 +711,10 @@ void i8086::op_rotate8( uint8_t * pval, uint8_t operation, uint8_t amount )
         case 3: op_rcr8( pval, amount ); break;
         case 4: op_sal8( pval, amount ); break;    // aka shl
         case 5: op_shr8( pval, amount ); break;
+#if I8086_UNDOCUMENTED
+        case 6: op_setmo8( pval, amount ); break;
+#endif
         case 7: op_sar8( pval, amount ); break;
-        // 6 is illegal
     }
 } //op_rotate8
 
@@ -705,8 +728,10 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
         case 3: op_rcr16( pval, amount ); break;
         case 4: op_sal16( pval, amount ); break;   // aka shl
         case 5: op_shr16( pval, amount ); break; 
+#if I8086_UNDOCUMENTED
+        case 6: op_setmo16( pval, amount ); break;
+#endif
         case 7: op_sar16( pval, amount ); break;
-        // 6 is illegal
     }
 } //op_rotate16
 
@@ -843,7 +868,7 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
 {
     _bc++;
 
-    if ( 0 == _reg ) // test reg8/mem8, immed8
+    if ( ( 0 == _reg ) || ( I8086_UNDOCUMENTED && 1 == _reg ) ) // test reg8/mem8, immed8
     {
         AddMemCycles( 10 );
         uint8_t lhs = * get_rm_ptr8();
@@ -913,9 +938,12 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         {
             int16_t lhs = ax;
             int16_t result = lhs / (int16_t) (int8_t) rhs;
-            if ( result < 127 && result > -127 )
+            if ( result <= 127 && result >= -127 )
             {
-                set_al( ( lhs / (int16_t) (int8_t) rhs ) & 0xff );
+                if ( 0xff != prefix_repeat_opcode ) // https://github.com/TomHarte/ProcessorTests/tree/main/8088
+                    result = -result;
+
+                set_al( result & 0xff );
                 set_ah( lhs % (int16_t) (int8_t) rhs );
 
                 // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
@@ -937,7 +965,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
 {
     _bc++;
 
-    if ( 0 == _reg ) // test reg16/mem16, immed16
+    if ( ( 0 == _reg ) || ( I8086_UNDOCUMENTED && 1 == _reg ) ) // test reg16/mem16, immed16
     {
         AddMemCycles( 10 );
         uint16_t lhs = * get_rm_ptr16();
@@ -1013,8 +1041,11 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
             int32_t result = l / r;
             tracer.Trace( "l %d, r %d, result %d = %#x\n", l, r, result, result );
 
-            if ( result < 32767 && result > -32767 )
+            if ( result <= 32767 && result >= -32767 )
             {
+                if ( 0xff != prefix_repeat_opcode ) // https://github.com/TomHarte/ProcessorTests/tree/main/8088
+                    result = -result;
+
                 ax = (uint16_t) result;
                 dx = (uint16_t) ( (int32_t) lhs % (int32_t) (int16_t) rhs );
     
@@ -1089,7 +1120,7 @@ not_inlined bool i8086::op_ff()
         cs = pdata[ 1 ];
         return true;
     }
-    else if ( 6 == _reg ) // push mem16
+    else if ( 6 == _reg || ( I8086_UNDOCUMENTED && 7 == _reg ) ) // push mem16
     {
         AddCycles( 22 );
         uint16_t * pval = get_rm_ptr16();
@@ -1240,7 +1271,7 @@ _prefix_set:
             case 0x06: { push( es ); break; } // push es
             case 0x07: { es = pop(); break; } // pop es
             case 0x0e: { push( cs ); break; } // push cs
-#ifdef UNDOCUMENTED_8086
+#if I8086_UNDOCUMENTED
             case 0x0f: { cs = pop(); break; } // pop cs
 #endif
             case 0x16: { push( ss ); break; } // push ss
@@ -1282,12 +1313,13 @@ _prefix_set:
                 push( sp - 2 );
                 break;
             }
-            case 0x69: // fint FAKE Opcode: i8086_opcode_interrupt. default interrupt routines execute this to get to C++ code
+#if I8086_SYSCALL
+            case 0x69: // fint FAKE Opcode: i8086_opcode_syscall. default NTVDM interrupt routines execute this to get to C++ code
             {
                 uint16_t old_ip = ip;
                 uint16_t old_cs = cs;
 
-                i8086_invoke_interrupt( _b1 );
+                i8086_invoke_syscall( _b1 );
 
                 // if ip or cs changed, it's likely the interrupt loaded or ended an app via int21 4b execute program or int21 4c exit app
                 // the ip/cs now point to the new app or old parent app.
@@ -1298,6 +1330,13 @@ _prefix_set:
                 _bc++;
                 break;
             }
+#elif I8086_UNDOCUMENTED
+            case 0x69:
+#endif
+#if I8086_UNDOCUMENTED
+            case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x66: case 0x67:
+            case 0x68:            case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+#endif
             case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75: case 0x76: case 0x77: // jcc
             case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f:
             {
@@ -1687,7 +1726,13 @@ _prefix_set:
                 _bc = 3;
                 break;
             }
+#if I8086_UNDOCUMENTED
+            case 0xc0:
+#endif
             case 0xc2: { ip = pop(); sp += b12(); continue; } // ret immed16 intrasegment
+#if I8086_UNDOCUMENTED
+            case 0xc1:
+#endif
             case 0xc3: { ip = pop(); continue; } // ret intrasegment
             case 0xc4: // les reg16, [mem16]
             {
@@ -1727,7 +1772,13 @@ _prefix_set:
                 _bc += 2;
                 break;
             }
+#if I8086_UNDOCUMENTED
+            case 0xc8:
+#endif
             case 0xca: { ip = pop(); cs = pop(); sp += b12(); continue; } // retf immed16
+#if I8086_UNDOCUMENTED
+            case 0xc9:
+#endif
             case 0xcb: { ip = pop(); cs = pop(); continue; } // retf
             case 0xcc:  // int3
             {
@@ -1830,8 +1881,8 @@ _prefix_set:
                 _bc++;
                 break;
             }
-#ifdef UNDOCUMENTED_8086
-            case 0xd6: { set_al( fCarry ? 0xff : 0 ); break; } // salc (undocumented. IP protection scheme?)
+#if I8086_UNDOCUMENTED
+            case 0xd6: { set_al( fCarry ? 0xff : 0 ); break; } // salc ( IP protection scheme?)
 #endif
             case 0xd7: // xlat
             {

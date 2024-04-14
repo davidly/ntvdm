@@ -3,14 +3,19 @@
 #include <bitset>
 using namespace std;
 
-// when this (undefined) opcode is executed, i8086_invoke_interrupt will be called
-const uint8_t i8086_opcode_interrupt = 0x69;
-
 extern uint8_t memory[ 0x10fff0 ];
 
 // tracking cycles slows execution by >6%
-
 #define I8086_TRACK_CYCLES
+
+// true for undocumented 8086 behavior. false to fail fast if undocumented instructions are executed.
+#define I8086_UNDOCUMENTED true
+
+// true for using i8086_opcode_syscall or false to handle normally
+#define I8086_SYSCALL true
+
+// when this (undefined) opcode is executed, i8086_invoke_syscall will be called
+const uint8_t i8086_opcode_syscall = 0x69;
 
 struct i8086
 {
@@ -515,6 +520,11 @@ struct i8086
     bool op_f7();
     bool op_ff();
 
+    #if I8086_UNDOCUMENTED
+        void op_setmo8( uint8_t * pval, uint8_t amount );
+        void op_setmo16( uint16_t * pval, uint8_t amount );
+    #endif
+
     #ifdef I8086_TRACK_CYCLES
         void AddCycles( uint8_t amount ) { cycles += amount; }
         void AddMemCycles( uint8_t amount ) { if ( 3 != _mod ) cycles += amount; else if ( !toreg() ) cycles += 21; }
@@ -529,7 +539,7 @@ extern i8086 cpu;
 
 // callbacks when instructions are executed
 
-extern void i8086_invoke_interrupt( uint8_t interrupt );          // called by default for all interrupts
+extern void i8086_invoke_syscall( uint8_t interrupt );            // called when i8086_opcode_syscall is executed
 extern void i8086_invoke_halt();                                  // called when the HLT instruction is executed
 extern uint8_t i8086_invoke_in_byte( uint16_t port );             // called for the instructions: in of size byte
 extern uint16_t i8086_invoke_in_word( uint16_t port );            // called for the instructions: in of size word

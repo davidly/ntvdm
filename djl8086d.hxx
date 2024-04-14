@@ -224,13 +224,13 @@ class CDisassemble8086
             i_opBits[12] = "and "; i_opBits[13] = "sub "; i_opBits[14] = "xor "; i_opBits[15] = "cmp ";
 
             i_opRot[0] = "rol"; i_opRot[1] = "ror"; i_opRot[2] = "rcl"; i_opRot[3] = "rcr";
-            i_opRot[4] = "sal"; i_opRot[5] = "shr"; i_opRot[6] = "NYI"; i_opRot[7] = "sar";
+            i_opRot[4] = "sal"; i_opRot[5] = "shr"; i_opRot[6] = "setmo" /*undocumented*/; i_opRot[7] = "sar";
 
-            i_opMath[0] = "test"; i_opMath[1] = "NYI "; i_opMath[2] = "not "; i_opMath[3] = "neg ";
+            i_opMath[0] = "test"; i_opMath[1] = "test" /*undocumented*/; i_opMath[2] = "not "; i_opMath[3] = "neg ";
             i_opMath[4] = "mul "; i_opMath[5] = "imul"; i_opMath[6] = "div "; i_opMath[7] = "idiv";
 
             i_opMix[0] = "inc "; i_opMix[1] = "dec ";    i_opMix[2] = "call"; i_opMix[3] = "call far";
-            i_opMix[4] = "jmp "; i_opMix[5] = "jmp far"; i_opMix[6] = "push"; i_opMix[7] = "NYI";
+            i_opMix[4] = "jmp "; i_opMix[5] = "jmp far"; i_opMix[6] = "push"; i_opMix[7] = "push" /*undocumented*/;
         }
 
          ~CDisassemble8086() {}
@@ -263,9 +263,7 @@ class CDisassemble8086
                 case 0x0c: _da( "or     al, %02xh", _b1 ); _bc = 2; break;
                 case 0x0d: _da( "or     ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x0e: _da( "push   cs" ); break;
-#ifdef UNDOCUMENTED_8086
-                case 0x0f: _da( "pop    cs" ); break;
-#endif
+                case 0x0f: _da( "pop    cs" ); break; // undocumented
                 case 0x14: _da( "adc    al, %02xh", _b1 ); _bc = 2; break;
                 case 0x15: _da( "adc    ax, %04xh", _b12 ); _bc = 3; break;
                 case 0x16: _da( "push   ss" ); break;
@@ -324,12 +322,16 @@ class CDisassemble8086
                 case 0xad: _da( "lodsw" ); break;
                 case 0xae: _da( "scasb" ); break;
                 case 0xaf: _da( "scasw" ); break;
+                case 0xc0: _da( "ret    %04xh", _b12 ); _bc = 3; _pcode = 0; break; // undocumented
+                case 0xc1: _da( "ret" ); _pcode = 0; break; // undocumented
                 case 0xc2: _da( "ret    %04xh", _b12 ); _bc = 3; _pcode = 0; break;
                 case 0xc3: _da( "ret" ); _pcode = 0; break;
                 case 0xc4: _da( "les    %s, %s", reg_strings[ 8 | _reg ], getrmAsWord() ); _bc++; break;
                 case 0xc5: _da( "lds    %s, %s", reg_strings[ 8 | _reg ], getrmAsWord() ); _bc++; break;
                 case 0xc6: _da( "mov    %s", opargs( false ) ); _bc++; break;
                 case 0xc7: _da( "mov    %s", opargs( false ) ); _bc++; break;
+                case 0xc8: _da( "retf   %04xh", _b12 ); _bc = 3; _pcode = 0; break; // undocumented
+                case 0xc9: _da( "retf"); _pcode = 0; break; // undocumented
                 case 0xca: _da( "retf   %04xh", _b12 ); _bc = 3; _pcode = 0; break;
                 case 0xcb: _da( "retf"); _pcode = 0; break;
                 case 0xcc: _da( "int3" ); break;
@@ -338,6 +340,7 @@ class CDisassemble8086
                 case 0xcf: _da( "iret" ); _pcode = 0; break;
                 case 0xd4: _da( "aam" ); _bc = 2; break;
                 case 0xd5: _da( "aad" ); _bc = 2; break;
+                case 0xd6: _da( "salc" ); break; // undocumented
                 case 0xd7: _da( "xlat" ); break;
                 case 0xe0: _da( "loopnz %02xh", _b1 ); _bc = 2; _pcode = 0; break;
                 case 0xe1: _da( "loopz %02xh", _b1 ); _bc = 2; _pcode = 0; break;
@@ -372,7 +375,7 @@ class CDisassemble8086
                         _da( "%s    %s", ( _b0 <= 0x47 ) ? "inc" : "dec", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
                     else if ( _b0 >= 0x50 && _b0 <= 0x5f )
                         _da( "%s   %s", ( _b0 <= 0x57 ) ? "push" : "pop ", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
-                    else if ( _b0 >= 0x70 && _b0 <= 0x7f )
+                    else if ( ( _b0 >= 0x70 && _b0 <= 0x7f ) || ( _b0 >= 0x60 && _b0 <= 0x6f ) /*undocumented*/ )
                     {
                         _bc = 2;
                         _da( "%s    %d", jmp_strings[ _b0 & 0xf ], (int) (int8_t) _b1 );

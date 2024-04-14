@@ -4908,7 +4908,7 @@ void handle_int_21( uint8_t c )
     
             cpu.set_ah( cpu.al() );
             tracer.Trace( "  recursing to int 0x21 with command %#x\n", cpu.ah() );
-            i8086_invoke_interrupt( 0x21 );
+            i8086_invoke_syscall( 0x21 );
             return;
         }
         case 0xd:
@@ -7604,7 +7604,7 @@ void TrackInterruptsCalled( uint8_t interrupt_num, uint8_t ah, bool ah_used )
     }
 } //TrackInterruptsCalled
 
-void i8086_invoke_interrupt( uint8_t interrupt_num )
+void i8086_invoke_syscall( uint8_t interrupt_num )
 {
     unsigned char c = cpu.ah();
     bool ah_used = false;
@@ -7842,7 +7842,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
 
     tracer.Trace( "UNHANDLED pc interrupt: %02u == %#x, ah: %02u == %#x, al: %02u == %#x\n",
                   interrupt_num, interrupt_num, cpu.ah(), cpu.ah(), cpu.al(), cpu.al() );
-} //i8086_invoke_interrupt
+} //i8086_invoke_syscall
 
 void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs, uint16_t segEnvironment )
 {
@@ -8946,7 +8946,7 @@ int main( int argc, char * argv[] )
             }
             else if ( ( 9 == intx ) || ( intx <= 4 ) ) 
             {
-                routine[ 0 ] = i8086_opcode_interrupt;
+                routine[ 0 ] = i8086_opcode_syscall;
                 routine[ 1 ] = (uint8_t) intx;
                 routine[ 2 ] = 0xcf; // iret
             }
@@ -8954,7 +8954,7 @@ int main( int argc, char * argv[] )
                 routine[ 0 ] = 0xcf; // iret
             else
             {
-                routine[ 0 ] = i8086_opcode_interrupt;
+                routine[ 0 ] = i8086_opcode_syscall;
                 routine[ 1 ] = (uint8_t) intx;
                 routine[ 2 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored.
                 routine[ 3 ] = 2;    // 2 is for the 2 bytes of flags pushed during interrupt invocation then ignored.
