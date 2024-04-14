@@ -71,6 +71,7 @@ struct i8086
     bool get_zero() { return fZero; }
     bool get_trap() { return fTrap; }
     bool get_interrupt() { return fInterrupt; }
+    bool get_overflow() { return fOverflow; }
 
     // emulator API
 
@@ -289,6 +290,18 @@ struct i8086
 
     void unhandled_instruction();
     void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * flat_address16( seg, offset ) = value; }
+    uint16_t * add_two_wrap( uint16_t * p )
+    {
+        tracer.Trace( "add_two_wrap for %p\n", p );
+        p++;
+        if ( (uint8_t *) p == ( memory + 1024 * 1024 ) )
+        {
+            tracer.Trace( "wrapping the pointer in the segment\n" );
+            p = (uint16_t *) memory;
+        }
+
+        return p;
+    } //add_two_wrap
 
     uint16_t get_displacement()
     {
@@ -522,4 +535,4 @@ extern uint8_t i8086_invoke_in_byte( uint16_t port );             // called for 
 extern uint16_t i8086_invoke_in_word( uint16_t port );            // called for the instructions: in of size word
 extern void i8086_invoke_out_byte( uint16_t port, uint8_t val );  // called for the instructions: out of size byte
 extern void i8086_invoke_out_word( uint16_t port, uint16_t val ); // called for the instructions: out of size word
-extern void i8086_hard_exit( const char * pcerror, uint8_t arg ); // called for fatal errors
+extern void i8086_hard_exit( const char * pcerror );              // called for fatal errors

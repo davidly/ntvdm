@@ -244,7 +244,7 @@ class CDisassemble8086
             if ( 0 != _pcode && ( 0x69 != *pcode ) && ( _abs64( (uint64_t) pcode - (uint64_t) _pcode ) < 8 ) )
             {
                 if ( pcode != ( _pcode + _bc ) )
-                    tracer.Trace( "pcode %p, _pcode %p, _bc %02x, *pcode %02x\n", pcode, _pcode, _bc, *pcode );
+                    tracer.Trace( "pcode %p, _pcode %p, _bc %02x, *pcode %02x, ip %02x, cs %02x\n", pcode, _pcode, _bc, *pcode );
                 assert( pcode == ( _pcode + _bc ) );
             }
 

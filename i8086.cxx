@@ -56,8 +56,12 @@ bool i8086::external_interrupt( uint8_t interrupt_num )
 
 void i8086::unhandled_instruction()
 {
+    reset_disassembler();
     trace_state();
-    i8086_hard_exit( "unhandled 8086 instruction %02x\n", _b0 );
+    char ac[ 100 ];
+    snprintf( ac, sizeof( ac ), "unhandled 8086 instruction %02x %02x %02x, _mod %02x, _reg %02x, _rm %02x, isword %d, toreg %d, seg %02x\n",
+              _b0, _b1, _pcode[ 2], _mod, _reg, _rm, isword(), toreg(), prefix_segment_override );
+    i8086_hard_exit( ac );
 } //unhandled_instruction
 
 void i8086::reset_disassembler()
@@ -99,7 +103,7 @@ static const uint8_t i8086_cycles[ 256 ] =
     /*a0*/    14, 14, 14, 14, 18, 26, 30, 30,    5,  5, 11, 15, 16, 16, 19, 19,
     /*b0*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
     /*c0*/     0,  0, 24, 20, 24, 24, 14, 14,    0,  0, 33, 34, 72, 71,  4, 44,
-    /*d0*/     2,  2,  8,  8, 83, 60, 11,  0,    0,  0,  0,  0,  0,  0,  0,  0,
+    /*d0*/     2,  2,  8,  8, 83, 60,  2, 11,    1,  1,  1,  1,  1,  1,  1,  1,
     /*e0*/     6,  5,  5,  6, 14, 14, 14, 14,   23, 15, 15, 15, 12, 12, 12, 12,
     /*f0*/     1,  0,  9,  9,  2,  3,  5,  5,    2,  2,  2,  2,  2,  2,  3,  2,
 };
@@ -709,7 +713,7 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     push( flags );
     fInterrupt = false; // will be set again if/when flags are popped on iret
     fTrap = false;
-//    fAuxCarry = false;
+    // fAuxCarry = false; some doc says this but not the October '79 Intel doc.
     push( cs );
     push( ip + instruction_length );
 
@@ -907,7 +911,7 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
             {
                 set_al( ( lhs / (int16_t) (int8_t) rhs ) & 0xff );
                 set_ah( lhs % (int16_t) (int8_t) rhs );
-    
+
                 // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
                 // Some other emulators set O, S, and C flags.
             }
@@ -1430,6 +1434,8 @@ _prefix_set:
             {
                 _bc++;
                 AddMemCycles( 11 ); // 10/11/12 possible
+
+                _reg &= 3; // the 8086 only checks the lower 2 bits of _reg.
                 * get_rm_ptr16() = * seg_reg( _reg ); // 0x8c is even, but it's a word instruction not byte
                 break;
             }
@@ -1438,6 +1444,8 @@ _prefix_set:
             {
                 _bc++;
                 AddMemCycles( 11 ); // 10/11/12 possible
+
+                _reg &= 3; // the 8086 only checks the lower 2 bits of _reg.
                 * seg_reg( _reg ) = * get_rm_ptr16();
                 break;
             }
@@ -1680,8 +1688,9 @@ _prefix_set:
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
                 uint16_t * pvalue = get_rm_ptr16();
-                *preg = pvalue[ 0 ];
-                es = pvalue[ 1 ];
+                *preg = *pvalue;
+                pvalue = add_two_wrap( pvalue );
+                es = *pvalue;
                 break;
             }
             case 0xc5: // lds reg16, [mem16]
@@ -1689,14 +1698,14 @@ _prefix_set:
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
                 uint16_t * pvalue = get_rm_ptr16();
-                *preg = pvalue[ 0 ];
-                ds = pvalue[ 1 ];
+                *preg = *pvalue;
+                pvalue = add_two_wrap( pvalue );
+                ds = *pvalue;
                 break;
             }
             case 0xc6: // mov mem8, immed8
             {
-                if ( 0 != _reg )
-                    unhandled_instruction();
+                // _reg != 0 is undefined for the 8086
                 _bc++;
                 uint8_t * pdst = get_rm_ptr8();
                 *pdst = _pcode[ _bc ];
@@ -1705,8 +1714,7 @@ _prefix_set:
             }
             case 0xc7: // mov mem16, immed16
             {
-                if ( 0 != _reg )
-                    unhandled_instruction();
+                // _reg != 0 is undefined for the 8086
                 _bc++;
                 uint16_t * pdst = get_rm_ptr16();
                 *pdst = * (uint16_t *) & _pcode[ _bc ];
@@ -1815,7 +1823,9 @@ _prefix_set:
                 _bc++;
                 break;
             }
+#ifdef UNDOCUMENTED_8086
             case 0xd6: { set_al( fCarry ? 0xff : 0 ); break; } // salc (undocumented. IP protection scheme?)
+#endif
             case 0xd7: // xlat
             {
                 uint8_t * ptable = flat_address8( get_seg_value(), bx + al() );

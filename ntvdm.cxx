@@ -3017,12 +3017,12 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
 
 #endif
 
-void i8086_hard_exit( const char * pcerror, uint8_t arg )
+void i8086_hard_exit( const char * pcerror )
 {
     g_consoleConfig.RestoreConsole( false );
 
-    tracer.Trace( pcerror, arg );
-    printf( pcerror, arg );
+    tracer.Trace( pcerror );
+    printf( pcerror );
     tracer.Trace( "  %s\n", build_string() );
     printf( "  %s\n", build_string() );
 
@@ -7786,7 +7786,7 @@ void i8086_invoke_interrupt( uint8_t interrupt_num )
     else if ( 0x24 == interrupt_num ) // fatal error handler
     {
         printf( "Abort, Retry, Ignore?\n" );
-        i8086_hard_exit( "Abort, Retry, Ignore?\n", 0 );
+        i8086_hard_exit( "Abort, Retry, Ignore?\n" );
     }
     else if ( 0x28 == interrupt_num )
     {
@@ -8998,11 +8998,11 @@ int main( int argc, char * argv[] )
     
         uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp, penvVars );
         if ( 0 == segEnvironment )
-            i8086_hard_exit( "unable to create environment for the app\n", 0 );
+            i8086_hard_exit( "unable to create environment for the app\n" );
     
         g_currentPSP = LoadBinary( g_acApp, acAppArgs, (uint8_t) strlen( acAppArgs ), segEnvironment, true, 0, 0, 0, 0, bootSectorLoad );
         if ( 0 == g_currentPSP )
-            i8086_hard_exit( "unable to load executable\n", 0 );
+            i8086_hard_exit( "unable to load executable\n" );
     
         // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
         // turbo pascal v3 doesn't give a good indication that it wants 80x25.
