@@ -903,8 +903,8 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         uint8_t rhs = * get_rm_ptr8();
         uint32_t result = (int16_t) (int8_t) al() * (int16_t) (int8_t) rhs;
         ax = result & 0xffff;
-        result &= 0xffff8000;
-        fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
+        result &= 0xffffff80;
+        fCarry = fOverflow = ( ( 0 != result ) && ( 0xffffff80 != result ) );
         //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
         set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
     }
