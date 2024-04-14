@@ -12,7 +12,7 @@ extern uint8_t memory[ 0x10fff0 ];
 #define I8086_UNDOCUMENTED true
 
 // true for using i8086_opcode_syscall or false to handle normally
-#define I8086_SYSCALL false
+#define I8086_SYSCALL true
 
 // when this (undefined) opcode is executed, i8086_invoke_syscall will be called
 const uint8_t i8086_opcode_syscall = 0x69;
