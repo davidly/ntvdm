@@ -328,9 +328,13 @@ void i8086::op_rol8( uint8_t * pval, uint8_t shift )
 void i8086::op_rol16( uint16_t * pval, uint8_t shift )
 {
     if ( 0 == shift )
+    {
+        fOverflow = false;
         return;
+    }
 
-    uint16_t val = *pval;
+    uint16_t original = *pval;
+    uint16_t val = original;
     for ( uint8_t sh = 0; sh < shift; sh++ )
     {
         bool highBit = ( 0 != ( 0x8000 & val ) );
@@ -343,9 +347,8 @@ void i8086::op_rol16( uint16_t * pval, uint8_t shift )
     }
 
     // Overflow only defined for 1-bit shifts, but actual hardware and emulators do this
-    //if ( 1 == shift )
-        fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ fCarry );
 
+    fOverflow = ( ( val & 0x8000 ) != ( original & 0x8000 ) );
     *pval = val;
 } //op_rol16
 
@@ -496,7 +499,10 @@ void i8086::op_sal8( uint8_t * pval, uint8_t shift )
         return;
 
     if ( shift > 8 )
+    {
         *pval = 0;
+        fCarry = false;
+    }
     else
     {
         *pval <<= ( shift - 1 );
@@ -1810,6 +1816,7 @@ _prefix_set:
                 }
                 else
                 {
+                    set_PSZ8( 0 ); // hardware does this per ProcessorTests
                     op_interrupt( 0, _bc );
                     continue;
                 }
