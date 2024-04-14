@@ -632,7 +632,8 @@ void i8086::op_movs8()
 
 void i8086::op_movs16()
 {
-    * flat_address16( es, di ) = * flat_address16( get_seg_value(), si );
+    * flat_address8( es, di ) = * flat_address8( get_seg_value(), si ); // one byte at a time for segment wrapping
+    * flat_address8( es, di + 1 ) = * flat_address8( get_seg_value(), si + 1 );
     update_rep_sidi16();
 } //op_movs16
 
@@ -644,7 +645,8 @@ void i8086::op_sto8()
 
 void i8086::op_sto16()
 {
-    * flat_address16( es, di ) = ax;
+    * flat_address8( es, di ) = al(); // one byte at a time for segment wrapping
+    * flat_address8( es, di + 1 ) = ah();
     update_index16( di );
 } //op_sto16
 
@@ -744,7 +746,7 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     push( flags );
     fInterrupt = false; // will be set again if/when flags are popped on iret
     fTrap = false;
-    // fAuxCarry = false; some doc says this but not the October '79 Intel doc.
+    //fAuxCarry = false; //some doc says this but not the October '79 Intel doc.
     push( cs );
     push( ip + instruction_length );
 
@@ -1867,6 +1869,9 @@ _prefix_set:
                 }
                 else
                 {
+                    //fAuxCarry = false;
+                    //fCarry = false;
+                    //fOverflow = false;
                     set_PSZ8( 0 ); // hardware does this per ProcessorTests
                     op_interrupt( 0, _bc );
                     continue;

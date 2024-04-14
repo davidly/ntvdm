@@ -12,7 +12,7 @@ extern uint8_t memory[ 0x10fff0 ];
 #define I8086_UNDOCUMENTED true
 
 // true for using i8086_opcode_syscall or false to handle normally
-#define I8086_SYSCALL true
+#define I8086_SYSCALL false
 
 // when this (undefined) opcode is executed, i8086_invoke_syscall will be called
 const uint8_t i8086_opcode_syscall = 0x69;
@@ -130,15 +130,19 @@ struct i8086
 
     void push( uint16_t val )
     {
-        sp -= 2;
-        setmword( ss, sp, val );
+        sp--;
+        setmbyte( ss, sp, val >> 8 );
+        sp--;
+        setmbyte( ss, sp, val & 0xff );
     } //push
 
     uint16_t pop()
     {
-        uint16_t val = mword( ss, sp );
-        sp += 2;
-        return val;
+        uint8_t l = mbyte( ss, sp );
+        sp++;
+        uint8_t h = mbyte( ss, sp );
+        sp++;;
+        return ( (uint16_t) h << 8 ) | l;
     } //pop
 
     void * flat_address( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
@@ -295,15 +299,17 @@ struct i8086
 
     void unhandled_instruction();
     void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * flat_address16( seg, offset ) = value; }
+    void setmbyte( uint16_t seg, uint16_t offset, uint8_t value ) { * flat_address8( seg, offset ) = value; }
     uint16_t * add_two_wrap( uint16_t * p )
     {
         tracer.Trace( "add_two_wrap for %p\n", p );
         p++;
-        if ( (uint8_t *) p == ( memory + 1024 * 1024 ) )
-        {
-            tracer.Trace( "wrapping the pointer in the segment\n" );
+        uint8_t * beyond = memory + 1024 * 1024;
+
+        if ( (uint8_t *) p == beyond )
             p = (uint16_t *) memory;
-        }
+        else if ( (uint8_t *) p == ( beyond + 1 ) )
+            p = (uint16_t *) ( memory + 1 );
 
         return p;
     } //add_two_wrap
