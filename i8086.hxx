@@ -302,14 +302,19 @@ struct i8086
     void setmbyte( uint16_t seg, uint16_t offset, uint8_t value ) { * flat_address8( seg, offset ) = value; }
     uint16_t * add_two_wrap( uint16_t * p )
     {
-        tracer.Trace( "add_two_wrap for %p\n", p );
         p++;
         uint8_t * beyond = memory + 1024 * 1024;
 
         if ( (uint8_t *) p == beyond )
+        {
+            tracer.Trace( "wrapped back to start of memory\n" );
             p = (uint16_t *) memory;
+        }
         else if ( (uint8_t *) p == ( beyond + 1 ) )
+        {
+            tracer.Trace( "wrapped back to start of memory plus one\n" );
             p = (uint16_t *) ( memory + 1 );
+        }
 
         return p;
     } //add_two_wrap

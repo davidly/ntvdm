@@ -632,8 +632,12 @@ void i8086::op_movs8()
 
 void i8086::op_movs16()
 {
-    * flat_address8( es, di ) = * flat_address8( get_seg_value(), si ); // one byte at a time for segment wrapping
-    * flat_address8( es, di + 1 ) = * flat_address8( get_seg_value(), si + 1 );
+    // one byte at a time for segment wrapping. in this order in case addresses are near. turbo c v2.0 does this.
+    uint16_t seg = get_seg_value();
+    uint8_t l = * flat_address8( seg, si );
+    uint8_t h = * flat_address8( seg, si + 1 );
+    * flat_address8( es, di ) = l;
+    * flat_address8( es, di + 1 ) = h;
     update_rep_sidi16();
 } //op_movs16
 
@@ -645,8 +649,9 @@ void i8086::op_sto8()
 
 void i8086::op_sto16()
 {
-    * flat_address8( es, di ) = al(); // one byte at a time for segment wrapping
+    // one byte at a time for segment wrapping. in this order in case addresses are near
     * flat_address8( es, di + 1 ) = ah();
+    * flat_address8( es, di ) = al();
     update_index16( di );
 } //op_sto16
 
