@@ -12,11 +12,6 @@
 // ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
 // I tested cycle counts against physical 80186 and 8088 machines. This is somewhere in between.
-// outstanding bug:
-//   -- Does not handle 2-byte memory operations when the offset wraps. If the offset is 0xffff,
-//      reads/writes of the second byte happen in the following segment, not the current segment.
-//      In practice, I've not found any real-world apps rely on this behavior.
-//      For example: adc word [es:bx+4e3ch], sp when bx is b1c3h
 
 #include <djl_os.hxx>
 
@@ -250,17 +245,21 @@ force_inlined void i8086::do_math8( uint8_t math, uint8_t * psrc, uint8_t rhs )
 force_inlined void i8086::do_math16( uint8_t math, uint16_t * psrc, uint16_t rhs )
 {
     assert( math <= 7 );
+    uint16_t val = read_word( psrc );
+    uint16_t result;
     switch( math )
     {
-        case 0: *psrc = op_add16( *psrc, rhs ); break;
-        case 1: *psrc = op_or16( *psrc, rhs ); break;
-        case 2: *psrc = op_add16( *psrc, rhs, fCarry ); break;
-        case 3: *psrc = op_sub16( *psrc, rhs, fCarry ); break;
-        case 4: *psrc = op_and16( *psrc, rhs ); break;
-        case 5: *psrc = op_sub16( *psrc, rhs ); break;
-        case 6: *psrc = op_xor16( *psrc, rhs ); break;
-        default: op_sub16( *psrc, rhs ); break; // 7 is cmp
+        case 0: result = op_add16( val, rhs ); break;
+        case 1: result = op_or16( val, rhs ); break;
+        case 2: result = op_add16( val, rhs, fCarry ); break;
+        case 3: result = op_sub16( val, rhs, fCarry ); break;
+        case 4: result = op_and16( val, rhs ); break;
+        case 5: result = op_sub16( val, rhs ); break;
+        case 6: result = op_xor16( val, rhs ); break;
+        default: op_sub16( val, rhs ); return; // 7 is cmp
     }
+
+    write_word( psrc, result );
 } //do_math16
 
 uint8_t i8086::op_inc8( uint8_t val )
@@ -769,7 +768,7 @@ not_inlined void i8086::op_daa()
 
     // This funny check is not actually documented anywhere but checked against real hardware.
     // What's "documented" is that the check is done against 0x9f or 0x99 depending on the documentation you check :)
-    auto al_check = fAuxCarry ? 0x9F : 0x99;
+    uint8_t al_check = fAuxCarry ? 0x9F : 0x99;
 
     if ( ( ( al() & 0xf ) > 9 ) || fAuxCarry )
     {
@@ -789,8 +788,7 @@ not_inlined void i8086::op_daa()
 not_inlined void i8086::op_das()
 {
     uint8_t old_al = al();
-    
-    auto al_check = fAuxCarry ? 0x9F : 0x99;
+    uint8_t al_check = fAuxCarry ? 0x9F : 0x99;
 
     // Simplification of this code like the one for `daa` is probable, but hasn't been attempted
     bool oldCarry = fCarry;
@@ -819,7 +817,7 @@ not_inlined void i8086::op_aas()
     if ( ( ( al() & 0x0f ) > 9 ) || fAuxCarry )
     {
         // Intel's documentation shows `ax` being affected here, but actual HW behavior seems to use `al` instead
-        auto new_al = al() - 6;
+        uint8_t new_al = al() - 6;
         set_ah( ah() - 1 );
         fAuxCarry = 1;
         fCarry = 1;
@@ -1748,9 +1746,9 @@ _prefix_set:
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
                 uint16_t * pvalue = get_rm_ptr16();
-                *preg = *pvalue;
+                *preg = read_word( pvalue );
                 pvalue = add_two_wrap( pvalue );
-                es = *pvalue;
+                es = read_word( pvalue );
                 break;
             }
             case 0xc5: // lds reg16, [mem16]
@@ -1758,9 +1756,9 @@ _prefix_set:
                 _bc++;
                 uint16_t * preg = get_preg16( _reg );
                 uint16_t * pvalue = get_rm_ptr16();
-                *preg = *pvalue;
+                *preg = read_word( pvalue );
                 pvalue = add_two_wrap( pvalue );
-                ds = *pvalue;
+                ds = read_word( pvalue );
                 break;
             }
             case 0xc6: // mov mem8, immed8
