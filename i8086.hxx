@@ -97,6 +97,7 @@ struct i8086
         prefix_segment_override = prefix_repeat_opcode = 0xff;
         _pcode = 0;
         _bc = _b0 = _b1 = _mod = _reg = _rm = 0;
+        _final_offset = 0;
         fCarry = fParityEven = fAuxCarry = fZero = fSign = fTrap = fInterrupt = fDirection = fOverflow = fIgnoreTrap = false;
         cycles = 0;
         reset_disassembler();
@@ -131,7 +132,7 @@ struct i8086
     void push( uint16_t val )
     {
         sp--;
-        setmbyte( ss, sp, val >> 8 );
+        setmbyte( ss, sp, val >> 8 );          // one byte at a time for segment wrapping
         sp--;
         setmbyte( ss, sp, val & 0xff );
     } //push
@@ -174,7 +175,7 @@ struct i8086
     uint8_t _reg;     // bits 5:3 of _b1. register (generally, but also math in some cases)
     uint8_t _mod;     // bits 7:6 of _b1
     uint8_t * _pcode; // pointer to the first opcode currently executing
-    uint16_t _final_offset; // for instructions that have an address offset. used to handle wrapping
+    uint16_t _final_offset; // for word instructions that have an address offset. used to handle wrapping
 
     uint8_t * reg8_pointers[ 8 ];
     uint16_t * reg16_pointers[ 8 ];
