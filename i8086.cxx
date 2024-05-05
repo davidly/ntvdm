@@ -1,4 +1,4 @@
-// 8086 emulator
+// 8086 emulator  
 // Written by David Lee in late 2022.
 // Useful: http://bitsavers.org/components/intel/8086/9800722-03_The_8086_Family_Users_Manual_Oct79.pdf
 //         https://www.eeeguide.com/8086-instruction-format/
@@ -12,9 +12,11 @@
 // ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
 // I tested cycle counts against physical 80186 and 8088 machines. This is somewhere in between.
-// outstanding bugs:
-//   -- does not handle pop or push at 1 byte from segment wrap
-//   -- does not handle les for segment wraps
+// outstanding bug:
+//   -- Does not handle 2-byte memory operations when the offset wraps. If the offset is 0xffff,
+//      reads/writes of the second byte happen in the following segment, not the current segment.
+//      In practice, I've not found any real-world apps rely on this behavior.
+//      For example: adc word [es:bx+4e3ch], sp when bx is b1c3h
 
 #include <djl_os.hxx>
 
