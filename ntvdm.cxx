@@ -3021,8 +3021,8 @@ void i8086_hard_exit( const char * pcerror )
 {
     g_consoleConfig.RestoreConsole( false );
 
-    tracer.Trace( pcerror );
-    printf( pcerror );
+    tracer.Trace( "%s", pcerror );
+    printf( "%s", pcerror );
     tracer.Trace( "  %s\n", build_string() );
     printf( "  %s\n", build_string() );
 
