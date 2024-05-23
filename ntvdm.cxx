@@ -7705,10 +7705,10 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
     {
         if ( 0 == c )
         {
-            // read real time clock. get ticks since system boot. 18.2 ticks per second.
+            // read real time clock. get ticks since system boot. 18.2 ticks per second. returns high part in cx and low part in dx
 
 #ifdef _WIN32 // gettimeofday() doesn't exist on Windows
-            ULONGLONG milliseconds = GetTickCount64();
+            uint64_t milliseconds = GetTickCount64(); // it's odd given the name, but it returns milliseconds
 #else
             struct timeval tv = {0};
             gettimeofday( &tv, NULL );
@@ -7716,20 +7716,20 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
 #endif            
 
             milliseconds -= g_msAtStart;
-            milliseconds *= 18206ULL;
-            milliseconds /= 1000000ULL;
+            uint64_t ticks = ( milliseconds * 18206ULL ) / 1000000ULL;
             cpu.set_al( 0 );
 
             #if false // useful for creating logs that can be compared to fix bugs
-                static ULONGLONG fakems = 0;
-                fakems += 10;
-                milliseconds = fakems;
+                static ULONGLONG faketicks = 0;
+                faketicks += 10;
+                ticks = faketicks;
             #endif
 
-            cpu.set_ch( ( milliseconds >> 24 ) & 0xff );
-            cpu.set_cl( ( milliseconds >> 16 ) & 0xff );
-            cpu.set_dh( ( milliseconds >> 8 ) & 0xff );
-            cpu.set_dl( milliseconds & 0xff );
+            cpu.set_ch( ( ticks >> 24 ) & 0xff );
+            cpu.set_cl( ( ticks >> 16 ) & 0xff );
+            cpu.set_dh( ( ticks >> 8 ) & 0xff );
+            cpu.set_dl( ticks & 0xff );
+            tracer.Trace( "  real time %u ticks = %u : %u : %u : %u\n", ticks, cpu.ch(), cpu.cl(), cpu.dh(), cpu.dl() );
             return;
         }
         else if ( 2 == c )
