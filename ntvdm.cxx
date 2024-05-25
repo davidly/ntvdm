@@ -1050,7 +1050,7 @@ uint16_t FindFirstFreeFileHandle()
 // that (unfortunately) assume it's there to do their thing (QuickC 1.x and 2.x are prime examples).
 struct DOSMemoryControlBlock
 {
-    uint8_t header;        // 'M' for member or 'Z' for last entry in the chain
+    uint8_t header;        // 'M' for member or 'Z' for last entry in the chain. Hi Mark!
     uint16_t psp;          // PSP of owning process or 0 if free or 8 if allocated by DOS
     uint16_t paras;        // # of paragraphs for the allocation excluding the MCB to the next allocation (not the actual length)
     uint8_t reserved[3];
@@ -7617,7 +7617,7 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
 
     TrackInterruptsCalled( interrupt_num, c, ah_used );
 
-    // restore interrupts since we won't exit with an iret because Carry in flags must be preserved as a return code
+    // restore interrupts since we won't exit with an iret because Carry and Zero in flags must be preserved as a return code
 
     cpu.set_interrupt( true );
 
@@ -7854,7 +7854,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs
     psp->comAvailable = 0xffff;               // .com programs bytes available in segment
     psp->int22TerminateAddress = firstAppTerminateAddress;
     psp->countCommandTail = lenAppArgs;
-    memcpy( psp->commandTail, acAppArgs, lenAppArgs ); // can't memcpy because apps like PowerC v2 pass binary data of address in parent address space where argument resides
+    memcpy( psp->commandTail, acAppArgs, lenAppArgs ); // can't strcpy because apps like PowerC v2 pass binary data of address in parent address space where argument resides
     psp->commandTail[ lenAppArgs ] = 0x0d;           // DOS has a CR / 0x0d at the end of the command tail, not a null
     psp->segEnvironment = segEnvironment;
     memset( 1 + (char *) & ( psp->firstFCB ), ' ', 11 );
@@ -8891,7 +8891,7 @@ int main( int argc, char * argv[] )
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff2 ) ) = 0x12;   // "
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff3 ) ) = 0x00;   // "
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff4 ) ) = 0xf0;   // "
-        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff5 ) ) = '0';
+        * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff5 ) ) = '0';    // on August 12, 1981 I was watering raspberry fields in rural Michigan
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff6 ) ) = '8';
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff7 ) ) = '/';
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfff8 ) ) = '1';
@@ -9027,10 +9027,10 @@ int main( int argc, char * argv[] )
     
         // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
         // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
-        // Note that kbhit() makes the same call interally to the same cross-process API. It's no faster.
+        // Note that kbhit() makes the same call internally to the same cross-process API. It's no faster.
     
         unique_ptr<CSimpleThread> peekKbdThread( g_UseOneThread ? 0 : new CSimpleThread( PeekKeyboardThreadProc ) );
-    
+
         uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
         CPUCycleDelay delay( clockrate );
         g_tAppStart = high_resolution_clock::now();    
@@ -9059,7 +9059,7 @@ int main( int argc, char * argv[] )
             if ( cpu.get_interrupt() && !cpu.get_trap() )
             {
                 // if the keyboard peek thread has detected a keystroke, process it with an int 9.
-                // don't plumb through port 60 since apps work without that.
+                // don't plumb through port 60 since most apps work without that.
     
                 if ( g_UseOneThread && g_consoleConfig.throttled_kbhit() )
                     g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
