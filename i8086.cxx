@@ -923,7 +923,7 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         {
             uint16_t lhs = ax;
             uint16_t result = lhs / (uint16_t) rhs;
-            tracer.Trace( "lhs %u, rhs %u, result %u\n", lhs, rhs, result );
+            //tracer.Trace( "lhs %u, rhs %u, result %u\n", lhs, rhs, result );
             if ( result <= 0xff )
             {
                 set_al( (uint8_t) result );
@@ -1046,7 +1046,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
             int32_t l = (int32_t) lhs;
             int32_t r = (int32_t) (int16_t) rhs;
             int32_t result = l / r;
-            tracer.Trace( "l %d, r %d, result %d = %#x\n", l, r, result, result );
+            //tracer.Trace( "l %d, r %d, result %d = %#x\n", l, r, result, result );
 
             if ( result <= 32767 && result >= -32767 )
             {
