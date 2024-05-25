@@ -58,7 +58,7 @@ void i8086::unhandled_instruction()
     trace_state();
     char ac[ 100 ];
     snprintf( ac, sizeof( ac ), "unhandled 8086 instruction %02x %02x %02x, _mod %02x, _reg %02x, _rm %02x, isword %d, toreg %d, seg %02x\n",
-              _b0, _b1, _pcode[ 2], _mod, _reg, _rm, isword(), toreg(), prefix_segment_override );
+              _b0, _b1, _pcode[ 2 ], _mod, _reg, _rm, isword(), toreg(), prefix_segment_override );
     i8086_hard_exit( ac );
 } //unhandled_instruction
 
@@ -1320,29 +1320,9 @@ _prefix_set:
                 push( sp - 2 );
                 break;
             }
-#if I8086_SYSCALL
-            case 0x69: // fint FAKE Opcode: i8086_opcode_syscall. default NTVDM interrupt routines execute this to get to C++ code
-            {
-                uint16_t old_ip = ip;
-                uint16_t old_cs = cs;
-
-                i8086_invoke_syscall( _b1 );
-
-                // if ip or cs changed, it's likely the interrupt loaded or ended an app via int21 4b execute program or int21 4c exit app
-                // the ip/cs now point to the new app or old parent app.
-                
-                 if ( old_ip != ip || old_cs != cs )
-                    continue;
-
-                _bc++;
-                break;
-            }
-#elif I8086_UNDOCUMENTED
-            case 0x69:
-#endif
 #if I8086_UNDOCUMENTED
             case 0x60: case 0x61: case 0x62: case 0x63: case 0x64: case 0x65: case 0x66: case 0x67:
-            case 0x68:            case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+            case 0x68: case 0x69: case 0x6a: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
 #endif
             case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: case 0x75: case 0x76: case 0x77: // jcc
             case 0x78: case 0x79: case 0x7a: case 0x7b: case 0x7c: case 0x7d: case 0x7e: case 0x7f:
@@ -1795,6 +1775,27 @@ _prefix_set:
             }
             case 0xcd: // int
             {
+                if ( i8086_interrupt_syscall == _b1 )
+                {
+                    uint16_t old_ip = ip;
+                    uint16_t old_cs = cs;
+
+                    i8086_invoke_syscall( _pcode[ 2 ] ); // grab the real interrupt to invoke
+    
+                    // if ip or cs changed, it's likely the interrupt loaded or ended an app via int21 4b execute program or int21 4c exit app
+                    // the ip/cs now point to the new app or old parent app.
+                    
+                    if ( old_ip != ip || old_cs != cs )
+                    {
+                        tracer.Trace( "after a syscall, old ip/cs: %02x/%02x. new ip/cs: %02x/%02x.\n", old_ip, old_cs, ip, cs );
+                        continue;
+                    }
+    
+                    reset_disassembler(); // i8086_interrupt_syscall (0x69) is a 3-byte instruction, not 2
+                    _bc += 2;
+                    break;
+                }
+
                 op_interrupt( _b1, 2 );
                 continue;
             }

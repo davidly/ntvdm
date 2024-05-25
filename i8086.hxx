@@ -11,11 +11,9 @@ extern uint8_t memory[ 0x10fff0 ];
 // true for undocumented 8086 behavior. false to fail fast if undocumented instructions are executed.
 #define I8086_UNDOCUMENTED true
 
-// true for using i8086_opcode_syscall or false to handle normally
-#define I8086_SYSCALL true
-
-// when this (undefined) opcode is executed, i8086_invoke_syscall will be called
-const uint8_t i8086_opcode_syscall = 0x69;
+// when this (mostly unused as far as I can tell) interrupt is executed, i8086_invoke_syscall will be called.
+// Zenith and HP AT BIOSes may use it, along with DECnet and 10NET. 
+const uint8_t i8086_interrupt_syscall = 0x69;
 
 struct i8086
 {

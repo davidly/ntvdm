@@ -29,11 +29,11 @@ begin:
 
   wait_for_kbd:                                  ; wait for a keystroke to be available
     mov ah, 1                                    ; use int16 1 instead of a busy loop to enable the emulator to not pin the CPU
-    injectcode db 69h, 16h                       ; fint 16. don't use int 16 because apps like qc 2.0 hook that
+    injectcode db 0cdh, 69h, 16h                 ; syscall int 16. don't use int 16 because apps like qc 2.0 hook that
     ; int 16
     jz wait_for_kbd
 
-    cli						 ; updating global kbd state, so don't allow interrupts
+    cli                                          ; updating global kbd state, so don't allow interrupts
     mov bx, word ptr es: [kbd_head]
     cmp byte ptr es: [kbd_midway], 0             ; check if the ascii has been consumed yet
     jz return_ascii

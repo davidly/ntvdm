@@ -100,16 +100,16 @@ using namespace std::chrono;
 
 #define USE_ASSEMBLY_FOR_KBD true
 
-// machine code for various interrupts. generated with mint.bat. 
+// machine code for various interrupts. generated with tasm\mint.bat. 
 uint64_t int16_0_code[] = { 
-0x01b4c08e0040b806, 0x068326fafa741669, 0x001a3e832602001a, 0x001a06c726077c3e, 0x000000cb07fb001e, 
+0x01b4c08e0040b806, 0x8326faf9741669cd, 0x1a3e832602001a06, 0x1a06c726077c3e00, 0x0000cb07fb001e00, 
 }; 
 uint64_t int21_1_code[] = { 
-0x10690ab4166900b4, 0x0000000000cb01b4, 
+0xcd0ab41669cd00b4, 0x000000cb01b41069, 
 }; 
 uint64_t int21_8_code[] = { 
-0xb4c08e0040b85306, 0x8b26fafa74166901, 0x00d03e8026001a1e, 0x2601478a260d7400, 0x9011eb0000d006c6, 0x260975003c078a26, 0x9016eb0100d006c6, 0x832602001a068326, 
-0xc726077c3e001a3e, 0x08b4fb001e001a06, 0x0000000000cb075b, 
+0xb4c08e0040b85306, 0x26faf9741669cd01, 0xd03e8026001a1e8b, 0x01478a260d740000, 0x11eb0000d006c626, 0x0975003c078a2690, 0x16eb0100d006c626, 0x2602001a06832690, 
+0x26077c3e001a3e83, 0xb4fb001e001a06c7, 0x00000000cb075b08, 
 }; 
 uint64_t int21_a_code[] = { 
 0x000144c6f28b5653, 0xcd01b43674003c80, 0x3c16cd00b4fa7416, 0x7400017c800c7508, 0x339010eb014cfeec, 0x3c024088015c8adb, 0xd08a0144fe10740d, 0x3a01448a21cd02b4, 
@@ -3645,11 +3645,11 @@ void scroll_up( uint8_t * pbuf, int lines, int rul, int cul, int rlr, int clr )
 
 void invoke_assembler_routine( uint16_t code_segment )
 {
-    // when the fint routine returns, execution will start here. The function
-    // will return far to just after the fint invocation.
+    // When the syscall interrupt routine returns, execution will start here.
+    // The function will return far to just after the syscall interrupt invocation.
 
     cpu.push( cpu.get_cs() );
-    cpu.push( cpu.get_ip() + 2 ); // return just past the fint x
+    cpu.push( cpu.get_ip() + 3 ); // return just past the syscall interrupt, which is 3 bytes long
     cpu.set_ip( 0 );
     cpu.set_cs( code_segment );
 } //invoke_assembler_routine
@@ -5622,6 +5622,7 @@ void handle_int_21( uint8_t c )
             // set interrupt vector
     
             tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_ds(), cpu.get_dx() );
+            assert( i8086_interrupt_syscall != cpu.al() ); // owned by ntvdm; I haven't found any apps that use this
             uint16_t * pvec = cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
             pvec[0] = cpu.get_dx();
             pvec[1] = cpu.get_ds();
@@ -7668,7 +7669,6 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
 
         if ( 1 == cpu.ah() ) // transmit
         {
-
         }
         else if ( 2 == cpu.ah() ) // receive
         {
@@ -7741,7 +7741,7 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
             //          dh: seconds (bcd)
             //          dl: dayligh savings 0 == standard, 1 == daylight
 
-            cpu.set_carry( false );
+            cpu.set_carry( false ); // it's a bios call, so this flag will get trashed by iret.
             system_clock::time_point now = system_clock::now();
             time_t time_now = system_clock::to_time_t( now );
             struct tm * plocal = localtime( & time_now );
@@ -8920,45 +8920,42 @@ int main( int argc, char * argv[] )
         uint16_t * pDeviceControlBlock = cpu.flat_address16( SegmentListOfLists, OffsetDeviceControlBlock );
         *pDeviceControlBlock = 0xffff; // end of list
     
-        // 256 interrupt vectors at address 0 - 3ff. The first 0x40 are reserved for bios/dos and point to
-        // routines starting at InterruptRoutineSegment.
+        // 256 interrupt vectors at address 0 - 3ff.
+        // The first 0x40 are reserved for bios/dos and point to routines starting at InterruptRoutineSegment.
         // Each interrupt vector element has 4 bytes for segment and offset.
-        // The routines are almost all the same -- fake opcode, interrupt #, retf 2
-        // One exception is tick tock interrupt 0x1c, which just does an iret for performance.
-        // Another exception is keyboard interrupt 9.
-        // Interrupts 9 and 1c require an iret so flags are restored since these are externally, asynchronously triggered.
-        // Other interrupts use far ret 2 (not iret) so as to not trash the flags (Z and C) used as return codes.
-        // Functions are all allocated 5 bytes each though in some cases fewer are used.
+        // Tick tock interrupt 0x1c just does an iret for performance.
+        // DOS uses int21, which returns Z and C flags as status codes. So use far ret 2 (not iret) so as to not trash the flags.
+        // int16 is a BIOS interrupt but it it uses the Z flag to indicate whether a character is available so it must use far ret as well.
     
         uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
         uint8_t * pRoutines = cpu.flat_address8( InterruptRoutineSegment, 0 );
-        for ( uint32_t intx = 0; intx < 0x40; intx++ )
+        uint32_t codeOffset = 0;
+        for ( uint8_t intx = 0; intx < 0x40; intx++ )
         {
-            uint32_t offset = intx * 5;
-            pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( offset ); // rotate 16 to store the segment in the high 2 bytes
-            uint8_t * routine = pRoutines + offset;
+            pVectors[ intx ] = ( InterruptRoutineSegment << 16 ) | ( codeOffset ); // rotate 16 to store the segment in the high 2 bytes
+            uint8_t * routine = pRoutines + codeOffset;
 
             if ( 8 == intx )
             {
                 routine[ 0 ] = 0xcd; // int
                 routine[ 1 ] = 0x1c; // int 1c
                 routine[ 2 ] = 0xcf; // iret
-            }
-            else if ( ( 9 == intx ) || ( intx <= 4 ) ) 
-            {
-                routine[ 0 ] = i8086_opcode_syscall;
-                routine[ 1 ] = (uint8_t) intx;
-                routine[ 2 ] = 0xcf; // iret
+                codeOffset += 3;
             }
             else if ( 0x1c == intx )
-                routine[ 0 ] = 0xcf; // iret
-            else
             {
-                routine[ 0 ] = i8086_opcode_syscall;
-                routine[ 1 ] = (uint8_t) intx;
-                routine[ 2 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored.
-                routine[ 3 ] = 2;    // 2 is for the 2 bytes of flags pushed during interrupt invocation then ignored.
-                routine[ 4 ] = 0;    // high byte of # of bytes to add to sp.
+                routine[ 0 ] = 0xcf; // iret
+                codeOffset++;
+            }
+            else // 0x21 and 0x16 require this to return C and Z flags
+            {
+                routine[ 0 ] = 0xcd; // int
+                routine[ 1 ] = i8086_interrupt_syscall;
+                routine[ 2 ] = intx;
+                routine[ 3 ] = 0xca; // retf 2 instead of iret so C and Z flags aren't restored.
+                routine[ 4 ] = 2;    // 2 is for the 2 bytes of flags pushed during interrupt invocation then ignored.
+                routine[ 5 ] = 0;    // high byte of # of bytes to add to sp.
+                codeOffset += 6;
             }
         }
     

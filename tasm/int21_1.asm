@@ -16,11 +16,11 @@ assume cs:code
 
 begin:
     mov ah, 0
-    injectcodeA db 69h, 16h                      ; fint 16. don't use int 16 because apps like qc 2.0 hook that
+    injectcodeA db 0cdh, 69h, 16h                ; syscall int 16. don't use int 16 because apps like qc 2.0 hook that
     ; int 16h
 
     mov ah, 0ah                                  ; echo the character in al
-    injectcodeB db 69h, 10h                      ; fint 10.
+    injectcodeB db 0cdh, 69h, 10h                ; syscall int 10.
     ; int 10h
 
     mov ah, 1                                    ; restore the function to ah
