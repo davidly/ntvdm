@@ -8355,6 +8355,12 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
     {
         tracer.Trace( "in peekkeyboardthreadproc for linux\n" );
         CSimpleThread & thread = * (CSimpleThread *) param;
+        int err;
+
+        {
+            C_pthread_mutex_t_lock mtx_lock( thread.the_mutex );
+            err = pthread_cond_signal( & thread.start_condition );
+        }
 
         do
         {
@@ -8367,10 +8373,9 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
                 to.tv_nsec -= 1000000000;
             }
 
-            int err;
             {
                 C_pthread_mutex_t_lock mtx_lock( thread.the_mutex );
-                err = pthread_cond_timedwait( & thread.the_condition, & thread.the_mutex, & to );
+                err = pthread_cond_timedwait( & thread.end_condition, & thread.the_mutex, & to );
             }
 
             if ( ETIMEDOUT == err )
