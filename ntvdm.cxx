@@ -8353,14 +8353,9 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 #else
     void * PeekKeyboardThreadProc( void * param )
     {
-        tracer.Trace( "in peekkeyboardthreadproc for linux\n" );
+        tracer.Trace( "peekkeyboardthreadproc: started threadproc\n" );
         CSimpleThread & thread = * (CSimpleThread *) param;
         int err;
-
-        {
-            C_pthread_mutex_t_lock mtx_lock( thread.the_mutex );
-            err = pthread_cond_signal( & thread.start_condition );
-        }
 
         do
         {
@@ -8369,6 +8364,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             to.tv_nsec += ( 20 * 1000000 ); // 20 milliseconds
             if ( to.tv_nsec >= 1000000000 ) // overflow
             {
+                tracer.Trace( "peekkeyboardthreadproc: overflow case\n" );
                 to.tv_sec += 1;
                 to.tv_nsec -= 1000000000;
             }
@@ -8378,19 +8374,25 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
                 err = pthread_cond_timedwait( & thread.end_condition, & thread.the_mutex, & to );
             }
 
+            if ( thread.stop_running )
+            {
+                tracer.Trace( "peekkeyboardthreadproc: time to stop running\n" );
+                break;
+            }
+
             if ( ETIMEDOUT == err )
             {
-                // too chatty tracer.Trace( "peekkeyboardthreadproc timed out in the wait\n" );
+                // too chatty tracer.Trace( "peekkeyboardthreadproc: timed out in the wait\n" );
                 // check for keyboard input below
             }
             else if ( 0 == err )
             {
-                tracer.Trace( "peekkeyboardthreadproc condition was signaled\n" );
+                tracer.Trace( "peekkeyboardthreadproc: condition was signaled\n" );
                 break;
             }
             else
             {
-                tracer.Trace( "peekkeyboardthreadproc error on cond_timewait: %d\n", err );
+                tracer.Trace( "peekkeyboardthreadproc: error on cond_timewait: %d\n", err );
                 break;
             }
 
@@ -8398,14 +8400,14 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             {
                 if ( g_consoleConfig.portable_kbhit() )
                 {
-                    tracer.Trace( "async thread noticed that a keystroke is available\n" );
+                    tracer.Trace( "peekkeyboardthreadproc: async thread noticed that a keystroke is available\n" );
                     g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
                     cpu.exit_emulate_early();  // no time to lose processing the keystroke
                 }
             }
         } while( true );
 
-        tracer.Trace( "falling out of peekkeyboardthreadproc for linux\n" );
+        tracer.Trace( "peekkeyboardthreadproc: falling out of threadproc\n" );
         return 0;
     } //PeekKeyboardThreadProc
 #endif
