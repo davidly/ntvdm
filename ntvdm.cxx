@@ -2164,6 +2164,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x5f, "get redirection list entry" },
     { 0x21, 0x62, "get psp address" },
     { 0x21, 0x63, "get lead byte table" },
+    { 0x21, 0x65, "get extended country information" },
     { 0x21, 0x68, "fflush - commit file" },
     { 0x21, 0xdd, "novell netware 4.0 - set error mode" },
 };
@@ -4242,7 +4243,7 @@ void handle_int_10( uint8_t c )
         }
         default:
         {
-            tracer.Trace( "unhandled int10 command %02x\n", c );
+            tracer.Trace( "unhandled int10 command %u == %02x\n", c, c );
         }
     }
 } //handle_int_10
@@ -4363,7 +4364,7 @@ void handle_int_16( uint8_t c )
             return;
         }
         default: 
-            tracer.Trace( "unhandled int16 command %02x\n", c );
+            tracer.Trace( "unhandled int16 command %u == %02x\n", c, c );
     }
 } //handle_int_16
 
@@ -7549,6 +7550,13 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true ); // not supported;
             return;
         }
+        case 0x65:
+        {
+            // get extended country information; DOS 3.3+
+
+            cpu.set_carry( true ); // not supported. Works v3 calls this.
+            return;
+        }
         case 0x68:
         {
             // FFlush -- commit file
@@ -7567,7 +7575,7 @@ void handle_int_21( uint8_t c )
         }
         default:
         {
-            tracer.Trace( "unhandled int21 command %02x\n", c );
+            tracer.Trace( "unhandled int21 command %u == %02x\n", c, c );
         }
     }
 } //handle_int_21
@@ -8370,6 +8378,10 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             }
 
             {
+                // Sometimes the condition is signaled but the wait will timeout and there is
+                // no way to ever know the conditioned was signaled. That's apparently just how
+                // this primative works. So use thread.stop_runnning to know it's time to leave.
+
                 C_pthread_mutex_t_lock mtx_lock( thread.the_mutex );
                 err = pthread_cond_timedwait( & thread.end_condition, & thread.the_mutex, & to );
             }
@@ -8387,6 +8399,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             }
             else if ( 0 == err )
             {
+                // this should never happen since stop_running will be set
                 tracer.Trace( "peekkeyboardthreadproc: condition was signaled\n" );
                 break;
             }
