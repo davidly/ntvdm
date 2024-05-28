@@ -53,8 +53,8 @@
 //     0x00000 -- 0x003ff   interrupt vectors; only claimed first x40 of slots for bios/DOS
 //     0x00400 -- 0x0057f   bios data
 //     0x00580 -- 0x005ff   "list of lists" is 0x5b0 and extends in both directions
-//     0x00600 -- 0x00bff   assembly code for interrupt routines that can't be accomplished in C
-//     0x00c00 -- 0x00fff   C code for interrupt routines (here, not in BIOS space because it fits)
+//     0x00600 -- 0x00bff   assembly code for interrupt helper routines that can't be accomplished in C
+//     0x00c00 -- 0x00fff   interrupt routine stubs (here, not in BIOS space because it fits)
 //     0x01000 -- 0xb7fff   apps are loaded here. On real hardware you can only go to 0x9ffff.
 //     0xb8000 -- 0xeffff   reserved for hardware (CGA in particular)
 //     0xf0000 -- 0xfbfff   system monitor (0 for now)
@@ -3327,7 +3327,7 @@ bool starts_with( const char * str, const char * start )
             strcat( ac, pwildcard + 9);
             wc = ac;
         }
-        else if ( ends_with ( pwildcard, ".???" ) )
+        else if ( ends_with( pwildcard, ".???" ) )
         {
             strcpy( ac, pwildcard );
             char * pdot = strchr( ac, '.' );
@@ -3339,7 +3339,11 @@ bool starts_with( const char * str, const char * start )
             return true;
 
         tracer.Trace( "  modified wildcard from '%s' to '%s'\n", wildcard.c_str(), wc.c_str() );
-        std::regex rgx = wildcardToRegex( wc, false );
+        bool caseSensitive = true;
+#ifdef __APPLE__
+        caseSensitive = false; // by default, though the user may have changed this
+#endif
+        std::regex rgx = wildcardToRegex( wc, caseSensitive );
         return std::regex_match( input, rgx );
     } //wildMatch
 
@@ -6617,8 +6621,8 @@ void handle_int_21( uint8_t c )
                 }
                 else
                 {
-                    tracer.Trace( "  ERROR: unable to get file attributes on linux path '%s'\n", hostPath );
-                    cpu.set_ax( 2 ); // file not found
+                    tracer.Trace( "  ERROR: unable to get file attributes on path '%s', errno %d, stat returned %d\n", hostPath, errno, ret );
+                    cpu.set_ax( 2 ); // file not found seems likely
                 }
 #endif                
             }
