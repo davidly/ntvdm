@@ -248,7 +248,7 @@ class CDisassemble8086
                 assert( pcode == ( _pcode + _bc ) );
             }
 
-            static char acOut[ 100 ];
+            static char acOut[ 128 ];
             strcpy( acOut, "NYI" );
             DecodeInstruction( pcode );
 
