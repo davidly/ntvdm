@@ -1775,7 +1775,7 @@ _prefix_set:
             }
             case 0xcd: // int
             {
-                if ( i8086_interrupt_syscall == _b1 )
+                if ( ( i8086_interrupt_syscall == _b1 ) && ( flatten( cs, ip ) < 0x1000 ) ) // int 0x69 from ntvdm
                 {
                     uint16_t old_ip = ip;
                     uint16_t old_cs = cs;
@@ -1787,11 +1787,11 @@ _prefix_set:
                     
                     if ( old_ip != ip || old_cs != cs )
                     {
-                        tracer.Trace( "after a syscall, old ip/cs: %02x/%02x. new ip/cs: %02x/%02x.\n", old_ip, old_cs, ip, cs );
+                        tracer.Trace( "after a syscall, old cs::ip %02x::%02x. new cs::ip %02x::%02x.\n", old_cs, old_ip, cs, ip );
                         continue;
                     }
     
-                    reset_disassembler(); // i8086_interrupt_syscall (0x69) is a 3-byte instruction, not 2
+                    reset_disassembler(); // i8086_interrupt_syscall (0x69) from ntvdm is a 3-byte instruction, not 2
                     _bc += 2;
                     break;
                 }
