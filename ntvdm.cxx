@@ -1409,7 +1409,7 @@ struct DOSPSP
     uint32_t int23ControlBreak;
     uint32_t int24CriticalError;
     uint16_t segParent;              // parent process segment address of PSP
-    uint8_t  fileHandles[20];        // unused by emulator
+    uint8_t  fileHandles[20];        // 
     uint16_t segEnvironment;         // offset 0x2c
     uint32_t ssspEntry;              // ss:sp on entry to last int21 function. undocumented
     uint16_t handleArraySize;        // undocumented
