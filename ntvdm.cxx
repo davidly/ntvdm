@@ -2411,7 +2411,7 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
     // if none of the records were useful then clear them out
 
     if ( 0 != numRead )
-        ReadConsoleInput( g_hConsoleInput, records, numRead, &numRead );
+        FlushConsoleInputBuffer( g_hConsoleInput );
 
     return false;
 } //peek_keyboard
