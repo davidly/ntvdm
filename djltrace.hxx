@@ -228,6 +228,16 @@ class CDJLTrace
             }
         } //Trace
 
+        void TraceVA( const char * format, va_list args )
+        {
+            if ( NULL != fp )
+            {
+                fprintf( fp, format, args );
+                if ( flush )
+                    fflush( fp );
+            }
+        } //TraceVA
+
         // Don't prepend the PID to the trace
 
         void TraceQuiet( const char * format, ... )

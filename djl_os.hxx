@@ -245,7 +245,7 @@ inline const char * build_string()
     static char bs[ 320 ];
     snprintf( bs, sizeof( bs ), "Built for %s %s on %c%c %c%c%c %s %s by %s on %s\n",
                  target_platform(), build_type(), __DATE__[4], __DATE__[5],
-                 __DATE__[0], __DATE__[1], __DATE__[2], &__DATE__[9], __TIME__, compiler_used(), build_platform() );
+                 __DATE__[0], __DATE__[1], __DATE__[2], &__DATE__[7], __TIME__, compiler_used(), build_platform() );
     return bs;
 } //build_string
 

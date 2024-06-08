@@ -2408,7 +2408,8 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
         }
     }
 
-    // if none of the records were useful then clear them out
+    // If none of the records were useful then clear them out.
+    // There is a race condition where newly added events can be lost here. But that's not likely.
 
     if ( 0 != numRead )
         FlushConsoleInputBuffer( g_hConsoleInput );
