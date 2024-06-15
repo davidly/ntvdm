@@ -770,6 +770,7 @@ void SleepAndScheduleInterruptCheck()
 #endif
         // just because the event was signaled doesn't ensure a keystroke is available. It may be from earlier, but that's OK
     }
+
     cpu.exit_emulate_early(); // fall out of the instruction loop early to check for a timer or keyboard interrupt
 } //SleepAndScheduleInterruptCheck
 
@@ -2021,6 +2022,7 @@ const IntInfo interrupt_list_no_ah[] =
    { 0x10, 0, "bios video" },
    { 0x11, 0, "bios equipment determination" },
    { 0x12, 0, "memory size determination" },
+   { 0x15, 0, "cassette / MultiDOS / VMiX / TopView / DESQview / Smart energy system / object kernel for DOS / HP 100LX / ..." },
    { 0x1b, 0, "ctrl-break key" },
    { 0x1c, 0, "software tick tock" },
    { 0x20, 0, "cp/m compatible exit app" },
@@ -4660,7 +4662,7 @@ void output_character( char ch )
                 scroll_up( pbuf, 1, 0, 0, GetScreenRowsM1(), ScreenColumnsM1 );
             }
             else
-                row = row + 1;
+                row++;
         }
         else
         {
@@ -4668,6 +4670,8 @@ void output_character( char ch )
             if ( 0 == pbuf[ offset + 1 ] )
                 pbuf[ offset + 1 ] = DefaultVideoAttribute;
             col++;
+            if ( col >= ScreenColumns )
+                col = 0;
         }
         SetCursorPosition( row, col );
     }
@@ -4682,6 +4686,12 @@ void output_character( char ch )
         }
     }
 } //output_character
+
+void output_string( char * p, size_t len )
+{
+    for ( size_t i = 0; i < len; i++ )
+        output_character( p[ i ] );
+} //output_string
 
 void handle_int_21( uint8_t c )
 {
@@ -4857,10 +4867,13 @@ void handle_int_21( uint8_t c )
     
             char * p = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.TraceBinaryData( (uint8_t *) p, 0x40, 2 );
-            while ( *p && '$' != *p )
-                printf( "%c", *p++ );
-            fflush( stdout );
-    
+
+            char * pdollar = strchr( p, '$' );
+            if ( 0 == pdollar )
+                return;
+
+            size_t len = (size_t) ( pdollar - p );
+            output_string( p, len );
             return;
         }
         case 0xa:
@@ -6719,6 +6732,17 @@ void handle_int_21( uint8_t c )
                     cpu.set_ax( 1 );
                     break;
                 }
+                case 9:
+                {
+                    // check if I/O is redirected (network)
+                    // input: bl = drive number. 0 == default, 1 == a, ...
+                    // output: cf set then ax = 1 for invalid function because file sharing isn't loaded or 15 for invalid drive #
+                    //         cf clear and dx with attribute bits
+
+                    cpu.set_carry( false );
+                    cpu.set_dx( 1 ); // clear bit 0x1000 to show it's local and set bit 0 to show media is not removable
+                    break;
+                }
                 default:
                 {
                     tracer.Trace( "unhandled IOCTL subfunction %#x\n", cpu.al() );
@@ -7231,6 +7255,7 @@ void handle_int_21( uint8_t c )
                     if ( ok )
                     {
                         cpu.set_carry( false );
+                        cpu.set_ax( 0 ); // not documented, but list.com v5.1 (at least) require ax to be 0 on success
                         break;
                     }
 
@@ -7263,6 +7288,7 @@ void handle_int_21( uint8_t c )
                     {
                         tracer.Trace( "  FindFirst processed found file '%s'\n", lfd.cFileName );
                         cpu.set_carry( false );
+                        cpu.set_ax( 0 ); // not documented, but list.com v5.1 (at least) require ax to be 0 on success
                         break;
                     }
 
@@ -7307,6 +7333,7 @@ void handle_int_21( uint8_t c )
                         if ( ok )
                         {
                             cpu.set_carry( false );
+                            cpu.set_ax( 0 ); // not documented, but list.com v5.1 (at least) require ax to be 0 on success
                             break;
                         }
                     }
@@ -7338,6 +7365,7 @@ void handle_int_21( uint8_t c )
                         if ( ok )
                         {
                             cpu.set_carry( false );
+                            cpu.set_ax( 0 ); // not documented, but list.com v5.1 (at least) require ax to be 0 on success
                             break;
                         }
                     }
@@ -7701,6 +7729,25 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
         }
         else
             tracer.Trace( "  unhandled serial I/O command AH %#02x\n", cpu.ah() );
+        return;
+    }
+    else if ( 0x15 == interrupt_num )
+    {
+        // this interrupt is heavily overloaded. list.com thinks it's Topview, I think
+
+        if ( ( 0x101a == cpu.get_ax() ) ||   // topview: switch to task's internal stack
+             ( 0x1025 == cpu.get_ax() ) )    // topview: switch back to user's stack
+            return;
+
+        if ( 0x1000 == cpu.get_ax() )        // topview: give up cpu time
+        {
+            if ( g_use80xRowsMode )
+                UpdateDisplay();
+            SleepAndScheduleInterruptCheck();
+            return;
+        }
+
+        tracer.Trace( "UNHANDLED int 0x15 ax %04x\n", cpu.get_ax() );
         return;
     }
     else if ( 0x16 == interrupt_num )
@@ -9048,6 +9095,7 @@ int main( int argc, char * argv[] )
         g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
         g_haltExecution = false;
         cpu.set_interrupt( true ); // DOS starts apps with interrupts enabled
+        cpu.enable_interrupt_syscall( true ); // call back to ntvdm on i8086_interrupt_syscall
         uint32_t * pDailyTimer = (uint32_t *) ( pbiosdata + 0x6c );
     
         // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,

@@ -1775,7 +1775,7 @@ _prefix_set:
             }
             case 0xcd: // int
             {
-                if ( ( i8086_interrupt_syscall == _b1 ) && ( flatten( cs, ip ) < 0x1000 ) ) // int 0x69 from ntvdm
+                if ( fSyscallEnabled && ( i8086_interrupt_syscall == _b1 ) && ( flatten( cs, ip ) < 0x1000 ) ) // int 0x69 from ntvdm
                 {
                     uint16_t old_ip = ip;
                     uint16_t old_cs = cs;

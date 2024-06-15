@@ -84,6 +84,7 @@ struct i8086
     void trace_instructions( bool trace );              // enable/disable tracing each instruction
     void trace_state( void );                           // trace the registers
     void end_emulation( void );                         // make the emulator return at the start of the next instruction
+    void enable_interrupt_syscall( bool enable ) { fSyscallEnabled = enable; } // enable int 0x69 to trigger a syscall
 
 #ifndef NDEBUG
     uint8_t trace_opcode_usage( void );                    // trace trends in opcode usage
@@ -98,6 +99,7 @@ struct i8086
         _final_offset = 0;
         fCarry = fParityEven = fAuxCarry = fZero = fSign = fTrap = fInterrupt = fDirection = fOverflow = fIgnoreTrap = false;
         cycles = 0;
+        fSyscallEnabled = false;
         reset_disassembler();
     } //reset
 
@@ -163,6 +165,7 @@ struct i8086
     // bits   0,           2,         4,     6,     7,     8,          9,         10,        11
     bool fCarry, fParityEven, fAuxCarry, fZero, fSign, fTrap, fInterrupt, fDirection, fOverflow;
     bool fIgnoreTrap;
+    bool fSyscallEnabled;
 
     // state used for instruction decoding. these start with underscore to differentiate them
 
