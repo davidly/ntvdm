@@ -1031,7 +1031,7 @@ uint16_t FindFirstFreeFileHandle()
 
     qsort( g_fileEntries.data(), g_fileEntries.size(), sizeof( FileEntry ), compare_file_entries );
 
-    // DOS uses this, since 0-4 are for built-in handles. stdin, stdout, stderr, com1, lpt1
+    // DOS uses this, since 0-4 are for built-in handles. stdin, stdout, stderr, com1/stdaux, lpt1
 
     uint16_t freehandle = 5;
 
@@ -1416,7 +1416,16 @@ struct DOSPSP
     uint16_t handleArraySize;        // undocumented
     uint32_t handleArrayPointer;     // undocumented
     uint32_t previousPSP;            // undocumented. default 0xffff:ffff
-    uint8_t  reserved2[20];
+    uint16_t parentAX;               // These parentXX fields aren't in DOS. They save register values
+    uint16_t parentBX;               // so when execution resumes after a child process ends all is as it was.
+    uint16_t parentCX;
+    uint16_t parentDX;
+    uint16_t parentDI;
+    uint16_t parentSI;
+    uint16_t parentES;
+    uint16_t parentDS;
+    uint16_t parentBP;
+    uint8_t reserved2[ 2 ];
     uint8_t  dispatcher[3];          // undocumented
     uint8_t  reserved3[9];
     uint8_t  firstFCB[16];           // later parts of a real fcb shared with secondFCB
@@ -4424,6 +4433,16 @@ void HandleAppExit()
         cpu.set_ip( psp->int22TerminateAddress & 0xffff );
         cpu.set_ss( psp->parentSS ); // not DOS standard, but workaround for apps like QCL.exe Quick C v 1.0 that doesn't restore the stack
         cpu.set_sp( psp->parentSP ); // ""
+
+        cpu.set_ax( psp->parentAX );
+        cpu.set_bx( psp->parentBX );
+        cpu.set_cx( psp->parentCX );
+        cpu.set_dx( psp->parentDX );
+        cpu.set_di( psp->parentDI );
+        cpu.set_si( psp->parentSI );
+        cpu.set_es( psp->parentES );
+        cpu.set_ds( psp->parentDS );
+        cpu.set_bp( psp->parentBP );
         tracer.Trace( "  returning from nested app to return address %04x:%04x\n", cpu.get_cs(), cpu.get_ip() );
     }
     else
@@ -7110,6 +7129,16 @@ void handle_int_21( uint8_t c )
             uint16_t save_sp = cpu.get_sp();
             uint16_t save_ss = cpu.get_ss();
 
+            uint16_t save_ax = cpu.get_ax();
+            uint16_t save_bx = cpu.get_bx();
+            uint16_t save_cx = cpu.get_cx();
+            uint16_t save_dx = cpu.get_dx();
+            uint16_t save_di = cpu.get_di();
+            uint16_t save_si = cpu.get_si();
+            uint16_t save_es = cpu.get_es();
+            uint16_t save_ds = cpu.get_ds();
+            uint16_t save_bp = cpu.get_bp();
+
             const char * originalPath = (const char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * pathToExecute = DOSToHostPath( originalPath );
             tracer.Trace( "  CreateProcess mode %u path to execute: '%s'\n", mode, pathToExecute );
@@ -7128,7 +7157,7 @@ void handle_int_21( uint8_t c )
 #endif                                
             }
 
-            bool found = FindCommandInPath( acCommandPath );
+            bool found = FindCommandInPath( acCommandPath ); // dos doesn't do this -- command.com does. but be nice.
             if ( !found )
             {
                 cpu.set_ax( 2 );
@@ -7186,6 +7215,18 @@ void handle_int_21( uint8_t c )
                     psp->segParent = g_currentPSP;
                     psp->parentSS = save_ss; // as a courtesy to sloppy apps that don't restore their stack and use the child process stack
                     psp->parentSP = save_sp;
+
+                    // DOS saves all of these too (I get ss/sp for later version of DOS), though I haven't found an app that relies on them being preserved.
+                    psp->parentAX = save_ax;
+                    psp->parentBX = save_bx;
+                    psp->parentCX = save_cx;
+                    psp->parentDX = save_dx;
+                    psp->parentDI = save_di;
+                    psp->parentSI = save_si;
+                    psp->parentES = save_es;
+                    psp->parentDS = save_ds;
+                    psp->parentBP = save_bp;
+
                     g_currentPSP = seg_psp;
                     memcpy( psp->firstFCB, pfirstFCB, 16 );
                     memcpy( psp->secondFCB, psecondFCB, 16 );
@@ -8203,6 +8244,9 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 
         if ( setupRegs )
         {
+            g_diskTransferSegment = ComSegment;
+            g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
+
             cpu.set_cs( ComSegment );
             cpu.set_ss( ComSegment );
             cpu.set_sp( 0xfffe );          // word at the top is reserved for return address of 0
@@ -8357,6 +8401,9 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 
         if ( setupRegs )
         {
+            g_diskTransferSegment = DataSegment;
+            g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
+
             cpu.set_cs( CodeSegment + head.relative_cs );
             cpu.set_ss( CodeSegment + head.relative_ss );
             cpu.set_ds( DataSegment );
