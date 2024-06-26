@@ -5931,6 +5931,7 @@ void handle_int_21( uint8_t c )
 
             cpu.set_es( g_diskTransferSegment );
             cpu.set_bx( g_diskTransferOffset );
+            tracer.Trace( "  what's your dta what's your dta? %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
 
             return;
         }
@@ -7952,7 +7953,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs
 
     psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
     psp->topOfMemory = g_segHardware - 1;     // top of memorysegment in paragraph form
-    psp->comAvailable = 0xffff;               // .com programs bytes available in segment
+    psp->comAvailable = 0xfeff;               // .com programs bytes available in segment. reserve 0x100 for the stack by convention
     psp->int22TerminateAddress = firstAppTerminateAddress;
     psp->countCommandTail = lenAppArgs;
     memcpy( psp->commandTail, acAppArgs, lenAppArgs ); // can't strcpy because apps like PowerC v2 pass binary data of address in parent address space where argument resides
@@ -8253,6 +8254,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             cpu.set_ip( 0x100 );
             cpu.set_ds( ComSegment );
             cpu.set_es( ComSegment );
+            cpu.set_ax( 0 );
             tracer.Trace( "  loaded %s, app segment %04x, ip %04x, sp %04x\n", acApp, cpu.get_cs(), cpu.get_ip(), cpu.get_sp() );
         }
         else
@@ -8410,7 +8412,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             cpu.set_es( cpu.get_ds() );
             cpu.set_sp( head.sp );
             cpu.set_ip( head.ip );
-            cpu.set_ax( 0xffff ); // no drives in use
+            cpu.set_ax( 0 );
             tracer.Trace( "  loaded %s CS: %04x, SS: %04x, DS: %04x, SP: %04x, IP: %04x\n", acApp,
                           cpu.get_cs(), cpu.get_ss(), cpu.get_ds(), cpu.get_sp(), cpu.get_ip() );
         }
@@ -9138,8 +9140,6 @@ int main( int argc, char * argv[] )
             PerhapsFlipTo80xRows();
         }
     
-        g_diskTransferSegment = cpu.get_ds();
-        g_diskTransferOffset = 0x80; // same address as the second half of PSP -- the command tail
         g_haltExecution = false;
         cpu.set_interrupt( true ); // DOS starts apps with interrupts enabled
         cpu.enable_interrupt_syscall( true ); // call back to ntvdm on i8086_interrupt_syscall
