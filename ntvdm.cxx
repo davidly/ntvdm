@@ -362,6 +362,42 @@ bool ValidDOSPathname( char * pc )
     return ValidDOSFilename( pc );
 } //ValidDOSPathname
 
+bool is_a_folder( const char * path )
+{
+#ifdef _WIN32                
+    uint32_t attr = GetFileAttributesA( path );
+    if ( INVALID_FILE_ATTRIBUTES == attr )
+        return false;
+
+    return ( 0 != ( attr & FILE_ATTRIBUTE_DIRECTORY ) );
+#else
+    struct stat statbuf;
+    int ret = stat( path, & statbuf );
+    if ( 0 != ret )
+        return false;
+
+    return ( !S_ISREG( statbuf.st_mode ) );
+#endif                
+} //is_a_folder
+
+void ensure_ends_in_slash( char * p )
+{
+    char slash =
+#ifdef _WIN32
+         '\\';
+#else
+         '/';
+#endif
+
+    size_t len = strlen( p );
+    if ( 0 == len || ( slash != p[ len - 1] ) )
+    {
+        p[ len ] = slash;
+        p[ len + 1 ] = 0;
+        return;
+    }
+} //ensure_ends_in_slash
+
 void backslash_to_slash( char * p )
 {
     while ( *p )
@@ -2172,10 +2208,13 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x57, "get/set file date and time using handle" },
     { 0x21, 0x58, "get/set memory allocation strategy" },
     { 0x21, 0x59, "get extended error code" },
+    { 0x21, 0x5a, "create temporary file" },
+    { 0x21, 0x5b, "create new file" },
     { 0x21, 0x5f, "get redirection list entry" },
     { 0x21, 0x62, "get psp address" },
     { 0x21, 0x63, "get lead byte table" },
     { 0x21, 0x65, "get extended country information" },
+    { 0x21, 0x67, "set handle count" },
     { 0x21, 0x68, "fflush - commit file" },
     { 0x21, 0xdd, "novell netware 4.0 - set error mode" },
 };
@@ -4712,6 +4751,35 @@ void output_string( char * p, size_t len )
         output_character( p[ i ] );
 } //output_string
 
+void create_or_reset_file( const char * path  )
+{
+    FILE * fp = fopen( path, "w+b" );
+    if ( fp )
+    {
+        FileEntry fe = {0};
+        strcpy( fe.path, path );
+        fe.fp = fp;
+        fe.handle = FindFirstFreeFileHandle();
+        fe.mode = 2; // read / write
+        fe.seg_process = g_currentPSP;
+        g_fileEntries.push_back( fe );
+        cpu.set_ax( fe.handle );
+        cpu.set_carry( false );
+        tracer.Trace( "  successfully created file and using new handle %04x\n", cpu.get_ax() );
+        trace_all_open_files();
+        UpdateHandleMap();
+    }
+    else
+    {
+        tracer.Trace( "  ERROR: create file failed with error %d = %s\n", errno, strerror( errno ) );
+        if ( 1 == errno || 13 == errno ) // permission denied
+            cpu.set_ax( 5 );
+        else
+            cpu.set_ax( 2 ); // file not found
+        cpu.set_carry( true );
+    }
+} //create_or_reset_file
+
 void handle_int_21( uint8_t c )
 {
     char filename[ DOS_FILENAME_SIZE ];
@@ -6145,34 +6213,7 @@ void handle_int_21( uint8_t c )
             char * original_path = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * path = DOSToHostPath( original_path );
             tracer.Trace( "  create file '%s'\n", path );
-            cpu.set_ax( 3 );
-    
-            FILE * fp = fopen( path, "w+b" );
-            if ( fp )
-            {
-                FileEntry fe = {0};
-                strcpy( fe.path, path );
-                fe.fp = fp;
-                fe.handle = FindFirstFreeFileHandle();
-                fe.mode = 2; // read / write
-                fe.seg_process = g_currentPSP;
-                g_fileEntries.push_back( fe );
-                cpu.set_ax( fe.handle );
-                cpu.set_carry( false );
-                tracer.Trace( "  successfully created file and using new handle %04x\n", cpu.get_ax() );
-                trace_all_open_files();
-                UpdateHandleMap();
-            }
-            else
-            {
-                tracer.Trace( "  ERROR: create file sz failed with error %d = %s\n", errno, strerror( errno ) );
-                if ( 1 == errno || 13 == errno ) // permission denied
-                    cpu.set_ax( 5 );
-                else
-                    cpu.set_ax( 2 ); // file not found
-                cpu.set_carry( true );
-            }
-    
+            create_or_reset_file( path );
             return;
         }
         case 0x3d:
@@ -7602,6 +7643,78 @@ void handle_int_21( uint8_t c )
             cpu.set_ch( 1 ); // suggestion action code. unknown
             return;
         }
+        case 0x5a:
+        {
+            // create temporary file.
+            // ds:dx points to a pathname followed by a 0 followed by 13 bytes where the filename will go
+            // cx: file attribute of the temporary file
+            // on return, CF is set and AX contains an error
+            //            CF is clear and AX contains a handle
+            // DOS doesn't automatically delete temporary files or set an attribute for deletion.
+            // The Intel C compiler v4.5 is the only app I've tested that calls this function
+
+            char * originalPath = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
+            const char * pathForTempFile = DOSToHostPath( originalPath );
+            tracer.Trace( "  asked to create a temporary file in folder '%s'\n", originalPath );
+
+            if ( !is_a_folder( pathForTempFile ) )
+            {
+                tracer.Trace( "  error: path for temporary file isn't a folder\n" );
+                cpu.set_carry( true );
+                cpu.set_ax( 3 ); // path not found;
+                return;
+            }
+
+            static char acTempPath[ MAX_PATH ];
+            strcpy( acTempPath, pathForTempFile );
+            ensure_ends_in_slash( acTempPath );
+
+            char * pfile = acTempPath + strlen( acTempPath );
+            for ( int i = 0; i <= 9999; i++ )
+            {
+                snprintf( pfile, 13, "VDMX%04u.TMP", i );
+                if ( !file_exists( acTempPath ) )
+                {
+                    tracer.Trace( "  found an unused temp filename: '%s'\n", pfile );
+                    strcpy( originalPath + strlen( originalPath ), pfile );
+                    tracer.TraceBinaryData( (uint8_t *) originalPath, (uint32_t) strlen( originalPath ) + 1 + 13, 4 );
+
+                    create_or_reset_file( acTempPath );
+                    return;
+                }
+            }
+
+            tracer.Trace( "  all out of temporary filenames :(\n" );
+            cpu.set_carry( true );
+            cpu.set_ax( 2 ); // file not found
+            return;
+        }
+        case 0x5b:
+        {
+            // create new file.
+            // ds:dx points to a path.
+            // CF clear on success and AX contains the handle
+            // CF set on failure with AX:
+            //     80 if the file already exists
+            //     2 file is invalid
+            //     3 folder is invalid
+            // The Intel C compiler v4.5 is the only app I've tested that calls this function
+
+            const char * originalPath = (const char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
+            const char * hostPath = DOSToHostPath( originalPath );
+            tracer.Trace( "  create new file path '%s'\n", hostPath );
+
+            if ( file_exists( hostPath ) )
+            {
+                tracer.Trace( "  file already exists, so failing this call\n" );
+                cpu.set_carry( true );
+                cpu.set_ax( 80 );
+                return;
+            }
+
+            create_or_reset_file( hostPath );
+            return;
+        }
         case 0x5f:
         {
             // network
@@ -7630,6 +7743,15 @@ void handle_int_21( uint8_t c )
             // get extended country information; DOS 3.3+
 
             cpu.set_carry( true ); // not supported. Works v3 calls this.
+            return;
+        }
+        case 0x67:
+        {
+            // set handle count. bx = number of allowed handles
+            // ignore this since ntvdm supports unlimited handles anyway
+            // The Intel C compiler v4.5 is the only app I've tested that calls this function
+
+            cpu.set_carry( false );
             return;
         }
         case 0x68:
