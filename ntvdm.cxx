@@ -376,7 +376,7 @@ bool is_a_folder( const char * path )
     if ( 0 != ret )
         return false;
 
-    return ( !S_ISREG( statbuf.st_mode ) );
+    return ( S_ISDIR( statbuf.st_mode ) );
 #endif                
 } //is_a_folder
 
