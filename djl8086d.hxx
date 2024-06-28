@@ -396,7 +396,7 @@ class CDisassemble8086
                     }
                     else if ( _b0 >= 0x91 && _b0 <= 0x97 )
                         _da( "xchg   ax, %s", reg_strings[ 8 + ( _b0 & 0x7 ) ] );
-                    else if ( _b0 >= 0xd8 && _b0 <= 0xde ) // esc
+                    else if ( _b0 >= 0xd8 && _b0 <= 0xdf ) // esc
                     {
                         _bc++;
                         _da( "esc    %s", getrm( _rm ) );
