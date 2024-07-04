@@ -106,6 +106,8 @@ for when apps like WordStar and QBX shell out to command.com.
 various interrupts. mint.bat generates the machine code in C arrays that are copied
 into ntvdm.cxx and loaded into DOS RAM at runtime.
 
+A number of compilers, assemblers, and emulators along with sample benchmark apps and build scripts for each can be found here: [dos_compilers](https://github.com/davidly/dos_compilers)
+
 ### Tested Platforms
 
 The emulator has been compiled and tested on the following platforms:
