@@ -485,7 +485,12 @@ const char * DOSToHostPath( const char * p )
 
     static char host_path[ MAX_PATH ];
 
-    if ( ':' == p[1] )
+    if ( 0 == *p )
+    {
+        *host_path = 0;
+        return host_path;
+    }
+    else if ( ':' == p[1] )
     {
         strcpy( host_path, g_acRoot );
         if ( '\\' == p[2] )
