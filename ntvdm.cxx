@@ -800,6 +800,7 @@ void SleepAndScheduleInterruptCheck()
         g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
 
     CKbdBuffer kbd_buf;
+    //tracer.Trace( "  update required: %d, kbdpeek available: %d\n", DisplayUpdateRequired(), g_KbdPeekAvailable );
     if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
     {
         tracer.Trace( "  sleeping in SleepAndScheduleInterruptCheck. g_KbdPeekAvailable %d\n", g_KbdPeekAvailable );
@@ -3133,9 +3134,9 @@ uint8_t i8086_invoke_in_byte( uint16_t port )
         uint8_t asciiChar, scancode;
         if ( peek_keyboard( asciiChar, scancode ) )
         {
-            // lie and say keyup so apps like Word 6.0 don't auto-repeat until the next keydown
-            scancode |= 0x80;
-            //tracer.Trace( "invoke_in_byte, port %02x peeked a character and is returning %02x\n", port, scancode );
+            // lie and say keyup so apps like Word 6.0 don't auto-repeat until the next keydown. but this breaks quickb2
+            // scancode |= 0x80;
+            tracer.Trace( "  invoke_in_byte, port %02x peeked a character and is returning scancode %02x\n", port, scancode );
             return scancode;
         }
     }
@@ -3162,6 +3163,19 @@ void i8086_invoke_out_byte( uint16_t port, uint8_t val )
 
     if ( 0x20 == port && 0x20 == val ) // End Of Interrupt to 8259A PIC. Enable subsequent interrupts
         g_int9_pending = false;
+
+#if 0 // this enables quickb2 to almost work; but it wants alt and other keystrokes as stand-alone scan codes
+    if ( 0x61 == port && 0 == val )
+    {
+        uint8_t asciiChar, scancode;
+        if ( peek_keyboard( asciiChar, scancode ) )
+        {
+            consume_keyboard();
+            g_int9_pending = false;
+            g_KbdPeekAvailable = false;
+        }
+    }
+#endif
 } //i8086_invoke_out_byte
 
 void i8086_invoke_out_word( uint16_t port, uint16_t val )
@@ -3753,7 +3767,6 @@ void handle_int_10( uint8_t c )
             }
 
             ignorableFirstCall = false;
-
             return;
         }
         case 1:
@@ -3777,6 +3790,7 @@ void handle_int_10( uint8_t c )
         case 2:
         {
             tracer.Trace( "  set cursor position to row %d col %d\n", cpu.dh(), cpu.dl() );
+
             uint8_t prevRow = 0, prevCol = 0;
             if ( !g_use80xRowsMode )
                 GetCursorPosition( prevRow, prevCol );
@@ -3872,8 +3886,10 @@ void handle_int_10( uint8_t c )
                 UpdateDisplay();
                 init_blankline( DefaultVideoAttribute );
             }
+#if 0
             else if ( 0 == lines )
                 g_consoleConfig.ClearScreen(); // works even when not initialized
+#endif
 
             return;
         }
@@ -3938,8 +3954,10 @@ void handle_int_10( uint8_t c )
                 UpdateDisplay();
                 init_blankline( DefaultVideoAttribute );
             }
+#if 0
             else if ( 0 == lines )
                 g_consoleConfig.ClearScreen(); // works even when not initialized
+#endif
 
             return;
         }
@@ -5035,6 +5053,13 @@ void handle_int_21( uint8_t c )
             // on return: al = # of logical drives
 
             cpu.set_al( HighestDrivePresent() );
+
+            if ( cpu.dl() > 25 ) // Turbo Prolog v1.1 does this
+            {
+                tracer.Trace( "  drive is out of range: %u\n", cpu.dl() );
+                return;
+            }
+
             tracer.Trace( "  new default drive: '%c'. highest drive present: %d\n", 'A' + cpu.dl(), cpu.al() );
 
             char acDir[ 3 ];
@@ -6192,6 +6217,16 @@ void handle_int_21( uint8_t c )
         {
             // change directory ds:dx asciiz directory name. cf set on error with code in ax
             char * pathOriginal = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
+            tracer.TraceBinaryData( (uint8_t *) pathOriginal, (uint32_t) strlen( pathOriginal ), 8 );
+
+            if ( 0x1a == pathOriginal[ 0 ] ) // turbo prolog v1.1 sends a ^z as a drive letter
+            {
+                cpu.set_carry( true );
+                cpu.set_ax( 3 ); // path not found
+                tracer.Trace( "  ERROR: change directory sz failed because the path is malformed\n" );
+                return;
+            }
+
             const char * path = DOSToHostPath( pathOriginal );
             tracer.Trace( "  change directory to '%s'. original path '%s'\n", path, pathOriginal );
 
@@ -7547,7 +7582,7 @@ void handle_int_21( uint8_t c )
             strcpy( acNew, pfile );
             pnewname = acNew;
     
-            tracer.Trace( "renaming file '%s' to '%s', pointers are %p to %p\n", poldname, pnewname, poldname, pnewname );
+            tracer.Trace( "  renaming file '%s' to '%s', pointers are %p to %p\n", poldname, pnewname, poldname, pnewname );
             int renameok = ( 0 == rename( poldname, pnewname ) );
             if ( renameok )
                 cpu.set_carry( false );
@@ -9255,7 +9290,8 @@ int main( int argc, char * argv[] )
     
         if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) ||
              ends_with( g_acApp, "turbo.com" ) || ends_with( g_acApp, "word.exe" ) ||
-             ends_with( g_acApp, "bc.exe" )  || ends_with( g_acApp, "mulisp.com" ) )
+             ends_with( g_acApp, "bc.exe" ) || ends_with( g_acApp, "mulisp.com" ) ||
+             ends_with( g_acApp, "prolog.exe" ) )
         {
             if ( !g_forceConsole )
                 force80xRows = true;
