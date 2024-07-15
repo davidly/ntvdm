@@ -372,6 +372,7 @@ class ConsoleConfiguration
                         printf( "\x1b[?25l" );
                     else
                         printf( "\x1b[?25h" );
+                    fflush( stdout );
                 }
              #endif
         } //SetCursorInfo

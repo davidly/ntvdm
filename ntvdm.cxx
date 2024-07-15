@@ -3134,8 +3134,8 @@ uint8_t i8086_invoke_in_byte( uint16_t port )
         uint8_t asciiChar, scancode;
         if ( peek_keyboard( asciiChar, scancode ) )
         {
-            // lie and say keyup so apps like Word 6.0 don't auto-repeat until the next keydown. but this breaks quickb2
-            // scancode |= 0x80;
+            // lie and say keyup so apps like Works v3 don't auto-repeat until the next keydown. but this breaks quickb2
+            scancode |= 0x80;
             tracer.Trace( "  invoke_in_byte, port %02x peeked a character and is returning scancode %02x\n", port, scancode );
             return scancode;
         }
@@ -3772,19 +3772,14 @@ void handle_int_10( uint8_t c )
         case 1:
         {
             // set cursor size. 5 lower bits from each: ch = start line, cl = end line
-            // bits 5 and 6 in ch: 0 = normal, 1 = invisible, 2 = slow, 3 = fast
+            // bits 5 and 6 in ch: 0 = normal, 1 = invisible, 2 = slow blink, 3 = fast blink
+            // only visibility is honored.
 
             uint8_t cur_top = cpu.ch() & 0x1f;
             uint8_t cur_bottom = cpu.cl() & 0x1f;
-            uint8_t cur_blink = ( cpu.ch() >> 5 ) & 3;
-
-            tracer.Trace( "  set cursor size to top %u, bottom %u, blink %u\n", cur_top, cur_bottom, cur_blink );
-
-            if ( 1 == cur_blink )
-                g_consoleConfig.SetCursorInfo( 0 );
-            else
-                g_consoleConfig.SetCursorInfo( 100 );
-
+            uint8_t cur_visibility = ( cpu.ch() >> 5 ) & 3;
+            tracer.Trace( "  set cursor size to top %u, bottom %u, visibility %u\n", cur_top, cur_bottom, cur_visibility );
+            g_consoleConfig.SetCursorInfo( ( 1 == cur_visibility ) ? 0 : 100 );
             return;
         }
         case 2:
