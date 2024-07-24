@@ -5776,14 +5776,14 @@ void handle_int_21( uint8_t c )
             // random block read using FCBs
             // CX: number of records to read
             // DS:BX pointer to the FCB.
-            // on exit, AL 0 success, 1 EOF no data read, 2 dta too small, 3 eof partial read (filled with 0s)
+            // on exit, AL 0 success, 1 EOF no data read, 2 dta too small, 3 eof partial read (incomplete record filled with ^z)
             // also, sequential I/O position is updated 
     
             cpu.set_al( 1 ); // eof
             uint32_t cRecords = cpu.get_cx();
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  random block read using FCBs, cRecords %u\n", cRecords );
+            tracer.Trace( "  random block read using FCBs, cRecords %u, record size %u\n", cRecords, pfcb->recSize );
             pfcb->Trace();
             uint32_t seekOffset = pfcb->RandomOffset();
 
@@ -5793,15 +5793,11 @@ void handle_int_21( uint8_t c )
                 if ( fp )
                 {
                     pfcb->fileSize = portable_filelen( fp );
+                    tracer.Trace( "  file size: %u\n", pfcb->fileSize );
 
-                    if ( seekOffset > pfcb->fileSize )
+                    if ( seekOffset >= pfcb->fileSize )
                     {
-                        tracer.Trace( "  ERROR: random read beyond end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
-                        cpu.set_al( 1 ); // eof
-                    }
-                    else if ( seekOffset == pfcb->fileSize )
-                    {
-                        tracer.Trace( "  WARNING: random read at end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
+                        tracer.Trace( "  ERROR: random read >= end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
                         cpu.set_al( 1 ); // eof
                     }
                     else
@@ -5811,21 +5807,24 @@ void handle_int_21( uint8_t c )
                         if ( ok )
                         {
                             uint32_t askedBytes = pfcb->recSize * cRecords;
-                            memset( GetDiskTransferAddress(), 0, askedBytes );
-                            uint32_t toRead = get_min( pfcb->fileSize - seekOffset, askedBytes );
-                            size_t numRead = fread( GetDiskTransferAddress(), 1, toRead, fp );
-                            if ( numRead )
+                            uint32_t bytesToRead = get_min( pfcb->fileSize - seekOffset, askedBytes );
+                            uint16_t recordsToRead = (uint16_t) round_up( bytesToRead, (uint32_t) pfcb->recSize ) / pfcb->recSize;
+                            tracer.Trace( "  bytesToRead: %u = %#04x, recordsToRead %u\n", bytesToRead, bytesToRead, recordsToRead );
+                            memset( GetDiskTransferAddress(), 0x1a, recordsToRead * pfcb->recSize ); // mimic CP/M; no documentation for this
+                            size_t bytesRead = fread( GetDiskTransferAddress(), 1, bytesToRead, fp );
+                            if ( 0 != bytesRead )
                             {
-                                tracer.Trace( "  numRead: %zd, toRead %zd, askedBytes %u\n", numRead, toRead, askedBytes );
-                                if ( numRead == askedBytes )
+                                uint16_t recordsRead = (uint16_t) round_up( (uint32_t) bytesRead, (uint32_t) pfcb->recSize ) / pfcb->recSize;
+                                cpu.set_cx( (uint16_t) recordsRead );
+                                tracer.Trace( "  bytesRead: %zd, bytesToRead %zd, recordsRead %u\n", bytesRead, bytesToRead, recordsRead );
+
+                                if ( bytesRead == askedBytes )
                                     cpu.set_al( 0 );
                                 else
-                                    cpu.set_al( 3 ); // eof encountered, last record is partial
+                                    cpu.set_al( 3 ); // eof encountered; not all requested records read or last record is partial
         
-                                cpu.set_cx( (uint16_t) ( toRead / pfcb->recSize ) );
-                                tracer.Trace( "  successfully read %u bytes of %u requested, CX set to %u, al set to %u:\n", numRead, toRead, cpu.get_cx(), cpu.al() );
                                 tracer.Trace( "  used disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
-                                tracer.TraceBinaryData( GetDiskTransferAddress(), toRead, 4 );
+                                tracer.TraceBinaryData( GetDiskTransferAddress(), recordsRead * pfcb->recSize, 4 );
                                 pfcb->SetRandomRecordNumber( pfcb->RandomRecordNumber() + (uint32_t) cpu.get_cx() );
                                 pfcb->SetSequentialFromRandom(); // the next sequential I/O expects this to be set. Thanks DRI compilers and linkers.
                             }
