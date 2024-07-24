@@ -784,14 +784,14 @@ void TraceBiosInfo()
     tracer.Trace( "    0x8a video display combination: %#x\n", cpu.mbyte( 0x40, 0x8a ) );
 } //TraceBiosInfo
 
-uint8_t * GetVideoMem()
+uint8_t * GetVideoMem( uint8_t displayPage )
 {
-    return cpu.flat_address8( ScreenBufferSegment, 0x1000 * GetActiveDisplayPage() );
+    return cpu.flat_address8( ScreenBufferSegment, 0x1000 * displayPage );
 } //GetVideoMem
 
 bool DisplayUpdateRequired()
 {
-    return ( 0 != memcmp( g_bufferLastUpdate, GetVideoMem(), ScreenColumns * GetScreenRows() * 2 ) );
+    return ( 0 != memcmp( g_bufferLastUpdate, GetVideoMem( GetActiveDisplayPage() ), ScreenColumns * GetScreenRows() * 2 ) );
 } //DisplayUpdateRequired
 
 void SleepAndScheduleInterruptCheck()
@@ -1381,17 +1381,17 @@ void UpdateScreenCursorPosition( uint8_t row, uint8_t col )
 #endif
 } //UpdateScreenCursorPosition
 
-void GetCursorPosition( uint8_t & row, uint8_t & col )
+void GetCursorPosition( uint8_t & row, uint8_t & col, uint8_t displayPage )
 {
-    uint8_t * cursordata = cpu.flat_address8( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
+    uint8_t * cursordata = cpu.flat_address8( 0x40, 0x50 ) + ( displayPage * 2 );
 
     col = cursordata[ 0 ];
     row = cursordata[ 1 ];
 } //GetCursorPosition
 
-void SetCursorPosition( uint8_t row, uint8_t col )
+void SetCursorPosition( uint8_t row, uint8_t col, uint8_t displayPage )
 {
-    uint8_t * cursordata = cpu.flat_address8( 0x40, 0x50 ) + ( GetActiveDisplayPage() * 2 );
+    uint8_t * cursordata = cpu.flat_address8( 0x40, 0x50 ) + ( displayPage * 2 );
 
     cursordata[ 0 ] = col;
     cursordata[ 1 ] = row;
@@ -1404,7 +1404,7 @@ void UpdateScreenCursorPosition()
 {
     assert( g_use80xRowsMode );
     uint8_t row, col;
-    GetCursorPosition( row, col );
+    GetCursorPosition( row, col, GetActiveDisplayPage() );
     UpdateScreenCursorPosition( row, col );
 } //UpdateScreenCursorPosition
 
@@ -1795,7 +1795,7 @@ void printDisplayBuffer( int buffer )
 void traceDisplayBufferAsHex()
 {
     tracer.Trace( "cga memory buffer %d\n" );
-    uint8_t * pbuf = GetVideoMem();
+    uint8_t * pbuf = GetVideoMem( GetActiveDisplayPage() );
     for ( size_t y = 0; y < GetScreenRows(); y++ )
     {
         size_t yoffset = y * ScreenColumns * 2;
@@ -1854,7 +1854,7 @@ void UpdateDisplayRow( uint32_t y )
     if ( y >= GetScreenRows() )
         return;
 
-    uint8_t * pbuf = GetVideoMem();
+    uint8_t * pbuf = GetVideoMem( GetActiveDisplayPage() );
     uint32_t yoffset = y * ScreenColumns * 2;
     memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
     WORD aAttribs[ ScreenColumns ];
@@ -1930,7 +1930,7 @@ void UpdateDisplayRow( uint32_t y )
     if ( y >= GetScreenRows() )
         return;
 
-    uint8_t * pbuf = GetVideoMem();
+    uint8_t * pbuf = GetVideoMem( GetActiveDisplayPage() );
     uint32_t yoffset = y * ScreenColumns * 2;
 
     memcpy( g_bufferLastUpdate + yoffset, pbuf + yoffset, ScreenColumns * 2 );
@@ -1993,7 +1993,7 @@ void UpdateDisplayRow( uint32_t y )
 bool UpdateDisplay()
 {
     assert( g_use80xRowsMode );
-    uint8_t * pbuf = GetVideoMem();
+    uint8_t * pbuf = GetVideoMem( GetActiveDisplayPage() );
 
     if ( DisplayUpdateRequired() )
     {
@@ -2026,7 +2026,7 @@ bool throttled_UpdateDisplay( int64_t delay = 50 )
 void ClearDisplay()
 {
     assert( g_use80xRowsMode );
-    uint8_t * pbuf = GetVideoMem();
+    uint8_t * pbuf = GetVideoMem( GetActiveDisplayPage() );
     init_blankline( DefaultVideoAttribute );
 
     for ( size_t y = 0; y < GetScreenRows(); y++ )
@@ -2106,7 +2106,7 @@ const IntInfo interrupt_list[] =
     { 0x10, 0x01, "set cursor size" },
     { 0x10, 0x02, "set cursor position" },
     { 0x10, 0x03, "get cursor position" },
-    { 0x10, 0x05, "set active displaypage" },
+    { 0x10, 0x05, "set active display page" },
     { 0x10, 0x06, "scroll window up" },
     { 0x10, 0x07, "scroll window down" },
     { 0x10, 0x08, "read attributes+character at cursor position" },
@@ -3784,15 +3784,17 @@ void handle_int_10( uint8_t c )
         }
         case 2:
         {
-            tracer.Trace( "  set cursor position to row %d col %d\n", cpu.dh(), cpu.dl() );
+            tracer.Trace( "  set cursor position to row %d col %d on page %u\n", cpu.dh(), cpu.dl(), cpu.bh() );
+            PerhapsFlipTo80xRows();
 
+            uint8_t displayPage = cpu.bh();
             uint8_t prevRow = 0, prevCol = 0;
             if ( !g_use80xRowsMode )
-                GetCursorPosition( prevRow, prevCol );
+                GetCursorPosition( prevRow, prevCol, displayPage );
 
             row = cpu.dh();
             col = cpu.dl();
-            SetCursorPosition( row, col );
+            SetCursorPosition( row, col, displayPage );
 
             if ( !g_use80xRowsMode )
             {
@@ -3809,12 +3811,13 @@ void handle_int_10( uint8_t c )
         {
             // get cursor position
 
-            GetCursorPosition( row, col );
+            uint8_t displayPage = cpu.bh();
+            GetCursorPosition( row, col, displayPage );
             cpu.set_dh( row );
             cpu.set_dl( col );
             cpu.set_ch( 0 );
             cpu.set_cl( 0 );
-            tracer.Trace( "  get cursor position row %d col %d\n", cpu.dh(), cpu.dl() );
+            tracer.Trace( "  get cursor position row %d col %d on page %u\n", cpu.dh(), cpu.dl(), displayPage );
             return;
         }
         case 5:
@@ -3825,8 +3828,11 @@ void handle_int_10( uint8_t c )
             if ( page <= 3 )
             {
                 PerhapsFlipTo80xRows();
+
                 tracer.Trace( "  set video page to %d\n", page );
                 SetActiveDisplayPage( page );
+                if ( g_use80xRowsMode )
+                    UpdateDisplay();
             }
 
             return;
@@ -3858,7 +3864,7 @@ void handle_int_10( uint8_t c )
                 if ( clr < cul || rlr < rul )
                     return;
 
-                uint8_t * pbuf = GetVideoMem();
+                uint8_t * pbuf = GetVideoMem( GetActiveDisplayPage() );
                 if ( 0 == lines || lines >= GetScreenRows() )
                 {
                     if ( 0 == lines )
@@ -3881,10 +3887,6 @@ void handle_int_10( uint8_t c )
                 UpdateDisplay();
                 init_blankline( DefaultVideoAttribute );
             }
-#if 0
-            else if ( 0 == lines )
-                g_consoleConfig.ClearScreen(); // works even when not initialized
-#endif
 
             return;
         }
@@ -3914,7 +3916,7 @@ void handle_int_10( uint8_t c )
                 if ( clr < cul || rlr < rul )
                     return;
 
-                uint8_t * pbuf = GetVideoMem();
+                uint8_t * pbuf = GetVideoMem( GetActiveDisplayPage() );
                 if ( 0 == lines || lines >= GetScreenRows() )
                 {
                     if ( 0 == lines )
@@ -3949,10 +3951,6 @@ void handle_int_10( uint8_t c )
                 UpdateDisplay();
                 init_blankline( DefaultVideoAttribute );
             }
-#if 0
-            else if ( 0 == lines )
-                g_consoleConfig.ClearScreen(); // works even when not initialized
-#endif
 
             return;
         }
@@ -3962,13 +3960,14 @@ void handle_int_10( uint8_t c )
             // returns al character and ah attribute of character
 
             PerhapsFlipTo80xRows();
+            uint8_t displayPage = cpu.bh();
 
             if ( g_use80xRowsMode )
             {
                 // gwbasic uses this for input$ to get the character typed.
 
-                GetCursorPosition( row, col );
-                uint8_t * pbuf = GetVideoMem();
+                GetCursorPosition( row, col, displayPage );
+                uint8_t * pbuf = GetVideoMem( displayPage );
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
                 cpu.set_al( pbuf[ offset ] );
                 cpu.set_ah( pbuf[ 1 + offset ] );
@@ -3985,17 +3984,18 @@ void handle_int_10( uint8_t c )
         }
         case 9:
         {
-            // output character in AL. Attribute in BL, Count in CX. Do not move the cursor
+            // output character in AL. Attribute in BL, page in BH. Count in CX. Do not move the cursor
 
-            GetCursorPosition( row, col );
-            tracer.Trace( "  output character %#x, '%c', %#x times, attribute %#x, row %u, col %u\n",
-                          cpu.al(), printable( cpu.al() ), cpu.get_cx(), cpu.bl(), row, col );
+            uint8_t displayPage = cpu.bh();
+            GetCursorPosition( row, col, displayPage );
+            tracer.Trace( "  output character %#x, '%c', %#x times, attribute %#x, row %u, col %u, display page %u\n",
+                          cpu.al(), printable( cpu.al() ), cpu.get_cx(), cpu.bl(), row, col, displayPage );
 
             char ch = cpu.al();
 
             if ( g_use80xRowsMode )
             {
-                uint8_t * pbuf = GetVideoMem();
+                uint8_t * pbuf = GetVideoMem( displayPage );
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
 
                 for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
@@ -4004,7 +4004,8 @@ void handle_int_10( uint8_t c )
                     pbuf[ 1 + offset ] = cpu.bl();
                 }
 
-                UpdateDisplayRow( row );
+                if ( displayPage == GetActiveDisplayPage() )
+                    UpdateDisplayRow( row );
             }
             else
             {
@@ -4024,9 +4025,10 @@ void handle_int_10( uint8_t c )
         {
             // output character only. Just like output character, but ignore attributes
 
-            GetCursorPosition( row, col );
-            tracer.Trace( "  output character only %#x, %#x times, row %u, col %u\n",
-                          cpu.al(), cpu.get_cx(), row, col );
+            uint8_t displayPage = cpu.bh();
+            GetCursorPosition( row, col, displayPage );
+            tracer.Trace( "  output character only %#x, %#x times, row %u, col %u, display page %u\n",
+                          cpu.al(), cpu.get_cx(), row, col, displayPage );
 
             char ch = cpu.al();
             if ( 0x1b == ch ) // escape should be a left arrow, but it just confuses the console
@@ -4034,13 +4036,14 @@ void handle_int_10( uint8_t c )
 
             if ( g_use80xRowsMode )
             {
-                uint8_t * pbuf = GetVideoMem();
+                uint8_t * pbuf = GetVideoMem( displayPage );
                 uint32_t offset = row * 2 * ScreenColumns + col * 2;
 
                 for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                     pbuf[ offset ] = ch;
 
-                UpdateDisplayRow( row );
+                if ( displayPage == GetActiveDisplayPage() )
+                    UpdateDisplayRow( row );
             }
             else
             {
@@ -4060,27 +4063,25 @@ void handle_int_10( uint8_t c )
             // al == ascii character, bh = video page number, bl = foreground pixel color (graphics mode only)
             // advanced cursor. BEL(7), BS(8), LF(A), and CR(D) are honored
 
-            GetCursorPosition( row, col );
-            tracer.Trace( "  write text in teletype mode %#x, page %#x, row %u, col %u\n", cpu.al(), cpu.bh(), row, col );
+            uint8_t displayPage = cpu.bh();
+            if ( displayPage > 3 )
+                displayPage = 0;
+
+            GetCursorPosition( row, col, displayPage );
+            tracer.Trace( "  write text in teletype mode %#x, page %#x, row %u, col %u\n", cpu.al(), displayPage, row, col );
 
             char ch = cpu.al();
             if ( 0x1b == ch ) // escape should be a left arrow, but it just confuses the console
                 ch = ' ';
 
-            uint8_t page = cpu.bh();
-            if ( page > 3 )
-                page = 0;
-
             if ( g_use80xRowsMode )
             {
-                uint8_t curPage = GetActiveDisplayPage();
-                SetActiveDisplayPage( page );
-                uint8_t * pbuf = GetVideoMem();
+                uint8_t * pbuf = GetVideoMem( displayPage );
 
                 if ( 0x0a == ch ) // LF
                 {
                     col = 0;
-                    SetCursorPosition( row, col );
+                    SetCursorPosition( row, col, displayPage );
                     tracer.Trace( "  linefeed, setting column to 0\n" );
                 }
                 else if ( 0x0d == ch ) // CR
@@ -4094,7 +4095,7 @@ void handle_int_10( uint8_t c )
                     {
                         tracer.Trace( "  carriage return, moving to next row\n" );
                         row++;
-                        SetCursorPosition( row, col );
+                        SetCursorPosition( row, col, displayPage );
                     }
                 }
                 else if ( 0x08 == ch ) // backspace
@@ -4102,7 +4103,7 @@ void handle_int_10( uint8_t c )
                     if ( col > 0 )
                     {
                         col--;
-                        SetCursorPosition( row, col );
+                        SetCursorPosition( row, col, displayPage );
                     }
                 }
                 else
@@ -4114,10 +4115,8 @@ void handle_int_10( uint8_t c )
                     col++;
                     if ( col >= ScreenColumns )
                         col = 0;
-                    SetCursorPosition( row, col );
+                    SetCursorPosition( row, col, displayPage );
                 }
-
-                SetActiveDisplayPage( curPage ); // restore the original page
             }
             else
             {
@@ -4715,8 +4714,9 @@ void output_character( char ch )
     if ( g_use80xRowsMode )
     {
         uint8_t row, col;
-        uint8_t * pbuf = GetVideoMem();
-        GetCursorPosition( row, col );
+        uint8_t displayPage = GetActiveDisplayPage();
+        uint8_t * pbuf = GetVideoMem( displayPage );
+        GetCursorPosition( row, col, displayPage );
         uint32_t offset = row * 2 * ScreenColumns + col * 2;
 
         if ( 8 == ch )
@@ -4749,7 +4749,7 @@ void output_character( char ch )
             if ( col >= ScreenColumns )
                 col = 0;
         }
-        SetCursorPosition( row, col );
+        SetCursorPosition( row, col, displayPage );
     }
     else
     {
@@ -6380,7 +6380,7 @@ void handle_int_21( uint8_t c )
                     uint16_t string_len = (uint16_t) strlen( acBuffer );
                     uint16_t min_len = get_min( string_len, request_len );
                     cpu.set_ax( min_len );
-                    uint8_t * pvideo = GetVideoMem();
+                    uint8_t * pvideo = GetVideoMem( GetActiveDisplayPage() );
                     GetCursorPosition( row, col );
                     tracer.Trace( "  min len: %d\n", min_len );
                     for ( uint16_t x = 0; x < min_len; x++ )
@@ -6485,9 +6485,10 @@ void handle_int_21( uint8_t c )
                 {
                     if ( g_use80xRowsMode )
                     {
-                        uint8_t * pbuf = GetVideoMem();
-                        GetCursorPosition( row, col );
-                        tracer.Trace( "  starting to write %u chars at row %u col %u, page %d\n", cpu.get_cx(), row, col, GetActiveDisplayPage() );
+                        uint8_t displayPage = GetActiveDisplayPage();
+                        uint8_t * pbuf = GetVideoMem( displayPage );
+                        GetCursorPosition( row, col, displayPage );
+                        tracer.Trace( "  starting to write %u chars at row %u col %u, page %d\n", cpu.get_cx(), row, col, displayPage );
         
                         for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                         {
@@ -6495,7 +6496,7 @@ void handle_int_21( uint8_t c )
                             if ( 0x0a == ch ) // LF
                             {
                                 col = 0;
-                                SetCursorPosition( row, col );
+                                SetCursorPosition( row, col, displayPage );
                                 tracer.Trace( "  linefeed, setting column to 0\n" );
                             }
                             else if ( 0x0d == ch ) // CR
@@ -6509,7 +6510,7 @@ void handle_int_21( uint8_t c )
                                 {
                                     tracer.Trace( "  carriage return, moving to next row\n" );
                                     row++;
-                                    SetCursorPosition( row, col );
+                                    SetCursorPosition( row, col, displayPage );
                                 }
                             }
                             else
@@ -6528,7 +6529,7 @@ void handle_int_21( uint8_t c )
                                 col++;
                                 if ( col >= ScreenColumns )
                                     col = 0;
-                                SetCursorPosition( row, col );
+                                SetCursorPosition( row, col, displayPage );
                             }
                         }
                     }
