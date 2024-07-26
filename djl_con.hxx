@@ -379,6 +379,9 @@ class ConsoleConfiguration
 
         void EstablishConsoleInput( void * pCtrlCRoutine = 0 )
         {
+            if ( !isatty( fileno( stdin ) ) )
+                return;
+
             if ( inputEstablished )
                 RestoreConsoleInput();
 
@@ -579,28 +582,54 @@ class ConsoleConfiguration
 
         int portable_kbhit()
         {
-            int result = 0;
+            if ( !isatty( fileno( stdin ) ) )
+                return ( 0 == feof( stdin) );
 
             #ifdef _WIN32
                 if ( 0 != aReady[ 0 ] )
                     return true;
-                result = _kbhit();
+                return _kbhit();
             #else
                 fd_set set;
                 FD_ZERO( &set );
                 FD_SET( STDIN_FILENO, &set );
                 struct timeval timeout = {0};
-                result = ( select( 1, &set, NULL, NULL, &timeout ) > 0 );
+                return ( select( 1, &set, NULL, NULL, &timeout ) > 0 );
             #endif
-
-            return result;
         } //portable_kbhit
+
+        static int redirected_getch()
+        {
+            assert( !isatty( fileno( stdin ) ) );
+
+            char data;
+            if ( 1 == read( 0, &data, 1 ) )
+            {
+                // for files with CR/LF, skip the CR and turn the LF into a CR
+                // for files with LF, turn the LF into a CR
+    
+                if ( ( 0x0d == data ) && ( !feof( stdin ) ) )
+                {
+                    if ( 0 == read( 0, &data, 1 ) ) // make gcc not complain by checking return code
+                        data = 0x0d; 
+                }
+    
+                if ( 0x0a == data )
+                    data = 0x0d;
+    
+                return data;
+            }
+            return EOF;
+        } //redirected_getch()
 
 #ifdef _WIN32
         // behave like getch() on linux -- extended characters have escape sequences
 
         int linux_getch()
         {
+            if ( !isatty( fileno( stdin ) ) )
+                return redirected_getch();
+
             size_t cReady = strlen( aReady );
             if ( 0 != cReady )
             {
@@ -647,6 +676,9 @@ class ConsoleConfiguration
 
         static int portable_getch()
         {
+            if ( !isatty( fileno( stdin ) ) )
+                return redirected_getch();
+
             #ifdef _WIN32
                 return _getch();
             #else

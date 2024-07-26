@@ -303,7 +303,6 @@ static bool g_InRVOS = false;                        // true if running in the R
 static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
 static bool g_SendControlCInt = false;               // set to true when/if a ^C is detected and an interrupt should be sent
 
-
 // Set to true to fill dos memory allocations with patterns to detect apps that use memory they previously freed.
 // These include Microsoft Pascal v4, GWBASIC, BASIC compiler v7.10, Fortran v5, and Link v5.10.
 // Zortech C v1 and v2 have similar bugs.
@@ -2243,6 +2242,26 @@ const char * get_interrupt_string( uint8_t i, uint8_t c, bool & ah_used )
     return "unknown";
 } //get_interrupt_string
 
+const uint8_t ascii_to_scancode[ 128 ] =
+{
+      0,  30,  48,  46,  32,  18,  33,  34, // 0    NULL ^a - ^g
+     35,  15,  28,  37,  38,  28,  49,  24, // 8    ^h - ^o  note: ^i=TAB, ^j=LF, ^m=CR are overloaded on Linux, so not 23, 36, and 50
+     25,  16,  19,  31,  20,  22,  47,  17, // 16   ^p - ^w
+     45,  21,  44,   1,  43,  27,   0,   0, // 24   ^x ^y ^z ESC
+     57,   2,  40,   4,   5,   6,   8,  40, // 32   SP ~ " # $ % & '
+     10,  11,   9,  13,  51,  12,  52,  53, // 40   ( ) * + , - . /
+     11,   2,   3,   4,   5,   6,   7,   8, // 48   0 - 7
+      9,  10,  39,  39,  51,  13,  52,  53, // 56   9 0 : ; < = > ?
+      3,  30,  48,  46,  32,  18,  33,  34, // 64   @ A - G
+     35,  23,  36,  37,  38,  50,  49,  24, // 72   H - O
+     25,  16,  19,  31,  20,  22,  47,  17, // 80   P - W
+     45,  21,  44,  26,  43,  27,   7,  12, // 88   X Y Z  [ \ ] ^ _
+     41,  30,  48,  46,  32,  18,  33,  34, // 96   ` a - g
+     35,  23,  36,  37,  38,  50,  49,  24, // 104  h - o
+     25,  16,  19,  31,  20,  22,  47,  17, // 112  p - w
+     45,  21,  24,  26,  43,  27,  41,  14, // 120  x y z { | } ~ DEL
+};     
+
 #ifdef _WIN32
 bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scancode )
 {
@@ -2512,6 +2531,17 @@ void InjectKeystrokes()
         InterlockedDecrement( &g_injectedControlC );
         kbd_buf.Add( 0x03, 0x2e );
     }
+
+    if ( !isatty( fileno( stdin ) ) && kbd_buf.IsEmpty() && ( 0 == feof( stdin) ) )
+    {
+        int result = ConsoleConfiguration::portable_getch();
+        if ( EOF != result )
+        {
+            char ch = 0x7f & result;
+            tracer.Trace( "  adding redirected character %02x to keyboard buffer\n", ch );
+            kbd_buf.Add( ch, ascii_to_scancode[ ch ] );
+        }
+    }
 } //InjectKeystrokes
 
 void consume_keyboard()
@@ -2561,26 +2591,6 @@ void InjectKeystrokes()
 {
 } //InjectKeystrokes
 
-const uint8_t ascii_to_scancode[ 128 ] =
-{
-      0,  30,  48,  46,  32,  18,  33,  34, // 0    NULL ^a - ^g
-     35,  15,  28,  37,  38,  28,  49,  24, // 8    ^h - ^o  note: ^i=TAB, ^j=LF, ^m=CR are overloaded on Linux, so not 23, 36, and 50
-     25,  16,  19,  31,  20,  22,  47,  17, // 16   ^p - ^w
-     45,  21,  44,   1,  43,  27,   0,   0, // 24   ^x ^y ^z ESC
-     57,   2,  40,   4,   5,   6,   8,  40, // 32   SP ~ " # $ % & '
-     10,  11,   9,  13,  51,  12,  52,  53, // 40   ( ) * + , - . /
-     11,   2,   3,   4,   5,   6,   7,   8, // 48   0 - 7
-      9,  10,  39,  39,  51,  13,  52,  53, // 56   9 0 : ; < = > ?
-      3,  30,  48,  46,  32,  18,  33,  34, // 64   @ A - G
-     35,  23,  36,  37,  38,  50,  49,  24, // 72   H - O
-     25,  16,  19,  31,  20,  22,  47,  17, // 80   P - W
-     45,  21,  44,  26,  43,  27,   7,  12, // 88   X Y Z  [ \ ] ^ _
-     41,  30,  48,  46,  32,  18,  33,  34, // 96   ` a - g
-     35,  23,  36,  37,  38,  50,  49,  24, // 104  h - o
-     25,  16,  19,  31,  20,  22,  47,  17, // 112  p - w
-     45,  21,  24,  26,  43,  27,  41,  14, // 120  x y z { | } ~ DEL
-};     
-
 // broken cases on Linux:
 // - no way to determine if keypad + is from the keypad and not the plus key (Brief is sad)
 // - linux maps tab, ctrl+enter, and enter to ^i, ^j, and ^m. so those ctrl characters can't return what they should for DOS
@@ -2600,7 +2610,7 @@ void consume_keyboard()
     CKbdBuffer kbd_buf;
     g_altPressedRecently = false;
 
-    while ( g_consoleConfig.portable_kbhit() )
+    while ( !kbd_buf.IsFull() && g_consoleConfig.portable_kbhit() )
     {
         uint8_t asciiChar = 0xff & g_consoleConfig.portable_getch();
         uint8_t scanCode = ascii_to_scancode[ asciiChar ];
@@ -8602,11 +8612,22 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 
             if ( !g_KbdPeekAvailable )
             {
-                uint8_t asciiChar, scancode;
-                if ( peek_keyboard( asciiChar, scancode ) )
+                bool keystrokeAvailable = false;
+                uint8_t asciiChar = 0, scancode = 0;
+
+                if ( !isatty( fileno( stdin ) ) )
                 {
-                    tracer.Trace( "%llu async thread (woken via %s) noticed that a keystroke is available: %02x%02x == '%c'\n",
-                                time_since_last(), ( 1 == ret ) ? "console input" : "timeout", scancode, asciiChar, printable( asciiChar ) );
+                    CKbdBuffer kbd_buf;
+                    if  ( kbd_buf.IsEmpty() )
+                        keystrokeAvailable = ( !feof( stdin ) );
+                }
+                else
+                    keystrokeAvailable = peek_keyboard( asciiChar, scancode );
+
+                if ( keystrokeAvailable )
+                {
+                    tracer.Trace( "%llu async thread (woken via %s) noticed that a keystroke is available\n",
+                                  time_since_last(), ( 1 == ret ) ? "console input" : "timeout" );
                     g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
                     SetEvent( g_heventKeyStroke ); // if the main thread is sleeping waiting for input, wake it.
                     cpu.exit_emulate_early(); // no time to lose processing the keystroke
@@ -8862,7 +8883,7 @@ int main( int argc, char * argv[] )
         char * posval = getenv( "OS" );
         g_InRVOS = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
         g_UseOneThread = g_InRVOS;
-    
+
         g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
 
 #ifdef _WIN32
