@@ -4872,7 +4872,9 @@ void handle_int_21( uint8_t c )
             if ( 0xff == cpu.dl() )
             {
                 // input. don't block if nothing is available
-                // Multiplan (v2) is the only app I've found that uses this function for input. Microsoft LISP uses it too.
+                // Multiplan (v2) uses this for input.
+                // Microsoft LISP uses it too.
+                // Small C for 8088 from BYTE magazine uses it too.
 
                 CKbdBuffer kbd_buf;
                 InjectKeystrokes();
@@ -4913,8 +4915,9 @@ void handle_int_21( uint8_t c )
 
                     // Multiplan v2 has a busy loop with this interrupt waiting for input
                     // mulisp calls this from many contexts that are hard to differentiate
+                    // cc86 Small C 8088 polls for keyboard input while compiling, so can't sleep or compiles take a long time.
 
-                    if ( !ends_with( g_acApp, "mulisp.com" ) )
+                    if ( ends_with( g_acApp, "mp.com" ) )
                         SleepAndScheduleInterruptCheck();
                 }
             }
