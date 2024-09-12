@@ -1448,8 +1448,8 @@ struct DOSPSP
     uint16_t comAvailable;           // .com programs bytes available in segment (cp/m holdover)
     uint16_t farJumpCPM;
     uint32_t int22TerminateAddress;  // When a child process ends, there is where execution resumes in the parent.
-    uint32_t int23ControlBreak;
-    uint32_t int24CriticalError;
+    uint32_t int23ControlBreak;      // in ntvdm, this points to the code at int20code to terminate
+    uint32_t int24CriticalError;     // in ntvdm, this points to the code at int20code to terminate  
     uint16_t segParent;              // parent process segment address of PSP
     uint8_t  fileHandles[20];        // 
     uint16_t segEnvironment;         // offset 0x2c
@@ -1466,7 +1466,7 @@ struct DOSPSP
     uint16_t parentES;
     uint16_t parentDS;
     uint16_t parentBP;
-    uint8_t reserved2[ 2 ];
+    uint8_t  reserved2[ 2 ];
     uint8_t  dispatcher[3];          // undocumented
     uint8_t  reserved3[9];
     uint8_t  firstFCB[16];           // later parts of a real fcb shared with secondFCB
@@ -7566,6 +7566,8 @@ void handle_int_21( uint8_t c )
             memset( psp, 0, sizeof( DOSPSP ) );
             psp->segParent = g_currentPSP;
             psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
+            psp->int23ControlBreak = ( cpu.get_dx() << 16 );
+            psp->int24CriticalError = ( cpu.get_dx() << 16 );
             psp->topOfMemory = cpu.get_si();
             psp->comAvailable = 0xffff;               // .com programs bytes available in segment
             psp->int22TerminateAddress = firstAppTerminateAddress;
@@ -8125,6 +8127,8 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs
     psp->topOfMemory = g_segHardware - 1;     // top of memorysegment in paragraph form
     psp->comAvailable = 0xfeff;               // .com programs bytes available in segment. reserve 0x100 for the stack by convention
     psp->int22TerminateAddress = firstAppTerminateAddress;
+    psp->int23ControlBreak = ( segment << 16 );
+    psp->int24CriticalError = ( segment << 16 );
     psp->countCommandTail = lenAppArgs;
     memcpy( psp->commandTail, acAppArgs, lenAppArgs ); // can't strcpy because apps like PowerC v2 pass binary data of address in parent address space where argument resides
     psp->commandTail[ lenAppArgs ] = 0x0d;           // DOS has a CR / 0x0d at the end of the command tail, not a null
