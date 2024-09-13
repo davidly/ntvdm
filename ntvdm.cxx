@@ -7622,9 +7622,9 @@ void handle_int_21( uint8_t c )
             cpu.set_carry( true );
             uint16_t handle = cpu.get_bx();
             const char * path = FindFileEntryPath( handle );
-            const char * hostPath = DOSToHostPath( path );
             if ( path )
             {
+                const char * hostPath = DOSToHostPath( path );
                 if ( 0 == cpu.al() )
                 {
                     uint16_t dos_time, dos_date;
@@ -7650,8 +7650,29 @@ void handle_int_21( uint8_t c )
                     cpu.set_ax( 1 );
                 }
             }
+            else if ( ( 0 == handle ) && ( 0 == cpu.al() ) )
+            {
+                // Stony Brook Pascal's linker does this. sblink.exe
+
+                uint16_t dos_time, dos_date;
+#ifdef _WIN32
+                FILETIME ftCur;
+                GetSystemTimeAsFileTime( &ftCur );
+                FileTimeToDos( ftCur, dos_time, dos_date );
+#else
+                struct timeval tv;
+                gettimeofday( &tv, 0 );
+                tmTimeToDos( tv.tv_sec, dos_time, dos_date );
+#endif
+
+                cpu.set_ax( 0 );
+                cpu.set_carry( false );
+                cpu.set_cx( dos_time );
+                cpu.set_dx( dos_date );
+            }
             else
             {
+
                 tracer.Trace( "  ERROR: can't get/set file date and time; file handle %04x not valid\n", handle );
                 cpu.set_ax( 6 );
             }
