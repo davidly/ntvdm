@@ -8275,9 +8275,9 @@ uint16_t LoadOverlay( const char * app, uint16_t CodeSegment, uint16_t segReloca
 
         head.Trace();
 
-        if ( 0x5a4d != head.signature )
+        if ( ( 0x5a4d != head.signature ) && ( 0x4d5a != head.signature ) )
         {
-            tracer.Trace( "  exe isn't MZ\n" );
+            tracer.Trace( "  exe isn't MZ (or ZM)\n" );
             return 1;
         }
 
@@ -8475,9 +8475,11 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 
         head.Trace();
 
-        if ( 0x5a4d != head.signature )
+        // IBM Pascal v1 pas1.exe and pas2.exe files start with ZM, not MZ and DOS loads them. Apparently it signifies real mode for some apps?
+
+        if ( ( 0x5a4d != head.signature ) && ( 0x4d5a != head.signature ) )
         {
-            tracer.Trace( "  exe isn't MZ\n" );
+            tracer.Trace( "  exe isn't MZ (or ZM)\n" );
             return 0;
         }
 
