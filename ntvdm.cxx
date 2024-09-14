@@ -1441,23 +1441,23 @@ uint8_t get_keyboard_flags_depressed()
 #pragma pack( push, 1 )
 struct DOSPSP
 {
-    uint16_t int20Code;              // machine code cd 20 to end app
-    uint16_t topOfMemory;            // in segment (paragraph) form. one byte beyond what's allocated
-    uint8_t  reserved;               // generally 0
-    uint8_t  dispatcherCPM;          // obsolete cp/m-style code to call dispatcher
-    uint16_t comAvailable;           // .com programs bytes available in segment (cp/m holdover)
-    uint16_t farJumpCPM;
-    uint32_t int22TerminateAddress;  // When a child process ends, there is where execution resumes in the parent.
-    uint32_t int23ControlBreak;      // in ntvdm, this points to the code at int20code to terminate
-    uint32_t int24CriticalError;     // in ntvdm, this points to the code at int20code to terminate  
-    uint16_t segParent;              // parent process segment address of PSP
-    uint8_t  fileHandles[20];        // 
-    uint16_t segEnvironment;         // offset 0x2c
-    uint32_t ssspEntry;              // ss:sp on entry to last int21 function. undocumented
-    uint16_t handleArraySize;        // undocumented
-    uint32_t handleArrayPointer;     // undocumented
-    uint32_t previousPSP;            // undocumented. default 0xffff:ffff
-    uint16_t parentAX;               // These parentXX fields aren't in DOS. They save register values
+    uint16_t int20Code;              // 00 machine code cd 20 to end app
+    uint16_t topOfMemory;            // 02 in segment (paragraph) form. one byte beyond what's allocated to the program.
+    uint8_t  reserved;               // 04 generally 0
+    uint8_t  dispatcherCPM;          // 05 obsolete cp/m-style code to call dispatcher
+    uint16_t comAvailable;           // 06 .com programs bytes available in segment (cp/m holdover)
+    uint16_t farJumpCPM;             // 08 remainder of jump started above
+    uint32_t int22TerminateAddress;  // 0a When a child process ends, there is where execution resumes in the parent.
+    uint32_t int23ControlBreak;      // 0e in ntvdm, this points to the code at int20code to terminate
+    uint32_t int24CriticalError;     // 12 in ntvdm, this points to the code at int20code to terminate  
+    uint16_t segParent;              // 16 parent process segment address of PSP
+    uint8_t  fileHandles[20];        // 18
+    uint16_t segEnvironment;         // 2c 
+    uint32_t ssspEntry;              // 2e ss:sp on entry to last int21 function. undocumented
+    uint16_t handleArraySize;        // 32 undocumented. dos 3+: number of entries in jft, default 20
+    uint32_t handleArrayPointer;     // 34 undocumented. dos 3+: pointer to jft
+    uint32_t previousPSP;            // 38 undocumented. default 0xffff:ffff. pointer to previous psp
+    uint16_t parentAX;               // 3c These parentXX fields aren't in DOS. They save register values
     uint16_t parentBX;               // so when execution resumes after a child process ends all is as it was.
     uint16_t parentCX;
     uint16_t parentDX;
@@ -1469,12 +1469,12 @@ struct DOSPSP
     uint8_t  reserved2[ 2 ];
     uint8_t  dispatcher[3];          // undocumented
     uint8_t  reserved3[9];
-    uint8_t  firstFCB[16];           // later parts of a real fcb shared with secondFCB
-    uint8_t  secondFCB[16];          // only the first part is used
-    uint16_t parentSS;               // not DOS standard -- I use it to restore SS on child app exit
-    uint16_t parentSP;               // not DOS standard -- I use it to restore SP on child app exit
-    uint8_t  countCommandTail;       // # of characters in command tail. This byte and beyond later used as Disk Transfer Address
-    uint8_t  commandTail[127];       // command line characters after executable, CR=0xd terminated
+    uint8_t  firstFCB[16];           // 5c later parts of a real fcb shared with secondFCB
+    uint8_t  secondFCB[16];          // 6c only the first part is used
+    uint16_t parentSS;               // 7c not DOS standard -- I use it to restore SS on child app exit
+    uint16_t parentSP;               // 7e not DOS standard -- I use it to restore SP on child app exit
+    uint8_t  countCommandTail;       // 80 # of characters in command tail. This byte and beyond later used as Disk Transfer Address
+    uint8_t  commandTail[127];       // 81 command line characters after executable, CR=0xd terminated
 
     void TraceHandleMap()
     {
@@ -1495,7 +1495,7 @@ struct DOSPSP
         tracer.TraceBinaryData( (uint8_t *) this, sizeof( DOSPSP ), 4 );
         tracer.Trace( "    topOfMemory: %04x\n", topOfMemory );
         tracer.Trace( "    segParent: %04x\n", segParent );
-        tracer.Trace( "    return address: %04x\n", int22TerminateAddress );
+        tracer.Trace( "    return / terminate address: %04x\n", int22TerminateAddress );
         tracer.Trace( "    command tail: len %u, '%.*s'\n", (uint32_t) countCommandTail, (uint32_t) countCommandTail, commandTail );
         //tracer.TraceBinaryData( (uint8_t *) &countCommandTail, 0x80, 8 );
         tracer.Trace( "    handleArraySize: %u\n", (uint32_t) handleArraySize );
@@ -4532,7 +4532,7 @@ void HandleAppExit()
         FreeMemory( g_allocEntries[ index ].segment );
     } while( true );
 
-    cpu.set_carry( false ); // indicate that the Create Process int x21 x4b (EXEC/Load and Execute Program) succeeded.
+    cpu.set_carry( false ); // indicate to the parent process that the Create Process int x21 x4b (EXEC/Load and Execute Program) succeeded.
 } //HandleAppExit
 
 uint8_t HighestDrivePresent()
@@ -7214,7 +7214,7 @@ void handle_int_21( uint8_t c )
                 return;
             }
 
-            uint16_t save_ip = cpu.get_ip();
+            uint16_t save_ip = cpu.get_ip(); // return to the same address as the int 0x69, which will then just move to the next instruction 3 bytes later
             uint16_t save_cs = cpu.get_cs();
             uint16_t save_sp = cpu.get_sp();
             uint16_t save_ss = cpu.get_ss();
@@ -7886,8 +7886,8 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
     unsigned char c = cpu.ah();
     bool ah_used = false;
     const char * pintstr = get_interrupt_string( interrupt_num, c, ah_used );
-    tracer.Trace( "int %02x ah %02x al %02x bx %04x cx %04x dx %04x di %04x si %04x ds %04x cs %04x ss %04x es %04x bp %04x sp %04x %s\n",
-                  interrupt_num, cpu.ah(), cpu.al(),
+    tracer.Trace( "int %02x ip %04x ah %02x al %02x bx %04x cx %04x dx %04x di %04x si %04x ds %04x cs %04x ss %04x es %04x bp %04x sp %04x %s\n",
+                  interrupt_num, cpu.get_ip(), cpu.ah(), cpu.al(),
                   cpu.get_bx(), cpu.get_cx(), cpu.get_dx(), cpu.get_di(), cpu.get_si(),
                   cpu.get_ds(), cpu.get_cs(), cpu.get_ss(), cpu.get_es(), cpu.get_bp(), cpu.get_sp(), pintstr );
 
@@ -8145,7 +8145,11 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs
     memset( psp, 0, sizeof( DOSPSP ) );
 
     psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
-    psp->topOfMemory = g_segHardware - 1;     // top of memorysegment in paragraph form
+
+    // in segment (paragraph) form. one byte beyond what's allocated to the program.
+    DosAllocation & da = g_allocEntries[ FindAllocationEntry( segment ) ];
+    psp->topOfMemory = segment + da.para_length - 1; // -1 to account for MCB
+
     psp->comAvailable = 0xfeff;               // .com programs bytes available in segment. reserve 0x100 for the stack by convention
     psp->int22TerminateAddress = firstAppTerminateAddress;
     psp->int23ControlBreak = ( segment << 16 );
