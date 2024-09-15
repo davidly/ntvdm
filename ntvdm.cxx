@@ -1025,15 +1025,6 @@ const char * FindFileEntryPath( uint16_t handle )
     return 0;
 } //FindFileEntryPath
 
-void TraceOpenFiles()
-{
-    for ( size_t i = 0; i < g_fileEntries.size(); i++ )
-    {
-        tracer.Trace( "    file index %d\n", i );
-        g_fileEntries[ i ].Trace();
-    }
-} //TraceOpenFiles
-
 size_t FindFileEntryFromPath( const char * pfile )
 {
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
@@ -6922,7 +6913,7 @@ void handle_int_21( uint8_t c )
 
             tracer.Trace( "  if CX %02x is open, close it. Duplicate BX %02x and put new handle in CX\n", hcx, hbx );
 
-            if ( hcx <= 4 && hcx <= 4 )
+            if ( hbx <= 4 && hcx <= 4 )
             {
                 // probably mapping stderr to stdout, etc. Ignore
 
@@ -7279,8 +7270,8 @@ void handle_int_21( uint8_t c )
             pfirstFCB->TraceFirst16();
             psecondFCB->TraceFirst16();
 
-            tracer.Trace( "  list of open files:\n" );
-            TraceOpenFiles();
+            trace_all_open_files();
+
             char acTail[ 128 ] = {0};
             memcpy( acTail, commandTail + 1, *commandTail );
 
