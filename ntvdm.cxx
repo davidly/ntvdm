@@ -142,7 +142,7 @@ struct FileEntry
 {
     char path[ MAX_PATH ];
     FILE * fp;
-    uint16_t handle; // DOS handle, not host OS
+    uint16_t handle; // DOS handle, not host OS handle
     uint8_t mode; // 0=ro, 1=wo, 2=rw. upper bits are used for sharing/private
     uint16_t seg_process; // process that opened the file
 
@@ -302,6 +302,7 @@ static bool g_UseOneThread = false;                  // true if no keyboard thre
 static bool g_InRVOS = false;                        // true if running in the RISC-V + Linux emulator RVOS
 static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
 static bool g_SendControlCInt = false;               // set to true when/if a ^C is detected and an interrupt should be sent
+static uint16_t g_builtInHandles[ 5 ] = { 0, 1, 2, 3, 4 }; // stdin, stdout, stderr, stdaux, stdprn are all mapped to self initially
 
 // Set to true to fill dos memory allocations with patterns to detect apps that use memory they previously freed.
 // These include Microsoft Pascal v4, GWBASIC, BASIC compiler v7.10, Fortran v5, and Link v5.10.
@@ -311,6 +312,8 @@ static bool g_SendControlCInt = false;               // set to true when/if a ^C
 // Previous and subsequent versions of these tools don't have these bugs.
 
 static bool g_fillDOSMemoryBlocks = false;
+
+const uint16_t DOS_HANDLE_INVALID = (uint16_t) -1;
 
 #ifndef _WIN32
 static bool g_forcePathsUpper = false;               // helpful for Linux
@@ -815,6 +818,83 @@ void SleepAndScheduleInterruptCheck()
     cpu.exit_emulate_early(); // fall out of the instruction loop early to check for a timer or keyboard interrupt
 } //SleepAndScheduleInterruptCheck
 
+#pragma pack( push, 1 )
+struct DOSPSP
+{
+    uint16_t int20Code;              // 00 machine code cd 20 to end app
+    uint16_t topOfMemory;            // 02 in segment (paragraph) form. one byte beyond what's allocated to the program.
+    uint8_t  reserved;               // 04 generally 0
+    uint8_t  dispatcherCPM;          // 05 obsolete cp/m-style code to call dispatcher
+    uint16_t comAvailable;           // 06 .com programs bytes available in segment (cp/m holdover)
+    uint16_t farJumpCPM;             // 08 remainder of jump started above
+    uint32_t int22TerminateAddress;  // 0a When a child process ends, there is where execution resumes in the parent.
+    uint32_t int23ControlBreak;      // 0e in ntvdm, this points to the code at int20code to terminate
+    uint32_t int24CriticalError;     // 12 in ntvdm, this points to the code at int20code to terminate  
+    uint16_t segParent;              // 16 parent process segment address of PSP
+    uint8_t  fileHandles[20];        // 18
+    uint16_t segEnvironment;         // 2c 
+    uint32_t ssspEntry;              // 2e ss:sp on entry to last int21 function. undocumented
+    uint16_t handleArraySize;        // 32 undocumented. dos 3+: number of entries in jft, default 20
+    uint32_t handleArrayPointer;     // 34 undocumented. dos 3+: pointer to jft
+    uint32_t previousPSP;            // 38 undocumented. default 0xffff:ffff. pointer to previous psp
+    uint16_t parentAX;               // 3c These parentXX fields aren't in DOS. They save register values
+    uint16_t parentBX;               // so when execution resumes after a child process ends all is as it was.
+    uint16_t parentCX;
+    uint16_t parentDX;
+    uint16_t parentDI;
+    uint16_t parentSI;
+    uint16_t parentES;
+    uint16_t parentDS;
+    uint16_t parentBP;
+    uint8_t  reserved2[ 2 ];
+    uint8_t  dispatcher[3];          // undocumented
+    uint8_t  builtInClosed;          // bitmask of built-in handles closed by this process for restoration at exit
+    uint8_t  reserved3[8];
+    uint8_t  firstFCB[16];           // 5c later parts of a real fcb shared with secondFCB
+    uint8_t  secondFCB[16];          // 6c only the first part is used
+    uint16_t parentSS;               // 7c not DOS standard -- I use it to restore SS on child app exit
+    uint16_t parentSP;               // 7e not DOS standard -- I use it to restore SP on child app exit
+    uint8_t  countCommandTail;       // 80 # of characters in command tail. This byte and beyond later used as Disk Transfer Address
+    uint8_t  commandTail[127];       // 81 command line characters after executable, CR=0xd terminated
+
+    void TraceHandleMap()
+    {
+        tracer.Trace( "    handlemap: " );
+        for ( size_t x = 0; x < _countof( fileHandles ); x++ )
+            tracer.Trace( "%02x ", fileHandles[ x ] );
+        tracer.Trace( "\n" );
+    }
+
+    void Trace()
+    {
+        assert( 0x16 == offsetof( DOSPSP, segParent ) );
+        assert( 0x5c == offsetof( DOSPSP, firstFCB ) );
+        assert( 0x6c == offsetof( DOSPSP, secondFCB ) );
+        assert( 0x80 == offsetof( DOSPSP, countCommandTail ) );
+
+        tracer.Trace( "  PSP: %04x\n", GetSegment( (uint8_t *) this ) );
+        tracer.TraceBinaryData( (uint8_t *) this, sizeof( DOSPSP ), 4 );
+        tracer.Trace( "    topOfMemory: %04x\n", topOfMemory );
+        tracer.Trace( "    segParent: %04x\n", segParent );
+        tracer.Trace( "    builtInClosed: %02x\n", builtInClosed );
+        tracer.Trace( "    return / terminate address: %04x\n", int22TerminateAddress );
+        tracer.Trace( "    command tail: len %u, '%.*s'\n", (uint32_t) countCommandTail, (uint32_t) countCommandTail, commandTail );
+        //tracer.TraceBinaryData( (uint8_t *) &countCommandTail, 0x80, 8 );
+        tracer.Trace( "    handleArraySize: %u\n", (uint32_t) handleArraySize );
+        tracer.Trace( "    handleArrayPointer: %04x\n", handleArrayPointer );
+
+        TraceHandleMap();
+
+        tracer.Trace( "    segEnvironment: %04x\n", segEnvironment );
+        if ( 0 != segEnvironment )
+        {
+            const char * penv = (char *) cpu.flat_address( segEnvironment, 0 );
+            tracer.TraceBinaryData( (uint8_t *) penv, 0x100, 6 );
+        }
+    }
+};
+#pragma pack(pop)
+
 bool isFilenameChar( char c )
 {
     char l = (char) tolower( c );
@@ -835,6 +915,11 @@ static const char * get_access_mode( uint8_t mode )
 
 static void trace_all_open_files()
 {
+    tracer.Trace( "  built-in handle map: " );
+    for ( size_t i = 0; i <= 4; i++ )
+        tracer.Trace( " %04x => %04x, ", i, g_builtInHandles[ i ] );
+    tracer.Trace( "\n" );
+
     size_t cEntries = g_fileEntries.size();
     tracer.Trace( "  all files, count %d:\n", cEntries );
     for ( size_t i = 0; i < cEntries; i++ )
@@ -926,6 +1011,28 @@ static int compare_file_entries( const void * a, const void * b )
     return -1;
 } //compare_file_entries
 
+void MarkBuiltInFree( uint16_t handle )
+{
+    if ( handle <= 4 )
+    {
+        DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
+        psp->builtInClosed |= ( 1 << handle );
+        g_builtInHandles[ handle ] = DOS_HANDLE_INVALID;
+    }
+} // MarkBuiltInBusy
+
+void MarkBuiltInBusy( uint16_t handle )
+{
+    if ( handle <= 4 )
+        g_builtInHandles[ handle ] = handle;
+} // MarkBuiltInBusy
+
+void MarkFreeBuiltInBusy( uint16_t handle )
+{
+    if ( ( handle <= 4 ) && ( DOS_HANDLE_INVALID == g_builtInHandles[ handle ] ) )
+        g_builtInHandles[ handle ] = handle;
+} // MarkFreeBuiltInBusy
+
 FILE * RemoveFileEntry( uint16_t handle )
 {
     for ( size_t i = 0; i < g_fileEntries.size(); i++ )
@@ -935,6 +1042,7 @@ FILE * RemoveFileEntry( uint16_t handle )
             FILE * fp = g_fileEntries[ i ].fp;
             tracer.Trace( "  removing file entry %s: %d\n", g_fileEntries[ i ].path, i );
             g_fileEntries.erase( g_fileEntries.begin() + i );
+            MarkBuiltInFree( handle );
             return fp;
         }
     }
@@ -986,7 +1094,7 @@ size_t FindFileEntryIndex( uint16_t handle )
         }
     }
 
-    tracer.Trace( "  ERROR: could not find file entry for handle %04x\n", handle );
+    tracer.Trace( "  WARNING: could not find file entry for handle %04x\n", handle );
     return (size_t) -1;
 } //FindFileEntryIndex
 
@@ -1055,25 +1163,51 @@ FILE * FindFileEntryFromFileFCB( const char * pfile )
     return 0;
 } //FindFileEntryFromFileFCB
 
+void SortFileHandles()
+{
+    qsort( g_fileEntries.data(), g_fileEntries.size(), sizeof( FileEntry ), compare_file_entries );
+} //SortFileHandles
+
 uint16_t FindFirstFreeFileHandle()
 {
+    // First try to use any closed built-in handles. This DOS behavior is required for some apps to run.
+
+    for ( uint16_t i = 0; i <= 4; i++ )
+        if ( DOS_HANDLE_INVALID == g_builtInHandles[ i ] )
+            return i;
+
     // Apps like the QuickBasic compiler (bc.exe) depend on the side effect that after a file
     // is closed and a new file is opened the lowest possible free handle value is used for the
     // newly opened file. It's a bug in the app, but it's not getting fixed.
 
-    qsort( g_fileEntries.data(), g_fileEntries.size(), sizeof( FileEntry ), compare_file_entries );
+    // DOS uses 5, since 0-4 are for built-in handles. stdin, stdout, stderr, stdaux, stdprn
+    // An app can close a built-in handle and the next dup or open call must use that handle, so
+    // stdin can be redirected from a file, etc.
 
-    // DOS uses this, since 0-4 are for built-in handles. stdin, stdout, stderr, com1/stdaux, lpt1
-
+    SortFileHandles(); // needed for the algorithm below to work
     uint16_t freehandle = 5;
 
-    for ( size_t i = 0; i < g_fileEntries.size(); i++ )
+    do
     {
-        if ( g_fileEntries[ i ].handle != freehandle )
-            return freehandle;
-        else
+        bool keep_looking = false;
+
+        for ( size_t i = 0; i < g_fileEntries.size(); i++ )
+        {
+            if ( g_fileEntries[ i ].handle == freehandle )
+            {
+                keep_looking = true;
+                break;
+            }
+
+            if ( g_fileEntries[ i ].handle > freehandle )
+                return freehandle;
+        }
+
+        if ( keep_looking )
             freehandle++;
-    }
+        else
+            break;
+    } while( true );
 
     return freehandle;
 } //FindFirstFreeFileHandle
@@ -1428,81 +1562,6 @@ uint8_t get_keyboard_flags_depressed()
 #endif
     return val;
 } //get_keyboard_flags_depressed
-
-#pragma pack( push, 1 )
-struct DOSPSP
-{
-    uint16_t int20Code;              // 00 machine code cd 20 to end app
-    uint16_t topOfMemory;            // 02 in segment (paragraph) form. one byte beyond what's allocated to the program.
-    uint8_t  reserved;               // 04 generally 0
-    uint8_t  dispatcherCPM;          // 05 obsolete cp/m-style code to call dispatcher
-    uint16_t comAvailable;           // 06 .com programs bytes available in segment (cp/m holdover)
-    uint16_t farJumpCPM;             // 08 remainder of jump started above
-    uint32_t int22TerminateAddress;  // 0a When a child process ends, there is where execution resumes in the parent.
-    uint32_t int23ControlBreak;      // 0e in ntvdm, this points to the code at int20code to terminate
-    uint32_t int24CriticalError;     // 12 in ntvdm, this points to the code at int20code to terminate  
-    uint16_t segParent;              // 16 parent process segment address of PSP
-    uint8_t  fileHandles[20];        // 18
-    uint16_t segEnvironment;         // 2c 
-    uint32_t ssspEntry;              // 2e ss:sp on entry to last int21 function. undocumented
-    uint16_t handleArraySize;        // 32 undocumented. dos 3+: number of entries in jft, default 20
-    uint32_t handleArrayPointer;     // 34 undocumented. dos 3+: pointer to jft
-    uint32_t previousPSP;            // 38 undocumented. default 0xffff:ffff. pointer to previous psp
-    uint16_t parentAX;               // 3c These parentXX fields aren't in DOS. They save register values
-    uint16_t parentBX;               // so when execution resumes after a child process ends all is as it was.
-    uint16_t parentCX;
-    uint16_t parentDX;
-    uint16_t parentDI;
-    uint16_t parentSI;
-    uint16_t parentES;
-    uint16_t parentDS;
-    uint16_t parentBP;
-    uint8_t  reserved2[ 2 ];
-    uint8_t  dispatcher[3];          // undocumented
-    uint8_t  reserved3[9];
-    uint8_t  firstFCB[16];           // 5c later parts of a real fcb shared with secondFCB
-    uint8_t  secondFCB[16];          // 6c only the first part is used
-    uint16_t parentSS;               // 7c not DOS standard -- I use it to restore SS on child app exit
-    uint16_t parentSP;               // 7e not DOS standard -- I use it to restore SP on child app exit
-    uint8_t  countCommandTail;       // 80 # of characters in command tail. This byte and beyond later used as Disk Transfer Address
-    uint8_t  commandTail[127];       // 81 command line characters after executable, CR=0xd terminated
-
-    void TraceHandleMap()
-    {
-        tracer.Trace( "    handlemap: " );
-        for ( size_t x = 0; x < _countof( fileHandles ); x++ )
-            tracer.Trace( "%02x ", fileHandles[ x ] );
-        tracer.Trace( "\n" );
-    }
-
-    void Trace()
-    {
-        assert( 0x16 == offsetof( DOSPSP, segParent ) );
-        assert( 0x5c == offsetof( DOSPSP, firstFCB ) );
-        assert( 0x6c == offsetof( DOSPSP, secondFCB ) );
-        assert( 0x80 == offsetof( DOSPSP, countCommandTail ) );
-
-        tracer.Trace( "  PSP: %04x\n", GetSegment( (uint8_t *) this ) );
-        tracer.TraceBinaryData( (uint8_t *) this, sizeof( DOSPSP ), 4 );
-        tracer.Trace( "    topOfMemory: %04x\n", topOfMemory );
-        tracer.Trace( "    segParent: %04x\n", segParent );
-        tracer.Trace( "    return / terminate address: %04x\n", int22TerminateAddress );
-        tracer.Trace( "    command tail: len %u, '%.*s'\n", (uint32_t) countCommandTail, (uint32_t) countCommandTail, commandTail );
-        //tracer.TraceBinaryData( (uint8_t *) &countCommandTail, 0x80, 8 );
-        tracer.Trace( "    handleArraySize: %u\n", (uint32_t) handleArraySize );
-        tracer.Trace( "    handleArrayPointer: %04x\n", handleArrayPointer );
-
-        TraceHandleMap();
-
-        tracer.Trace( "    segEnvironment: %04x\n", segEnvironment );
-        if ( 0 != segEnvironment )
-        {
-            const char * penv = (char *) cpu.flat_address( segEnvironment, 0 );
-            tracer.TraceBinaryData( (uint8_t *) penv, 0x100, 6 );
-        }
-    }
-};
-#pragma pack(pop)
 
 #pragma pack( push, 1 )
 struct DOSFCB
@@ -3129,7 +3188,7 @@ uint8_t i8086_invoke_in_byte( uint16_t port )
     else if ( 0x43 == port ) // Programmable Interrupt Timer mode. write-only, can't be read
     {
     }
-    else if ( 0x60 ==  port ) // keyboard data
+    else if ( 0x60 == port ) // keyboard data
     {
         tracer.Trace( "  invoke_in_byte port 60 keyboard data\n" );
         uint8_t asciiChar, scancode;
@@ -3140,6 +3199,8 @@ uint8_t i8086_invoke_in_byte( uint16_t port )
             tracer.Trace( "  invoke_in_byte, port %02x peeked a character and is returning scancode %02x\n", port, scancode );
             return scancode;
         }
+        else
+            return 0x80;
     }
     else if ( 0x61 == port ) // keyboard controller port
     {
@@ -4462,8 +4523,17 @@ void HandleAppExit()
         uint16_t handle = g_fileEntries[ index ].handle;
         tracer.Trace( "  closing file an app leaked: '%s', handle %04x\n", g_fileEntries[ index ].path, handle );
         FILE * fp = RemoveFileEntry( handle );
+        assert( 0 != fp );
         fclose( fp );
     } while ( true );
+
+    // Reset any built-in handles closed by this process to their reset state on app exit.
+    // This is needed for apps like HiSoft HI-TECH C v4.11 cross-compiler for Z80; otherwise it closes a handle it needs.
+
+    for ( uint16_t i = 0; i <= 4; i++ )
+        if ( ( DOS_HANDLE_INVALID == g_builtInHandles[ i ] ) &&
+             ( 0 != ( psp->builtInClosed & ( 1 << i ) ) ) )
+            g_builtInHandles[ i ] = i;
 
     trace_all_open_files_fcb();
 
@@ -4779,9 +4849,11 @@ void create_or_reset_file( const char * path  )
         strcpy( fe.path, path );
         fe.fp = fp;
         fe.handle = FindFirstFreeFileHandle();
+        MarkBuiltInBusy( fe.handle );
         fe.mode = 2; // read / write
         fe.seg_process = g_currentPSP;
         g_fileEntries.push_back( fe );
+        SortFileHandles();
         cpu.set_ax( fe.handle );
         cpu.set_carry( false );
         tracer.Trace( "  successfully created file and using new handle %04x\n", cpu.get_ax() );
@@ -5532,6 +5604,7 @@ void handle_int_21( uint8_t c )
                     fe.mode = 2;
                     fe.seg_process = g_currentPSP;
                     g_fileEntriesFCB.push_back( fe );
+                    SortFileHandles();
                     trace_all_open_files_fcb();
 
                     pfcb->Trace();
@@ -5749,7 +5822,6 @@ void handle_int_21( uint8_t c )
             pfcb->SetRandomFromSequential();
             tracer.Trace( "  updated FCB:\n" );
             pfcb->Trace();
-
             return;
         }
         case 0x25:
@@ -5773,6 +5845,8 @@ void handle_int_21( uint8_t c )
 
             uint16_t seg = cpu.get_dx();
             memcpy( cpu.flat_address( seg, 0 ), cpu.flat_address( g_currentPSP, 0 ), sizeof( DOSPSP ) );
+            DOSPSP * psp = (DOSPSP *) cpu.flat_address( seg, 0 );
+            psp->builtInClosed = 0;
             return;
         }
         case 0x27:
@@ -6282,9 +6356,11 @@ void handle_int_21( uint8_t c )
                 strcpy( fe.path, path );
                 fe.fp = fp;
                 fe.handle = FindFirstFreeFileHandle();
+                MarkBuiltInBusy( fe.handle );
                 fe.mode = openmode;
                 fe.seg_process = g_currentPSP;
                 g_fileEntries.push_back( fe );
+                SortFileHandles();
                 cpu.set_ax( fe.handle );
                 cpu.set_carry( false );
                 tracer.Trace( "  successfully opened file, using new handle %04x\n", cpu.get_ax() );
@@ -6307,32 +6383,29 @@ void handle_int_21( uint8_t c )
             trace_all_open_files();
             uint16_t handle = cpu.get_bx();
             handle = MapFileHandleCobolHack( handle );
-
-            if ( handle <= 4 )
+            size_t index = FindFileEntryIndex( handle );
+            if ( -1 != index )
             {
-                tracer.Trace( "  close of built-in handle ignored\n" );
+                FILE * fp = RemoveFileEntry( handle );
+                if ( fp )
+                {
+                    tracer.Trace( "  close file handle %04x, fp %p\n", handle, fp );
+                    fclose( fp );
+                    cpu.set_carry( false );
+                    UpdateHandleMap();
+                }
+            }
+            else if ( handle <= 4 )
+            {
+                MarkBuiltInFree( handle );
                 cpu.set_carry( false );
+                tracer.Trace( "  closed built-in handle %04x\n", handle );
             }
             else
             {
-                size_t index = FindFileEntryIndex( handle );
-                if ( -1 != index )
-                {
-                    FILE * fp = RemoveFileEntry( handle );
-                    if ( fp )
-                    {
-                        tracer.Trace( "  close file handle %04x, fp %p\n", handle, fp );
-                        fclose( fp );
-                        cpu.set_carry( false );
-                        UpdateHandleMap();
-                    }
-                }
-                else
-                {
-                    tracer.Trace( "  ERROR: close file handle couldn't find handle %04x\n", handle );
-                    cpu.set_ax( 6 );
-                    cpu.set_carry( true );
-                }
+                tracer.Trace( "  ERROR: close file handle couldn't find handle %04x\n", handle );
+                cpu.set_ax( 6 );
+                cpu.set_carry( true );
             }
     
             return;
@@ -6345,8 +6418,8 @@ void handle_int_21( uint8_t c )
             uint16_t handle = cpu.get_bx();
             handle = MapFileHandleCobolHack( handle );
             tracer.Trace( "  handle %04x, mapped %04x, bytes %04x\n", cpu.get_bx(), handle, cpu.get_cx() );
-
-            if ( handle <= 4 )
+            size_t index = FindFileEntryIndex( handle );
+            if ( ( handle <= 4 ) && ( (size_t) -1 == index ) )
             {
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
     
@@ -6421,9 +6494,9 @@ void handle_int_21( uint8_t c )
                 return;
             }
     
-            FILE * fp = FindFileEntry( handle );
-            if ( fp )
+            if ( (size_t) -1 != index )
             {
+                FILE * fp = g_fileEntries[ index ].fp;
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                 tracer.Trace( "  read from file using handle %u, %04x bytes at address %02x:%02x. offset just beyond: %02x\n",
@@ -6472,16 +6545,23 @@ void handle_int_21( uint8_t c )
             // write to file using handle. BX=handle, CX=num bytes, DS:DX: buffer
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
     
+            cpu.set_carry( false );
             uint16_t handle = cpu.get_bx();
             handle = MapFileHandleCobolHack( handle );
             tracer.Trace( "  handle %04x, mapped %04x, bytes %04x\n", cpu.get_bx(), handle, cpu.get_cx() );
+            size_t index = FindFileEntryIndex( handle );
 
-            cpu.set_carry( false );
-            if ( handle <= 4 )
+            if ( ( handle <= 4 ) && ( (size_t) -1 == index ) )
             {
                 cpu.set_ax( cpu.get_cx() );
     
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
+
+                if ( DOS_HANDLE_INVALID == g_builtInHandles[ handle ] ) // if it's been closed, don't write
+                {
+                    tracer.Trace( "attempt to write to closed handle %04x\n", handle );
+                    return;
+                }
     
                 uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
     
@@ -6552,12 +6632,14 @@ void handle_int_21( uint8_t c )
                         fflush( 0 ); // Linux needs this or the output is cached
                     }
                 }
+                else if ( 0 == handle )
+                    tracer.Trace( "  write to stdin seems odd -- was the real file closed previously?\n" );
                 return;
             }
     
-            FILE * fp = FindFileEntry( handle );
-            if ( fp )
+            if ( (size_t) -1 != index )
             {
+                FILE * fp = g_fileEntries[ index ].fp;
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                 tracer.Trace( "  write file using handle, %04x bytes at address %p\n", len, p );
@@ -6634,7 +6716,8 @@ void handle_int_21( uint8_t c )
             int32_t offset = ( ( (int32_t) cpu.get_cx() ) << 16 ) | cpu.get_dx();
             tracer.Trace( "  move file pointer; original handle %04x, mapped handle %04x, offset %d\n", cpu.get_bx(), handle, offset );
 
-            if ( handle <= 4 ) // built-in handle
+            size_t index = FindFileEntryIndex( handle );
+            if ( ( handle <= 4 ) && ( (size_t) -1 == index ) )
             {
                 cpu.set_carry( false );
                 return;
@@ -6767,7 +6850,8 @@ void handle_int_21( uint8_t c )
             {
                 case 0:
                 {
-                    if ( handle <= 4 )
+                    size_t index = FindFileEntryIndex( handle );
+                    if ( ( handle <= 4 ) && ( (size_t) -1 == index ) )
                     {
                         // get device information
         
@@ -6858,20 +6942,23 @@ void handle_int_21( uint8_t c )
 
             cpu.set_carry( true );
             uint16_t existing_handle = cpu.get_bx();
-
-            if ( existing_handle <= 4 )
-            {
-                cpu.set_ax( existing_handle );
-                cpu.set_carry( false );
-                tracer.Trace( "  fake duplicate of built-in handle\n" );
-                return;
-            }
-
             size_t index = FindFileEntryIndex( existing_handle );
-            if ( -1 != index )
+            if ( ( existing_handle <= 4 ) && ( (size_t) -1 == index ) )
+            {
+                uint16_t new_handle = FindFirstFreeFileHandle();
+                if ( new_handle <= 4 )
+                    g_builtInHandles[ new_handle ] = existing_handle;
+                else
+                    new_handle = existing_handle;
+
+                cpu.set_carry( false );
+                cpu.set_ax( new_handle );
+                tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", existing_handle, cpu.get_ax() );
+                trace_all_open_files();
+            }
+            else if ( -1 != index )
             {
                 FileEntry & entry = g_fileEntries[ index ];
-
                 FILE * fp = fopen( entry.path, ( 0 != entry.mode ) ? "r+b" : "rb" );
                 if ( fp )
                 {
@@ -6879,9 +6966,11 @@ void handle_int_21( uint8_t c )
                     strcpy( fe.path, entry.path );
                     fe.fp = fp;
                     fe.handle = FindFirstFreeFileHandle();
+                    MarkBuiltInBusy( fe.handle );
                     fe.mode = entry.mode;
                     fe.seg_process = g_currentPSP;
                     g_fileEntries.push_back( fe );
+                    SortFileHandles();
                     cpu.set_ax( fe.handle );
                     cpu.set_carry( false );
                     tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", existing_handle, cpu.get_ax() );
@@ -6917,6 +7006,7 @@ void handle_int_21( uint8_t c )
             {
                 // probably mapping stderr to stdout, etc. Ignore
 
+                g_builtInHandles[ hcx ] = hbx;
                 cpu.set_carry( false );
             }
             else
@@ -6958,9 +7048,11 @@ void handle_int_21( uint8_t c )
                         strcpy( fe.path, entry.path );
                         fe.fp = fp;
                         fe.handle = FindFirstFreeFileHandle();
+                        MarkBuiltInBusy( fe.handle );
                         fe.mode = entry.mode;
                         fe.seg_process = g_currentPSP;
                         g_fileEntries.push_back( fe );
+                        SortFileHandles();
                         cpu.set_cx( fe.handle );
                         cpu.set_carry( false );
                         tracer.Trace( "  successfully created duplicate handle of %04x as %04x\n", hbx, cpu.get_cx() );
@@ -7271,7 +7363,6 @@ void handle_int_21( uint8_t c )
             psecondFCB->TraceFirst16();
 
             trace_all_open_files();
-
             char acTail[ 128 ] = {0};
             memcpy( acTail, commandTail + 1, *commandTail );
 
@@ -7309,6 +7400,7 @@ void handle_int_21( uint8_t c )
                     psp->parentBP = save_bp;
 
                     g_currentPSP = seg_psp;
+                    psp->builtInClosed = 0;
                     memcpy( psp->firstFCB, pfirstFCB, 16 );
                     memcpy( psp->secondFCB, psecondFCB, 16 );
                     psp->int22TerminateAddress = ( ( (uint32_t) save_cs ) << 16 ) | (uint32_t ) save_ip;
@@ -7897,6 +7989,11 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
     if ( 0 == interrupt_num )
     {
         tracer.Trace( "    divide by zero interrupt 0\n" );
+        return;
+    }
+    else if ( 3 == interrupt_num )
+    {
+        i8086_hard_exit( "unhandled int3; exiting" );
         return;
     }
     else if ( 4 == interrupt_num )
