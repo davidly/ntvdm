@@ -255,7 +255,6 @@ const uint32_t MachineCodeSegment = 0x0060;                       // machine cod
 const uint16_t AppSegment = 0x1000 / 16;                          // base address for apps in the vm. 4k. DOS uses 0x1920 == 6.4k
 const uint32_t DOS_FILENAME_SIZE = 13;                            // 8 + 3 + '.' + 0-termination
 const uint16_t InterruptRoutineSegment = 0x00c0;                  // interrupt routines start here.
-const uint32_t firstAppTerminateAddress = 0xf000dead;             // exit ntvdm when this is the parent return address
 const uint16_t SegmentListOfLists = 0x50;
 const uint16_t OffsetListOfLists = 0xb0;
 const uint64_t OffsetDeviceControlBlock = 0xe0;
@@ -276,6 +275,7 @@ static vector<FileEntry> g_fileEntries;              // vector of currently open
 static vector<FileEntry> g_fileEntriesFCB;           // vector of currently open files with FCBs
 static vector<DosAllocation> g_allocEntries;         // vector of blocks allocated to DOS apps
 static uint16_t g_currentPSP = 0;                    // psp of the currently running process
+static uint16_t g_mainPSP = 0;                       // psp of the main app
 static bool g_use80xRowsMode = false;                // true to force 80 x 25/43/50 with cursor positioning
 static bool g_forceConsole = false;                  // true to force teletype mode, with no cursor positioning
 static bool g_int16_1_loop = false;                  // true if an app is looping to get keyboard input. don't busy loop.
@@ -307,7 +307,7 @@ static uint16_t g_builtInHandles[ 5 ] = { 0, 1, 2, 3, 4 }; // stdin, stdout, std
 // Set to true to fill dos memory allocations with patterns to detect apps that use memory they previously freed.
 // These include Microsoft Pascal v4, GWBASIC, BASIC compiler v7.10, Fortran v5, and Link v5.10.
 // Zortech C v1 and v2 have similar bugs.
-// QuickC 2.x free memory then execute it just before running compiled binaries.
+// QuickC 2.x frees memory then executes it just before running compiled binaries.
 // Turbo Pascal v7.0 frees memory then executes it just before shelling out to command.com
 // Previous and subsequent versions of these tools don't have these bugs.
 
@@ -877,7 +877,9 @@ struct DOSPSP
         tracer.Trace( "    topOfMemory: %04x\n", topOfMemory );
         tracer.Trace( "    segParent: %04x\n", segParent );
         tracer.Trace( "    builtInClosed: %02x\n", builtInClosed );
-        tracer.Trace( "    return / terminate address: %04x\n", int22TerminateAddress );
+        tracer.Trace( "    int22 return / terminate address: %04x\n", int22TerminateAddress );
+        tracer.Trace( "    int23 control break address: %04x\n", int23ControlBreak );
+        tracer.Trace( "    int24 critical error address: %04x\n", int24CriticalError );
         tracer.Trace( "    command tail: len %u, '%.*s'\n", (uint32_t) countCommandTail, (uint32_t) countCommandTail, commandTail );
         //tracer.TraceBinaryData( (uint8_t *) &countCommandTail, 0x80, 8 );
         tracer.Trace( "    handleArraySize: %u\n", (uint32_t) handleArraySize );
@@ -4537,6 +4539,8 @@ void HandleAppExit()
 
     trace_all_open_files_fcb();
 
+    // Note: Some DOS documentation states that FCB files shouldn't be closed at child process exit.
+
     do
     {
         size_t index = FindFileEntryIndexByProcessFCB( g_currentPSP );
@@ -4553,8 +4557,13 @@ void HandleAppExit()
     tracer.Trace( "  app exiting, segment %04x, psp: %p, environment segment %04x\n", g_currentPSP, psp, psp->segEnvironment );
     FreeMemory( psp->segEnvironment );
 
-    if ( psp && ( firstAppTerminateAddress != psp->int22TerminateAddress ) )
+    if ( psp && ( g_currentPSP != g_mainPSP ) )
     {
+        uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+        pVectors[ 0x22 ] = psp->int22TerminateAddress;
+        pVectors[ 0x23 ] = psp->int23ControlBreak;
+        pVectors[ 0x24 ] = psp->int24CriticalError;
+
         g_currentPSP = psp->segParent;
         cpu.set_cs( ( psp->int22TerminateAddress >> 16 ) & 0xffff );
         cpu.set_ip( psp->int22TerminateAddress & 0xffff );
@@ -5830,6 +5839,7 @@ void handle_int_21( uint8_t c )
     
             tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_ds(), cpu.get_dx() );
             assert( i8086_interrupt_syscall != cpu.al() ); // owned by ntvdm; I haven't found any apps that use this
+
             uint16_t * pvec = cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
             pvec[0] = cpu.get_dx();
             pvec[1] = cpu.get_ds();
@@ -6134,14 +6144,14 @@ void handle_int_21( uint8_t c )
             assert( 0 != g_allocEntries.size() ); // loading the app creates 1 that shouldn't be freed.
             trace_all_allocations();
 
-            uint16_t new_paragraphs = cpu.get_dx();
+            uint16_t new_paragraphs = cpu.get_dx() & 0x7fff; // DOS discards the high bit of DX
             tracer.Trace( "  TSR and keep %#x paragraphs resident\n", new_paragraphs );
             g_allocEntries[ entry ].para_length = new_paragraphs;
             reset_mcb_tags();
             trace_all_allocations();
 
             DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
-            if ( psp && ( firstAppTerminateAddress != psp->int22TerminateAddress ) )
+            if ( psp && ( g_currentPSP != g_mainPSP ) )
             {
                 g_appTerminationReturnCode = cpu.al();
                 tracer.Trace( "  tsr termination return code: %d\n", g_appTerminationReturnCode );
@@ -6152,6 +6162,12 @@ void handle_int_21( uint8_t c )
                 cpu.set_ip( psp->int22TerminateAddress & 0xffff );
                 cpu.set_ss( psp->parentSS ); // not DOS standard, but workaround for apps like QCL.exe QuickC v1.0 that doesn't restore the stack
                 cpu.set_sp( psp->parentSP ); // ""
+
+                uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+                pVectors[ 0x22 ] = psp->int22TerminateAddress;
+                pVectors[ 0x23 ] = psp->int23ControlBreak;
+                pVectors[ 0x24 ] = psp->int24CriticalError;
+
                 tracer.Trace( "  returning from tsr to return address %04x:%04x\n", cpu.get_cs(), cpu.get_ip() );
             }
             else
@@ -7649,11 +7665,13 @@ void handle_int_21( uint8_t c )
             memset( psp, 0, sizeof( DOSPSP ) );
             psp->segParent = g_currentPSP;
             psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
-            psp->int23ControlBreak = ( cpu.get_dx() << 16 );
-            psp->int24CriticalError = ( cpu.get_dx() << 16 );
+
+            uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+            psp->int22TerminateAddress = pVectors[ 0x22 ];
+            psp->int23ControlBreak = pVectors[ 0x23 ];
+            psp->int24CriticalError = pVectors[ 0x24 ];
             psp->topOfMemory = cpu.get_si();
             psp->comAvailable = 0xffff;               // .com programs bytes available in segment
-            psp->int22TerminateAddress = firstAppTerminateAddress;
 
             g_currentPSP = cpu.get_dx();
             return;
@@ -8239,9 +8257,12 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs
     psp->topOfMemory = segment + da.para_length - 1; // -1 to account for MCB
 
     psp->comAvailable = 0xfeff;               // .com programs bytes available in segment. reserve 0x100 for the stack by convention
-    psp->int22TerminateAddress = firstAppTerminateAddress;
-    psp->int23ControlBreak = ( segment << 16 );
-    psp->int24CriticalError = ( segment << 16 );
+
+    uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+    psp->int22TerminateAddress = pVectors[ 0x22 ];
+    psp->int23ControlBreak = pVectors[ 0x23 ];
+    psp->int24CriticalError = pVectors[ 0x24 ];
+
     psp->countCommandTail = lenAppArgs;
     memcpy( psp->commandTail, acAppArgs, lenAppArgs ); // can't strcpy because apps like PowerC v2 pass binary data of address in parent address space where argument resides
     psp->commandTail[ lenAppArgs ] = 0x0d;           // DOS has a CR / 0x0d at the end of the command tail, not a null
@@ -9421,6 +9442,7 @@ int main( int argc, char * argv[] )
         g_currentPSP = LoadBinary( g_acApp, acAppArgs, (uint8_t) strlen( acAppArgs ), segEnvironment, true, 0, 0, 0, 0, bootSectorLoad );
         if ( 0 == g_currentPSP )
             i8086_hard_exit( "unable to load executable\n" );
+        g_mainPSP = g_currentPSP;
     
         // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
         // turbo pascal v3 doesn't give a good indication that it wants 80x25.
