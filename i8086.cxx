@@ -759,6 +759,12 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     uint16_t * vectorItem = flat_address16( 0, 4 * interrupt_num );
     ip = vectorItem[ 0 ];
     cs = vectorItem[ 1 ];
+
+    if ( ( 0 == ip ) && ( 0 == cs ) )
+    {
+        tracer.Trace( "probable app bug: invoking interrupt %02x, which has a vector of 0:0\n", interrupt_num );
+        i8086_hard_exit( "interrupt vector points to 0:0\n" );
+    }
 } //op_interrupt
 
 not_inlined void i8086::op_daa()

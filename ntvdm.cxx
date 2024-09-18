@@ -312,6 +312,7 @@ static uint16_t g_builtInHandles[ 5 ] = { 0, 1, 2, 3, 4 }; // stdin, stdout, std
 // Previous and subsequent versions of these tools don't have these bugs.
 
 static bool g_fillDOSMemoryBlocks = false;
+static bool g_validateState = false;
 
 const uint16_t DOS_HANDLE_INVALID = (uint16_t) -1;
 
@@ -578,6 +579,7 @@ static void usage( char const * perr )
     printf( "  -f               fill memory blocks with patterns to find app bugs\n" );
     printf( "  -h               load high above 64k and below 0xa0000.\n" );
     printf( "  -i               trace instructions to %s.log.\n", g_thisApp );
+    printf( "  -j               app debugging: validate CPU state periodically\n" );
     printf( "  -m               after the app ends, print video memory\n" );
     printf( "  -p               show performance stats on exit.\n" );
     printf( "  -r:root          root folder that maps to C:\\\n" );
@@ -1096,7 +1098,7 @@ size_t FindFileEntryIndex( uint16_t handle )
         }
     }
 
-    tracer.Trace( "  WARNING: could not find file entry for handle %04x\n", handle );
+    tracer.Trace( "  could not find file entry for handle %04x\n", handle );
     return (size_t) -1;
 } //FindFileEntryIndex
 
@@ -8011,7 +8013,7 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
     }
     else if ( 3 == interrupt_num )
     {
-        i8086_hard_exit( "unhandled int3; exiting" );
+        i8086_hard_exit( "unhandled int3; exiting\n" );
         return;
     }
     else if ( 4 == interrupt_num )
@@ -9004,6 +9006,89 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     return segEnvironment;
 } //AllocateEnvironment
 
+uint32_t flat_address( uint16_t segment, uint16_t offset )
+{
+    return ( (uint32_t) segment << 4 ) + offset;
+} //flat_address
+
+void ValidateStateLooksOK()
+{
+    // Microsoft Fortran v5 executes code in memory that it has freed.
+    // Microsoft Pascal v4 executes code in memory that it has freed.
+    // Zortech C v2 frees RAM that its stack pointer is using
+    // Zortech C v3 frees RAM that its stack pointer is using
+    // Intel C v4.5 generates code that sometimes invokes interrupt 0xc3 without first hooking it, so code at 0:0 executes
+
+    // check that the instruction and stack pointers are in memory owned by the current process or BIOS/DOS calls
+
+    const uint32_t ntvdmCodeLo = 0x600;
+    const uint32_t ntvdmCodeHi = 0xfff;
+
+    uint32_t curCode = flat_address( cpu.get_cs(), cpu.get_ip() );
+    uint32_t curStack = flat_address( cpu.get_ss(), cpu.get_sp() );
+
+    bool codeInRange = false;
+    bool stackInRange = false;
+
+    if ( curCode >= ntvdmCodeLo && curCode <= ntvdmCodeHi )
+        codeInRange = true;
+
+    DOSPSP * psp = (DOSPSP *) cpu.flat_address( g_currentPSP, 0 );
+    uint16_t segParent = psp->segParent;
+
+    for ( size_t i = 0; i < g_allocEntries.size(); i++ )
+    {
+        DosAllocation & da = g_allocEntries[i];
+        if ( da.seg_process == g_currentPSP || da.seg_process == segParent )
+        {
+            uint32_t lo = flat_address( da.segment, 0 );
+            uint32_t hi = flat_address( da.segment + da.para_length, 0 );
+            if ( curCode >= lo && curCode < hi )
+                codeInRange = true;
+            if ( curStack >= lo && curStack < hi )
+                stackInRange = true;
+        }
+    }
+
+    if ( !codeInRange )
+    {
+        trace_all_allocations();
+        cpu.trace_state();
+        tracer.Trace( "ntvdmCodeLo %04x, ntvdmCodeHi %04x, curCode %04x\n", ntvdmCodeLo, ntvdmCodeHi, curCode );
+
+
+        printf( "ntvdmCodeLo %04x, ntvdmCodeHi %04x, curCode %04x\n", ntvdmCodeLo, ntvdmCodeHi, curCode );
+        printf( "  cs %04x, ip %04x\n", cpu.get_cs(), cpu.get_ip() );
+
+        for ( size_t i = 0; i < g_allocEntries.size(); i++ )
+        {
+            DosAllocation & da = g_allocEntries[i];
+            uint32_t lo = flat_address( da.segment, 0 );
+            uint32_t hi = flat_address( da.segment + da.para_length, 0 );
+            printf( "  da %zd: process %04x, seg %04x, length %04x\n", i, da.seg_process, da.segment, da.para_length );
+        }
+
+        i8086_hard_exit( "ERROR: instruction pointer isn't in the OS or the app's memory\n" );
+    }
+    if ( !stackInRange )
+    {
+        trace_all_allocations();
+        cpu.trace_state();
+        tracer.Trace( "curStack %04x\n", curStack );
+        i8086_hard_exit( "ERROR: stack pointer isn't in the app's memory\n" );
+    }
+
+#if 0
+    uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+    for ( uint8_t intx = 0; intx < 0x40; intx++ )
+    {
+        if ( ( pVectors[ intx ] >> 16 ) != InterruptRoutineSegment )
+            tracer.Trace( "interrupt vector %02x was overridden, code is at %04x:%04x\n", intx,
+                          ( pVectors[ intx ] >> 16 ), pVectors[ intx ] & 0xffff );
+    }
+#endif
+} //ValidateStateLooksOK
+
 bool InterruptHookedByApp( uint8_t i )
 {
     uint16_t seg = ( cpu.flat_address16( 0, 0 ) )[ 2 * i + 1 ]; // lower uint16_t has offset, upper has segment
@@ -9154,6 +9239,8 @@ int main( int argc, char * argv[] )
                     g_fillDOSMemoryBlocks = true;
                 else if ( 'h' == ca )
                     g_PackedFileCorruptWorkaround = true;
+                else if ( 'j' == ca )
+                    g_validateState = true;
                 else if ( 'k' == ca )
                 {
                     char cmode = (char) tolower( parg[2] );
@@ -9382,7 +9469,12 @@ int main( int argc, char * argv[] )
                 routine[ 0 ] = 0xcd; // int
                 routine[ 1 ] = 0x1c; // int 1c
                 routine[ 2 ] = 0xcf; // iret
-                codeOffset += 3;
+
+                // note: this is strictly a workaround for Intel C v4.5 apps, which have int 1c handlers that modify their
+                // stack to iret back HERE instead of one byte earlier. 
+                routine[ 3 ] = 0xcf; // iret
+
+                codeOffset += 4;
             }
             else if ( 0x1c == intx )
             {
@@ -9480,11 +9572,14 @@ int main( int argc, char * argv[] )
     
         do
         {
-            total_cycles += cpu.emulate( 2000 );
+            total_cycles += cpu.emulate( g_validateState ? 1 : 2000 );
     
             if ( g_haltExecution )
                 break;
-    
+
+            if ( g_validateState )
+                ValidateStateLooksOK();
+
             delay.Delay( total_cycles );
     
             // apps like mips.com write to video ram and never provide an opportunity to redraw the display
