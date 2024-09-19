@@ -5,7 +5,7 @@
 // it has been tested for a handful of apps, so most instructions have been validated.
 // usage:
 //    CDisassemble8086 dis;
-//    const char * p = dis.Disassemble( uint8_t * pcode );
+//    const char * p = dis.Disassemble( pcode );
 //    printf( "next instruction: %s\n", p );
 //    printf( "  it was %d bytes long\n", dis.BytesConsumed() );
 //
@@ -37,21 +37,21 @@
 class CDisassemble8086
 {
     private:
-        uint8_t * _pcode;    // pointer to stream of bytes to disassemble
-        uint8_t _bc;         // # of bytes consumed by most recent instruction disassembeled
-        uint8_t _b0;         // pcode[ 0 ]
-        uint8_t _b1;         // pcode[ 1 ]
-        uint8_t _b2;         // pcode[ 2 ];
-        uint8_t _b3;         // pcode[ 3 ];
-        uint8_t _b4;         // pcode[ 4 ];
-        uint16_t _b12;       // b1 and b2 as a little-endian word
-        uint16_t _b23;       // b2 and b3 as a little-endian word
-        uint16_t _b34;       // b3 and b4 as a little-endian word
-        uint8_t _reg;        // bits 5:3 of _b1
-        uint8_t _rm;         // bits 2:0 of _b1
-        uint8_t _mod;        // bits 7:6 of _b1
-        bool _isword;        // true if bit 0 of _b0 is 1
-        bool _toreg;         // true if bit 1 of _b0 is 1
+        const uint8_t * _pcode;  // pointer to stream of bytes to disassemble
+        uint8_t _bc;             // # of bytes consumed by most recent instruction disassembeled
+        uint8_t _b0;             // pcode[ 0 ]
+        uint8_t _b1;             // pcode[ 1 ]
+        uint8_t _b2;             // pcode[ 2 ];
+        uint8_t _b3;             // pcode[ 3 ];
+        uint8_t _b4;             // pcode[ 4 ];
+        uint16_t _b12;           // b1 and b2 as a little-endian word
+        uint16_t _b23;           // b2 and b3 as a little-endian word
+        uint16_t _b34;           // b3 and b4 as a little-endian word
+        uint8_t _reg;            // bits 5:3 of _b1
+        uint8_t _rm;             // bits 2:0 of _b1
+        uint8_t _mod;            // bits 7:6 of _b1
+        bool _isword;            // true if bit 0 of _b0 is 1
+        bool _toreg;             // true if bit 1 of _b0 is 1
 
         // wish I could make these static without requiring an initialization elsewhere
         
@@ -178,7 +178,7 @@ class CDisassemble8086
             return i_opBits[ register_val | ( _isword ? 8 : 0 ) ];
         } //opBits
 
-        void DecodeInstruction( uint8_t * pcode )
+        void DecodeInstruction( const uint8_t * pcode )
         {
             _bc = 1;
             _pcode = pcode;
@@ -237,7 +237,7 @@ class CDisassemble8086
         uint8_t BytesConsumed() { return _bc; } // can be called after Disassemble
         void ClearLastIP() { _pcode = 0; } // jumps and interrupts make instruction length assert invalid
 
-        const char * Disassemble( uint8_t * pcode )
+        const char * Disassemble( const uint8_t * pcode )
         {
             // 0x69 is a fake opcode used by ntvdm for syscall interrupts
 

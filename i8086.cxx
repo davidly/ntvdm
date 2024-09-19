@@ -69,7 +69,7 @@ void i8086::reset_disassembler()
 
 void i8086::trace_state()
 {
-    uint8_t * pcode = flat_address8( cs, ip );
+    const uint8_t * pcode = flat_address8( cs, ip );
     const char * pdisassemble = g_Disassembler.Disassemble( pcode );
     tracer.TraceQuiet( "ip %4x, opc %02x %02x %02x %02x %02x, ax %04x, bx %04x, cx %04x, dx %04x, di %04x, "
                        "si %04x, ds %04x, es %04x, cs %04x, ss %04x, bp %04x, sp %04x, %s, %s ; %u\n",
@@ -763,7 +763,7 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     if ( ( 0 == ip ) && ( 0 == cs ) )
     {
         tracer.Trace( "probable app bug: invoking interrupt %02x, which has a vector of 0:0\n", interrupt_num );
-        i8086_hard_exit( "interrupt vector points to 0:0\n" );
+        i8086_hard_exit( "fatal error: interrupt vector points to 0:0\n" );
     }
 } //op_interrupt
 
