@@ -2219,7 +2219,7 @@ const IntInfo interrupt_list[] =
     { 0x21, 0x25, "set interrupt vector" },
     { 0x21, 0x26, "create new PSP" },
     { 0x21, 0x27, "random block read using FCB" },
-    { 0x21, 0x28, "random block write using FCBs" },
+    { 0x21, 0x28, "random block write using FCB" },
     { 0x21, 0x29, "parse filename" },
     { 0x21, 0x2a, "get system date" },
     { 0x21, 0x2c, "get system time" },
@@ -5513,7 +5513,7 @@ void handle_int_21( uint8_t c )
                              tracer.Trace( "  read failed with error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                        tracer.Trace( "  ERROR sequential read using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR sequential read using FCB failed to seek, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
                     tracer.Trace( "  ERROR sequential read using FCB doesn't have an open file\n" );
@@ -5559,10 +5559,10 @@ void handle_int_21( uint8_t c )
                              tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                        tracer.Trace( "  ERROR sequential write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR sequential write using FCB failed to seek, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "  ERROR sequential write using FCBs doesn't have an open file\n" );
+                    tracer.Trace( "  ERROR sequential write using FCB doesn't have an open file\n" );
             }
             else
                 tracer.Trace( "  ERROR sequential write using FCB can't parse filename\n" );
@@ -5720,7 +5720,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x21:
         {
-            // random read using FCBs.
+            // random read using FCB.
             // input: ds:dx points at the FCB
             // output: al: 0 success
             //             1 end of file, no data read
@@ -5776,7 +5776,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x22:
         {
-            // random write using FCBs. on output, 0 if success, 1 if disk full, 2 if DTA too small
+            // random write using FCB. on output, 0 if success, 1 if disk full, 2 if DTA too small
             // The sequential offset is set to match the random offset before the write
             // Apps that use this: Lotus 123 v1.0A and Microsoft Pascal v1.0.
     
@@ -5859,7 +5859,7 @@ void handle_int_21( uint8_t c )
         }
         case 0x27:
         {
-            // random block read using FCBs
+            // random block read using FCB
             // CX: number of records to read
             // DS:BX pointer to the FCB.
             // on exit, AL 0 success, 1 EOF no data read, 2 dta too small, 3 eof partial read (incomplete record filled with ^z)
@@ -5869,7 +5869,7 @@ void handle_int_21( uint8_t c )
             uint32_t cRecords = cpu.get_cx();
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  random block read using FCBs, cRecords %u, record size %u\n", cRecords, pfcb->recSize );
+            tracer.Trace( "  random block read using FCB, cRecords %u, record size %u\n", cRecords, pfcb->recSize );
             pfcb->Trace();
             uint32_t seekOffset = pfcb->RandomOffset();
 
@@ -5915,23 +5915,23 @@ void handle_int_21( uint8_t c )
                                 pfcb->SetSequentialFromRandom(); // the next sequential I/O expects this to be set. Thanks DRI compilers and linkers.
                             }
                             else
-                                tracer.Trace( "  ERROR random block read using FCBs failed to read, error %d = %s\n", errno, strerror( errno ) );
+                                tracer.Trace( "  ERROR random block read using FCB failed to read, error %d = %s\n", errno, strerror( errno ) );
                         }
                         else
-                            tracer.Trace( "  ERROR random block read using FCBs failed to seek, error %d= %s\n", errno, strerror( errno ) );
+                            tracer.Trace( "  ERROR random block read using FCB failed to seek, error %d= %s\n", errno, strerror( errno ) );
                     }
                 }
                 else
-                    tracer.Trace( "  ERROR random block read using FCBs doesn't have an open file\n" );
+                    tracer.Trace( "  ERROR random block read using FCB doesn't have an open file\n" );
             }
             else
-                tracer.Trace( "  ERROR random block read using FCBs can't parse filename\n" );
+                tracer.Trace( "  ERROR random block read using FCB can't parse filename\n" );
     
             return;
         }
         case 0x28:
         {
-            // random block write using FCBs.
+            // random block write using FCB.
             // in: CX = number of records, DS:BX the fcb
             // out: al = 0 if success, 1 if disk full, 2 if data too small, cx = number of records written
     
@@ -5975,13 +5975,13 @@ void handle_int_21( uint8_t c )
                              tracer.Trace( "  write failed with error %d = %s\n", errno, strerror( errno ) );
                     }
                     else
-                        tracer.Trace( "  ERROR random block write using FCBs failed to seek, error %d = %s\n", errno, strerror( errno ) );
+                        tracer.Trace( "  ERROR random block write using FCB failed to seek, error %d = %s\n", errno, strerror( errno ) );
                 }
                 else
-                    tracer.Trace( "  ERROR random block write using FCBs doesn't have an open file\n" );
+                    tracer.Trace( "  ERROR random block write using FCB doesn't have an open file\n" );
             }
             else
-                tracer.Trace( "  ERROR random block write using FCBs can't parse filename\n" );
+                tracer.Trace( "  ERROR random block write using FCB can't parse filename\n" );
     
             return;
         }
@@ -9035,7 +9035,7 @@ uint32_t flat_address( uint16_t segment, uint16_t offset )
 
 void ValidateStateLooksOK()
 {
-    // Microsoft Fortran v5 executes code in memory that it has freed.
+    // Microsoft Fortran v4, v5, v5.1 executes cod in memory that it has been freed.
     // Microsoft Pascal v4 executes code in memory that it has freed.
     // Microsoft BASIC Compiler v5 executes code in memory that it has freed.
     // QuickC 2.51 frees memory then executes it just before running compiled binaries.
