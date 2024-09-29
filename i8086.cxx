@@ -796,9 +796,6 @@ not_inlined void i8086::op_das()
     uint8_t old_al = al();
     uint8_t al_check = fAuxCarry ? 0x9F : 0x99;
 
-    // Simplification of this code like the one for `daa` is probable, but hasn't been attempted
-    bool oldCarry = fCarry;
-    fCarry = false;
     if ( ( ( al() & 0xf ) > 9 ) || ( fAuxCarry ) )
     {
         set_al( al() - 6 );
@@ -807,7 +804,7 @@ not_inlined void i8086::op_das()
     else
         fAuxCarry = false;
 
-    if ( ( old_al > al_check ) || ( oldCarry ) )
+    if ( ( old_al > al_check ) || ( fCarry ) )
     {
         set_al( al() - 0x60 );
         fCarry = true;
@@ -881,7 +878,7 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
 {
     _bc++;
 
-    if ( ( 0 == _reg ) || ( I8086_UNDOCUMENTED && 1 == _reg ) ) // test reg8/mem8, immed8
+    if ( ( 0 == _reg ) || ( I8086_UNDOCUMENTED && ( 1 == _reg ) ) ) // test reg8/mem8, immed8
     {
         AddMemCycles( 10 );
         uint8_t lhs = * get_rm_ptr8();
@@ -978,7 +975,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
 {
     _bc++;
 
-    if ( ( 0 == _reg ) || ( I8086_UNDOCUMENTED && 1 == _reg ) ) // test reg16/mem16, immed16
+    if ( ( 0 == _reg ) || ( I8086_UNDOCUMENTED && ( 1 == _reg ) ) ) // test reg16/mem16, immed16
     {
         AddMemCycles( 10 );
         uint16_t lhs = * get_rm_ptr16();
@@ -1133,7 +1130,7 @@ not_inlined bool i8086::op_ff()
         cs = pdata[ 1 ];
         return true;
     }
-    else if ( 6 == _reg || ( I8086_UNDOCUMENTED && 7 == _reg ) ) // push mem16
+    else if ( 6 == _reg || ( I8086_UNDOCUMENTED && ( 7 == _reg ) ) ) // push mem16
     {
         AddCycles( 22 );
         uint16_t * pval = get_rm_ptr16();
