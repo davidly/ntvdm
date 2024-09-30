@@ -1181,12 +1181,12 @@ _prefix_set:
             if ( handle_state() )
                 break;
 
+        decode_instruction( flat_address8( cs, ip ) );     // 23% of runtime
+
         #ifndef NDEBUG
             opcode_usage[ _b0 ]++;
             assert( 0 != cs || 0 != ip );                  // almost certainly an app bug.
         #endif
-
-        decode_instruction( flat_address8( cs, ip ) );     // 23% of runtime
 
         #ifdef I8086_TRACK_CYCLES
             cycles += i8086_cycles[ _b0 ];                 // 2% of runtime
