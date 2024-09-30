@@ -9044,6 +9044,7 @@ void ValidateStateLooksOK()
     // Aztec C v3.4 sets SS then SP while interrupts are enabled resulting in an invalid stack between the instructions
     // GWBASIC frees memory that its stack is using with interrupts enabled
     // Turbo Pascal v7.0 frees memory then executes it just before shelling out to command.com
+    // Microsoft Cobol v3's link.exe v5.02.05 frees memory then executes code in that memory.
     // Previous and subsequent versions of these tools (where applicable) don't have these bugs.
 
     // check that the instruction and stack pointers are in memory owned by the current process or BIOS/DOS calls
@@ -9603,6 +9604,7 @@ int main( int argc, char * argv[] )
         CPUCycleDelay delay( clockrate );
         g_tAppStart = high_resolution_clock::now();    
         uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
+        uint32_t dtLastInt8 = 0;
     
         do
         {
@@ -9621,10 +9623,7 @@ int main( int argc, char * argv[] )
             if ( g_use80xRowsMode )
                 throttled_UpdateDisplay( 200 );
     
-            uint32_t dt = GetBiosDailyTimer();
-            bool timer_changed = ( dt != *pDailyTimer );
-            if ( timer_changed )
-                *pDailyTimer = dt;      // apps look here even if no timer interrupts happen because they aren't hooked
+            *pDailyTimer = GetBiosDailyTimer(); // apps look here even if no timer interrupts happen because they aren't hooked
     
             // check interrupt enable and trap flags externally to avoid side effects in the emulator
     
@@ -9657,11 +9656,12 @@ int main( int argc, char * argv[] )
                 // invoke int 8, which by default then invokes int 1c.
                 // Never send timer interrupts for Intel C v4.5-generated apps because their 0x1c handler trashes both code and the stack.
 
-                if ( timer_changed && ( InterruptHookedByApp( 0x1c ) || InterruptHookedByApp( 8 ) ) && !g_IsIntelC45App )
+                if ( ( *pDailyTimer != dtLastInt8 ) && ( InterruptHookedByApp( 0x1c ) || InterruptHookedByApp( 8 ) ) && !g_IsIntelC45App )
                 {
                     // on my machine this is invoked about every 72 million total_cycles if no throttle sleeping happened (tens of thousands if so)
-        
-                    tracer.Trace( "scheduling an int 8 -- timer, dt: %#x, total_cycles %llu\n", dt, total_cycles );
+
+                    dtLastInt8 = *pDailyTimer;
+                    tracer.Trace( "scheduling an int 8 -- timer, daily timer: %#x, total_cycles %llu\n", dtLastInt8, total_cycles );
                     cpu.external_interrupt( 8 );
                     continue;
                 }
