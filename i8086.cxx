@@ -25,7 +25,7 @@ using namespace std;
 
 #include "i8086.hxx"
 
-uint8_t memory[ 0x10fff0 ];
+uint8_t memory[ 0x10fff0 ];  // though only 0..fffff is addressable on the 8086
 
 i8086 cpu;
 static CDisassemble8086 g_Disassembler;
@@ -130,7 +130,7 @@ void i8086::update_rep_sidi16()
 
 force_inlined uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 {
-    uint8_t com_rhs = ~rhs; // com == ones-complement
+    uint8_t com_rhs = ~rhs; // com == ones-compliment
     uint8_t borrow_int = borrow ? 0 : 1;
     uint16_t res16 = (uint16_t) lhs + (uint16_t) com_rhs + (uint16_t) borrow_int;
     uint8_t res8 = res16 & 0xff;
@@ -143,7 +143,7 @@ force_inlined uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 
 force_inlined uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
 {
-    uint16_t com_rhs = ~rhs; // com == ones-complement
+    uint16_t com_rhs = ~rhs; // com == ones-compliment
     uint16_t borrow_int = borrow ? 0 : 1;
     uint32_t res32 = (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) borrow_int;
     uint16_t res16 = res32 & 0xffff;
@@ -362,9 +362,7 @@ void i8086::op_ror8( uint8_t * pval, uint8_t shift )
         fCarry = lowBit;
     }
 
-    if ( 1 == shift )
-        fOverflow = ( ( 0 != ( val & 0x80 ) ) ^ ( 0 != ( val & 0x40 ) ) );
-
+    fOverflow = ( ( 0 != ( val & 0x80 ) ) ^ ( 0 != ( val & 0x40 ) ) ); // only defined when shift is 1
     *pval = val;
 } //op_ror8
 
@@ -385,12 +383,7 @@ void i8086::op_ror16( uint16_t * pval, uint8_t shift )
         fCarry = lowBit;
     }
 
-    // Overflow only defined for 1-bit shifts, but actual hardware and emulators do this
-    //if ( 1 == shift )
-        fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ ( 0 != ( val & 0x4000 ) ) );
-    //else
-    //    fOverflow = true;
-
+    fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ ( 0 != ( val & 0x4000 ) ) );  // only defined when shift is 1
     *pval = val;
 } //op_ror16
 
@@ -411,9 +404,7 @@ not_inlined void i8086::op_rcl8( uint8_t * pval, uint8_t shift )
         fCarry = newCarry;
     }
 
-    if ( 1 == shift )
-        fOverflow = ( ( 0 != ( val & 0x80 ) ) ^ fCarry );
-
+    fOverflow = ( ( 0 != ( val & 0x80 ) ) ^ fCarry ); // only defined when shift is 1
     *pval = val;
 } //op_rcl8
 
@@ -434,9 +425,7 @@ not_inlined void i8086::op_rcl16( uint16_t * pval, uint8_t shift )
         fCarry = newCarry;
     }
 
-    if ( 1 == shift )
-        fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ fCarry );
-
+    fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ fCarry ); // only defined when shift is 1
     *pval = val;
 } //op_rcl16
 
@@ -457,9 +446,7 @@ not_inlined void i8086::op_rcr8( uint8_t * pval, uint8_t shift )
         fCarry = newCarry;
     }
 
-    if ( 1 == shift )
-        fOverflow = ( ( 0 != ( val & 0x80 ) ) ^ ( 0 != ( val & 0x40 ) ) );
-
+    fOverflow = ( ( 0 != ( val & 0x80 ) ) ^ ( 0 != ( val & 0x40 ) ) ); // only defined when shift is 1
     *pval = val;
 } //op_rcr8
 
@@ -480,9 +467,7 @@ not_inlined void i8086::op_rcr16( uint16_t * pval, uint8_t shift )
         fCarry = newCarry;
     }
 
-    if ( 1 == shift )
-        fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ ( 0 != ( val & 0x4000 ) ) );
-
+    fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ ( 0 != ( val & 0x4000 ) ) ); // only defined when shift is 1
     *pval = val;
 } //op_rcr16
 
@@ -498,12 +483,11 @@ void i8086::op_sal8( uint8_t * pval, uint8_t shift )
     }
     else
     {
+        uint8_t orig = *pval;
         *pval <<= ( shift - 1 );
         fCarry = ( 0 != ( *pval & 0x80 ) );
         *pval <<= 1;
-
-        if ( 1 == shift )
-            fOverflow = ! ( ( 0 != ( *pval & 0x80 ) ) == fCarry );
+        fOverflow = ! ( ( orig & 0x80 ) == ( *pval & 0x80 ) ); // only defined when shift is 1
     }
 
     set_PSZ8( *pval );
@@ -518,12 +502,11 @@ void i8086::op_sal16( uint16_t * pval, uint8_t shift )
         *pval = 0;
     else
     {
+        uint16_t orig = *pval;
         *pval <<= ( shift - 1 );
         fCarry = ( 0 != ( *pval & 0x8000 ) );
         *pval <<= 1;
-
-        if ( 1 == shift )
-            fOverflow = ! ( ( 0 != ( *pval & 0x8000 ) ) == fCarry );
+        fOverflow = ! ( ( orig & 0x8000 ) == ( *pval & 0x8000 ) ); // only defined when shift is 1
     }
 
     set_PSZ16( *pval );
@@ -538,7 +521,7 @@ void i8086::op_shr8( uint8_t * pval, uint8_t shift )
         *pval = 0;
     else
     {
-        fOverflow = ( 0 != ( *pval & 0x80 ) );
+        fOverflow = ( 0 != ( *pval & 0x80 ) ); // only defined when shift is 1
         *pval >>= ( shift - 1 );
         fCarry = ( 0 != ( *pval & 1 ) );
         *pval >>= 1;
@@ -556,7 +539,7 @@ void i8086::op_shr16( uint16_t * pval, uint8_t shift )
         *pval = 0;
     else
     {
-        fOverflow = ( 0 != ( *pval & 0x8000 ) );
+        fOverflow = ( 0 != ( *pval & 0x8000 ) ); // only defined when shift is 1
         *pval >>= ( shift - 1 );
         fCarry = ( 0 != ( *pval & 1 ) );
         *pval >>= 1;
@@ -582,9 +565,7 @@ not_inlined void i8086::op_sar8( uint8_t * pval, uint8_t shift )
             val &= 0x7f;
     }
 
-    if ( 1 == shift )
-        fOverflow = false;
-
+    fOverflow = false; // only defined when shift is 1
     set_PSZ8( val );
     *pval = val;
 } //op_sar8
@@ -606,9 +587,7 @@ void i8086::op_sar16( uint16_t * pval, uint8_t shift )
             val &= 0x7fff;
     }
 
-    if ( 1 == shift )
-        fOverflow = false;
-
+    fOverflow = false; // only defined when shift is 1
     set_PSZ16( val );
     *pval = val;
 } //op_sar16
@@ -686,11 +665,10 @@ void i8086::op_setmo8( uint8_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    uint8_t val = 0xff;
+    *pval = 0xff;
     fCarry = false;
     fOverflow = false;
-    set_PSZ8( val );
-    *pval = val;
+    set_PSZ8( *pval );
 } //op_setmo8
 
 void i8086::op_setmo16( uint16_t * pval, uint8_t shift )
@@ -701,11 +679,10 @@ void i8086::op_setmo16( uint16_t * pval, uint8_t shift )
         return;
     }
 
-    uint16_t val = 0xffff;
+    *pval = 0xffff;
     fCarry = false;
     fOverflow = false;
-    set_PSZ16( val );
-    *pval = val;
+    set_PSZ16( *pval );
 } //op_setmo16
 #endif
 
@@ -752,7 +729,7 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     push( flags );
     fInterrupt = false; // will be set again if/when flags are popped on iret
     fTrap = false;
-    //fAuxCarry = false; //some doc says this but not the October '79 Intel doc.
+    //fAuxCarry = false; // some doc says this but not the October '79 Intel doc.
     push( cs );
     push( ip + instruction_length );
 
@@ -903,7 +880,6 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         uint8_t rhs = * get_rm_ptr8();
         ax = (uint16_t) al() * (uint16_t) rhs;
         fCarry = fOverflow = ( 0 != ah() );
-        //fAuxCarry = ( ax > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
         set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
         fSign = ( 0 != ( 0x80 & al() ) ); // documentation says these bits are undefined, but real hardware does this
     }
@@ -915,7 +891,6 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         ax = result & 0xffff;
         result &= 0xffffff80;
         fCarry = fOverflow = ( ( 0 != result ) && ( 0xffffff80 != result ) );
-        //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
         set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
     }
     else if ( 6 == _reg ) // div m, r8 / src. al = result, ah = remainder
@@ -926,12 +901,10 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         {
             uint16_t lhs = ax;
             uint16_t result = lhs / (uint16_t) rhs;
-            //tracer.Trace( "lhs %u, rhs %u, result %u\n", lhs, rhs, result );
             if ( result <= 0xff )
             {
                 set_al( (uint8_t) result );
                 set_ah( lhs % rhs );
-    
                 // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV. "
             }
             else
@@ -1003,7 +976,6 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
         dx = result >> 16;
         ax = result & 0xffff;
         fCarry = fOverflow = ( result > 0xffff );
-        //fAuxCarry = ( result > 0xfff ); // documentation says that aux carry is undefined, but real hardware does this
         set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
     }
     else if ( 5 == _reg ) // imul. dx:ax = ax * src
@@ -1015,7 +987,6 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
         ax = result & 0xffff;
         result &= 0xffff8000;
         fCarry = fOverflow = ( ( 0 != result ) && ( 0xffff8000 != result ) );
-        //fAuxCarry = ( ( 0 != result ) && ( 0xfffff800 != result ) ); // documentation says that aux carry is undefined, but real hardware does this
         set_PSZ16( ax ); // documentation says these bits are undefined, but real hardware does this
     }
     else if ( 6 == _reg ) // div dx:ax / src. ax = result, dx = remainder
@@ -1049,7 +1020,6 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
             int32_t l = (int32_t) lhs;
             int32_t r = (int32_t) (int16_t) rhs;
             int32_t result = l / r;
-            //tracer.Trace( "l %d, r %d, result %d = %#x\n", l, r, result, result );
 
             if ( result <= 32767 && result >= -32767 )
             {
@@ -1057,7 +1027,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
                     result = -result;
 
                 ax = (uint16_t) result;
-                dx = (uint16_t) ( (int32_t) lhs % (int32_t) (int16_t) rhs );
+                dx = (uint16_t) ( l % r );
     
                 // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
                 // Some other emulators set O, S, and C flags.
@@ -1134,7 +1104,6 @@ not_inlined bool i8086::op_ff()
     {
         AddCycles( 22 );
         uint16_t * pval = get_rm_ptr16();
-
         uint16_t val = *pval;
         
         if ( 3 == _mod && 4 == _rm ) // SP special case (for `push <reg>` behavior, might be undocumented)
@@ -1150,8 +1119,6 @@ not_inlined bool i8086::op_ff()
 
 not_inlined bool i8086::handle_state()
 {
-    // all of this code exists to reduce what would be multiple checks per instruction loop to just one check
-
     if ( g_State & stateEndEmulation )
     {
         g_State &= ~stateEndEmulation;
@@ -1820,12 +1787,10 @@ _prefix_set:
                 flags = pop();
                 unmaterializeFlags();
 
-                // don't trap if it's just now set until after the next instruction
-
                 if ( fTrap )
                 {
                     trap_set();
-                    if ( !previousTrap )
+                    if ( !previousTrap )  // don't trap if it's just now set until after the next instruction
                         fIgnoreTrap = true;
                 }
                 continue;
@@ -1878,9 +1843,6 @@ _prefix_set:
                 }
                 else
                 {
-                    //fAuxCarry = false;
-                    //fCarry = false;
-                    //fOverflow = false;
                     set_PSZ8( 0 ); // hardware does this per ProcessorTests
                     op_interrupt( 0, _bc );
                     continue;
