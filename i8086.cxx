@@ -905,7 +905,7 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
             {
                 set_al( (uint8_t) result );
                 set_ah( lhs % rhs );
-                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV. "
+                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV."
             }
             else
                 return true;
@@ -921,15 +921,16 @@ not_inlined bool i8086::op_f6() // return true if divide by 0
         {
             int16_t lhs = ax;
             int16_t result = lhs / (int16_t) (int8_t) rhs;
-            if ( result <= 127 && result >= -127 )
+            if ( result <= 127 && result >= -127 ) // odd that -128 is invalid, but that's how it works
             {
                 if ( 0xff != prefix_repeat_opcode ) // https://github.com/TomHarte/ProcessorTests/tree/main/8088
                     result = -result;
 
                 set_al( result & 0xff );
                 set_ah( lhs % (int16_t) (int8_t) rhs );
+                assert( ( 0 == ah() ) || ( ( 0 == ( ah() & 0x80 ) ) == ( 0 == ( lhs & 0x8000 ) ) ) ); // remainder is 0 or has same sign as dividend
 
-                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
+                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV."
                 // Some other emulators set O, S, and C flags.
             }
             else
@@ -1005,7 +1006,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
             else
                 return true;
 
-            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV. "
+            // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following DIV."
         }
         else
             return true;
@@ -1021,15 +1022,16 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
             int32_t r = (int32_t) (int16_t) rhs;
             int32_t result = l / r;
 
-            if ( result <= 32767 && result >= -32767 )
+            if ( result <= 32767 && result >= -32767 ) // odd that -32768 is invalid, but that's how it works
             {
                 if ( 0xff != prefix_repeat_opcode ) // https://github.com/TomHarte/ProcessorTests/tree/main/8088
                     result = -result;
 
                 ax = (uint16_t) result;
                 dx = (uint16_t) ( l % r );
+                assert( ( 0 == dx ) || ( ( 0 == ( l & 0x80000000 ) ) ) == ( 0 == ( dx & 0x8000 ) ) ); // remainder is 0 or has same sign as dividend
     
-                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV. "
+                // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV."
                 // Some other emulators set O, S, and C flags.
             }
             else
@@ -1076,7 +1078,7 @@ not_inlined bool i8086::op_ff()
         AddMemCycles( 17 );
         uint16_t * pdata = get_rm_ptr16();
 
-        uint16_t save_cs = cs;
+        uint16_t save_cs = cs; // temporary variables required because push() may overwrite data in pdata[]
         uint16_t save_ip = ip + _bc + 1;
         ip = pdata[ 0 ];
         cs = pdata[ 1 ];
