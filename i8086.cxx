@@ -12,6 +12,8 @@
 // ignores some immediate vs. reg cases where the difference is 1 cycle, gets div/mult approximately,
 // and doesn't handle many other cases. Also, various 8086 tech documents don't have consistent counts.
 // I tested cycle counts against physical 80186 and 8088 machines. This is somewhere in between.
+// Not implemented: "For the 8086, add four clocks for each 16-bit word transfer with an odd address. For the 8088, add four clocks for each 16-bit word transfer."
+// String operations don't allow for interrupts until completion, unlike real hardware.
 
 #include <djl_os.hxx>
 

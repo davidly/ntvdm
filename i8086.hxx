@@ -96,7 +96,7 @@ struct i8086
         prefix_segment_override = prefix_repeat_opcode = 0xff;
         _pcode = 0;
         _bc = _b0 = _b1 = _mod = _reg = _rm = 0;
-        _final_offset = 0;
+        _effective_offset = 0;
         fCarry = fParityEven = fAuxCarry = fZero = fSign = fTrap = fInterrupt = fDirection = fOverflow = fIgnoreTrap = false;
         cycles = 0;
         fSyscallEnabled = false;
@@ -176,7 +176,7 @@ struct i8086
     uint8_t _reg;     // bits 5:3 of _b1. register (generally, but also math in some cases)
     uint8_t _mod;     // bits 7:6 of _b1
     uint8_t * _pcode; // pointer to the first opcode currently executing
-    uint16_t _final_offset; // for word instructions that have an address offset. used to handle wrapping
+    uint16_t _effective_offset; // for word instructions that have an address offset. used to handle segment wrapping
 
     uint8_t * reg8_pointers[ 8 ];
     uint16_t * reg16_pointers[ 8 ];
@@ -190,7 +190,7 @@ struct i8086
         _rm = ( _b1 & 7 );
         _reg = ( ( _b1 >> 3 ) & 7 );
         _mod = ( _b1 >> 6 );
-        _final_offset = 0;
+        _effective_offset = 0;
     } //decode_instruction
 
     bool isword() { return ( _b0 & 1 ); } // true if the instruction is dealing with a word, not a byte (there are several exceptions)
@@ -295,7 +295,10 @@ struct i8086
         // The 8086 can address 0000:0000 .. ffff:ffff, which is 0 .. 0x10ffef.
         // But it only has 20 address lines, so high memory area (HMA) >= 0x100000 references wrap to conventional memory.
         // The only apps I've found that depend on wrapping are those produced by IBM Pascal Version 2.00.
-        // Microsoft LISP v5.10 (mulisp.exe) references HMA and works whether wrapping or not.
+        // Microsoft LISP v5.10 (mulisp.exe) references HMA and works whether the CPU wraps or not.
+        // Pass 3 (pas3.exe) of Microsoft FORTRAN77 V3.13 8/05/83 references HMA along with the apps it generates.
+        //    The compiler generates good code without wrapping, but the apps it creates require wrapping to work.
+        // Artek Ada Compiler Ver. 1.25's linklib.exe and interpreter ai.exe both reference HMA but work without wrapping.
         // This extra mask costs about 1% in performance but is more compatible.
 
         return ( 0xfffff & flat );
@@ -307,7 +310,7 @@ struct i8086
 
     uint16_t read_word( void * p )
     {
-        if ( 0xffff == _final_offset )
+        if ( 0xffff == _effective_offset )
         {
             uint8_t *pb = (uint8_t *) p;
             uint16_t lo = (uint16_t) * pb;
@@ -320,7 +323,7 @@ struct i8086
 
     void write_word( void * p, uint16_t val )
     {
-        if ( 0xffff == _final_offset )
+        if ( 0xffff == _effective_offset )
         {
             uint8_t *pb = (uint8_t *) p;
             *pb = (uint8_t) ( val & 0xff );
@@ -345,12 +348,12 @@ struct i8086
             tracer.Trace( "wrapped back to start of memory plus one in add_two_wrap\n" );
             p = (uint16_t *) ( memory + 1 );
         }
-        else if ( 0xfffe == _final_offset || 0xffff == _final_offset )
+        else if ( 0xfffe == _effective_offset || 0xffff == _effective_offset )
         {
-            tracer.Trace( "_final_offset in add_two_wrap is %04x, p start is %p\n", _final_offset, p );
+            tracer.Trace( "_effective_offset in add_two_wrap is %04x, p start is %p\n", _effective_offset, p );
             uint8_t * pb = (uint8_t *) p;
             p = (uint16_t *) ( pb - 65536 );
-            _final_offset += 2;
+            _effective_offset += 2;
         }
 
         return p;
@@ -397,8 +400,8 @@ struct i8086
             _bc += 1;
             AddCycles( 4 );
             int16_t offset = (int16_t) (int8_t) _pcode[ 2 ];
-            _final_offset = get_displacement() + offset;
-            return flat_address( get_displacement_seg(), _final_offset );
+            _effective_offset = get_displacement() + offset;
+            return flat_address( get_displacement_seg(), _effective_offset );
         }
 
         if ( 2 == _mod ) // 2-byte unsigned immediate offset from register(s)
@@ -406,8 +409,8 @@ struct i8086
             _bc += 2;
             AddCycles( 5 );
             uint16_t offset = * (uint16_t *) ( _pcode + 2 );
-            _final_offset = get_displacement() + offset;
-            return flat_address( get_displacement_seg(), _final_offset );
+            _effective_offset = get_displacement() + offset;
+            return flat_address( get_displacement_seg(), _effective_offset );
         }
 
         if ( 6 == _rm )  // 0 == mod. least frequent. immediate pointer to offset
@@ -417,8 +420,8 @@ struct i8086
             return flat_address( get_seg_value(), * (uint16_t *) ( _pcode + 2 ) );
         }
 
-        _final_offset = get_displacement();
-        return flat_address( get_displacement_seg(), _final_offset ); // no offset; just a value from register(s)
+        _effective_offset = get_displacement();
+        return flat_address( get_displacement_seg(), _effective_offset ); // no offset; just a value from register(s)
     } //get_rm_ptr_common
 
     uint16_t * get_rm_ptr16()
