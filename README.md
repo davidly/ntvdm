@@ -3,9 +3,8 @@
 Not the real one, but this one can be compiled and executed on Windows 
 (x64 and ARM64), Linux (ARM32, ARM64, RISC-V, x64 and x32), and MacOS (tested with an M1).
 
-I wrote it so I could test my [BASIC](https://github.com/davidly/ttt/blob/main/ba.cxx) compiler and it emulates an Intel 8086
-processor  and MS-DOS 3.00 APIs well enough to be able to run some  command
-line and text mode applications. 
+I wrote it so I could test my [BASIC](https://github.com/davidly/ttt/blob/main/ba.cxx) compiler. Tt emulates an Intel 8086
+processor  and MS-DOS 3.00 APIs well enough to be able to run some  command line and text mode applications. 
 
 There  are many better DOS emulators available, including [DOSBox](https://www.dosbox.com/), but  what
 makes this one different is that it provides a way to run a DOS application
@@ -32,15 +31,15 @@ different  applications  and compared instruction and register traces  with
 other emulators.
 
 The emulator can simulate running at a given clock rate, however the number
-of cycles needed for each instruction varies widely between various sources
-and the code doesn't check for misaligned memory access, not get details of
+of cycles needed for each instruction varies widely between various sources.
+The code doesn't check for misaligned memory access and doesn't get details of
 mult/div operations correct, so the results are only an aproximatiion. 
 
 Using mips version 1.20 (a benchmark application from 1986 written by Chips
 and Technologies) then if the clock is set to /s:4500000 (4.5 Mhz) the 8086
 emulator runs at about the same speed an actual 8088 running at 4.77Mhz.
 
-Given  the  wide variability online regarding the  performance  differences
+Given  the  wide variability online regarding the  performance differences
 between the 8088 and 8086 (5%-50%) this seems quite close. 
 
 ### Applications Tested
@@ -106,7 +105,7 @@ for when apps like WordStar and QBX shell out to command.com.
 various interrupts. mint.bat generates the machine code in C arrays that are copied
 into ntvdm.cxx and loaded into DOS RAM at runtime.
 
-A number of compilers, assemblers, and emulators along with sample benchmark apps and build scripts for each can be found here: [dos_compilers](https://github.com/davidly/dos_compilers)
+A number of compilers, assemblers, and interpreters along with sample benchmark apps and build scripts for each can be found here: [dos_compilers](https://github.com/davidly/dos_compilers)
 
 ### Tested Platforms
 
