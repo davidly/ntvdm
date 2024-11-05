@@ -300,6 +300,7 @@ static uint8_t g_bufferLastUpdate[ 80 * 50 * 2 ] = {0}; // used to check for cha
 static CKeyStrokes g_keyStrokes;                     // read or write keystrokes between kslog.txt and the app
 static bool g_UseOneThread = false;                  // true if no keyboard thread should be used
 static bool g_InRVOS = false;                        // true if running in the RISC-V + Linux emulator RVOS
+static bool g_InARMOS = false;                       // true if running in the ARM64 + Linux emulator ARMOS
 static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
 static bool g_SendControlCInt = false;               // set to true when/if a ^C is detected and an interrupt should be sent
 static uint16_t g_builtInHandles[ 5 ] = { 0, 1, 2, 3, 4 }; // stdin, stdout, stderr, stdaux, stdprn are all mapped to self initially
@@ -826,10 +827,10 @@ struct DOSPSP
     uint16_t comAvailable;           // 06 .com programs bytes available in segment (cp/m holdover)
     uint16_t farJumpCPM;             // 08 remainder of jump started above
     uint32_t int22TerminateAddress;  // 0a When a child process ends, there is where execution resumes in the parent.
-    uint32_t int23ControlBreak;      // 0e in ntvdm, this points to the code at int20code to terminate
-    uint32_t int24CriticalError;     // 12 in ntvdm, this points to the code at int20code to terminate  
+    uint32_t int23ControlBreak;      // 0e
+    uint32_t int24CriticalError;     // 12
     uint16_t segParent;              // 16 parent process segment address of PSP
-    uint8_t  fileHandles[20];        // 18
+    uint8_t  fileHandles[20];        // 18 undocumented, but MS COBOL writes to this
     uint16_t segEnvironment;         // 2c 
     uint32_t ssspEntry;              // 2e ss:sp on entry to last int21 function. undocumented
     uint16_t handleArraySize;        // 32 undocumented. dos 3+: number of entries in jft, default 20
@@ -1545,7 +1546,6 @@ void init_blankline( uint8_t attribute )
 
 uint8_t get_keyboard_flags_depressed()
 {
-
     uint8_t val = 0;
 #ifdef _WIN32
     val |= ( 0 != isPressed( VK_RSHIFT ) );
@@ -1992,8 +1992,8 @@ void UpdateDisplayRow( uint32_t y )
         awc[ x ] = CP437_to_Unicode[ pbuf[ offset ] ];
         attribs[ x ] = pbuf[ 1 + offset ];
 
-#if defined( __riscv ) || defined( _WIN32 )
-        // When NTVDM built for RISC-V runs in RVOS emulation on Windows, CP 437
+#if defined( __riscv ) || defined( _WIN32 ) || defined( __aarch64 )
+        // When NTVDM built for RISC-V runs in RVOS/ARMOS emulation on Windows, CP 437
         // characters 7 through 13 are interpreted by Windows Terminal as control
         // characters, not actual chacters. This is after they are converted to
         // UTF-8 and sent via write() to stdout. I can't find a way to configure
@@ -2004,6 +2004,9 @@ void UpdateDisplayRow( uint32_t y )
 
 #if defined( __riscv )
         if ( g_InRVOS )
+#endif
+#if defined( __aarch64 )
+        if ( g_InARMOS )
 #endif
         {
             if ( pbuf[ offset ] >= 7 && pbuf[ offset ] <= 27 )
@@ -5067,7 +5070,7 @@ void handle_int_21( uint8_t c )
         case 0xa:
         {
             // Buffered Keyboard input. DS::DX pointer to buffer. byte 0 count in, byte 1 count out excluding CR, byte 2 starts the response
-            // The assembler version enables the emulator to send timer and keyboard interrupts.
+            // The assembly version enables the emulator to send timer and keyboard interrupts.
 
 #if USE_ASSEMBLY_FOR_KBD
             invoke_assembler_routine( g_int21_a_seg );
@@ -5188,7 +5191,7 @@ void handle_int_21( uint8_t c )
                     pfcb->recSize = 0x80;
                     pfcb->fileSize = portable_filelen( fp );
                     GetFileDOSTimeDate( filename, pfcb->time, pfcb->date );
-                    pfcb->curRecord = 0; // documentation says this shouldn't be initialized here
+                    pfcb->curRecord = 0; // documentation says this shouldn't be initialized here. I haven't found an app that fails either way.
 
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
                     // don't allocate enough RAM in the FCB for the recNumber (the last field). Memory trashing would result.
@@ -9018,7 +9021,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     }
 
     *penv++ = 0; // extra 0 to indicate there are no more environment variables
-    * (uint16_t *)  ( penv ) = 0x0001; // one more additional item per DOS 3.0+
+    * (uint16_t *) ( penv ) = 0x0001; // one more additional item per DOS 3.0+
     penv += 2;
 
     strcpy( penv, fullPath );
@@ -9140,7 +9143,8 @@ int main( int argc, char * argv[] )
     {
         char * posval = getenv( "OS" );
         g_InRVOS = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
-        g_UseOneThread = g_InRVOS;
+        g_InARMOS = ( ( 0 != posval ) && !strcmp( posval, "ARMOS" ) );
+        g_UseOneThread = g_InRVOS || g_InARMOS;
 
         g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
 
@@ -9180,8 +9184,11 @@ int main( int argc, char * argv[] )
         g_heventKeyStroke = CreateEvent( 0, FALSE, FALSE, 0 );
 #endif
 
-        setlocale( LC_CTYPE, "en_US.UTF-8" );            // these are needed for printf of utf-8 to work
-        setlocale( LC_COLLATE, "en_US.UTF-8" );    
+        if ( !g_InARMOS )
+        {
+            setlocale( LC_CTYPE, "en_US.UTF-8" );            // these are needed for printf of utf-8 to work
+            setlocale( LC_COLLATE, "en_US.UTF-8" );
+        }
 
         init_blankline( DefaultVideoAttribute );
     
@@ -9740,7 +9747,7 @@ int main( int argc, char * argv[] )
     }
     catch ( bad_alloc & e )
     {
-        printf( "caught exception bad_alloc -- out of RAM. If in RVOS use -h or -m to add RAM. %s\n", e.what() );
+        printf( "caught exception bad_alloc -- out of RAM. If in RVOS or ARMOS use -h or -m to add RAM. %s\n", e.what() );
     }
     catch ( exception & e )
     {
