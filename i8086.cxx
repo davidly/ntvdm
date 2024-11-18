@@ -1324,7 +1324,7 @@ _prefix_set:
     
                 if ( takejmp )
                 {
-                    ip += ( 2 + (int) (int8_t) _b1 );
+                    ip += ( 2 + (int16_t) (int8_t) _b1 );
                     AddCycles( 12 );
                     continue;
                 }
@@ -1440,7 +1440,6 @@ _prefix_set:
             {
                 _bc++;
                 AddMemCycles( 11 ); // 10/11/12 possible
-
                 _reg &= 3; // the 8086 only checks the lower 2 bits of _reg.
                 * get_rm_ptr16() = * seg_reg( _reg ); // 0x8c is even, but it's a word instruction not byte
                 break;
@@ -1450,7 +1449,6 @@ _prefix_set:
             {
                 _bc++;
                 AddMemCycles( 11 ); // 10/11/12 possible
-
                 _reg &= 3; // the 8086 only checks the lower 2 bits of _reg.
                 * seg_reg( _reg ) = * get_rm_ptr16();
                 break;

@@ -9184,11 +9184,8 @@ int main( int argc, char * argv[] )
         g_heventKeyStroke = CreateEvent( 0, FALSE, FALSE, 0 );
 #endif
 
-        if ( !g_InARMOS )
-        {
-            setlocale( LC_CTYPE, "en_US.UTF-8" );            // these are needed for printf of utf-8 to work
-            setlocale( LC_COLLATE, "en_US.UTF-8" );
-        }
+        setlocale( LC_CTYPE, "en_US.UTF-8" );            // these are needed for printf of utf-8 to work
+        setlocale( LC_COLLATE, "en_US.UTF-8" );
 
         init_blankline( DefaultVideoAttribute );
     
