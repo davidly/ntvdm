@@ -1860,13 +1860,13 @@ void traceDisplayBufferAsHex()
 
 // hacks for a bug in Windows Terminal. Map 7 through 15 to smiley faces.
 // Also, 27/0x1b/ESC/left-arrow is treated as ESC so it's mapped to the other left arrow in this table.
-// Also, 16/17 right/left arrows are mapped to big ugly block because Windows.
+// Also, 16/17 right/left arrows are mapped to >= and <=
 // see this: https://github.com/dotnet/runtime/issues/80644
 
 static const wchar_t CP437_to_Unicode_Windows_Hack[ 32 ] =
 {
     0x0020, 0x263a, 0x263b, 0x2665, 0x2666, 0x2663, 0x2660, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a, 0x263b, 0x263a,
-    0x2588, 0x2588, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x25c4, 0x221f, 0x2194, 0x25b2, 0x25bc, // 16
+    0x2265, 0x2264, 0x2195, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x21a8, 0x2191, 0x2193, 0x2192, 0x25c4, 0x221f, 0x2194, 0x25b2, 0x25bc, // 16
 };
 
 // Map 0000 to ' ' for display purposes. It only happens if a DOS app has a bug and tries to display character 0. Like brief.exe.
