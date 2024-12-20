@@ -78,7 +78,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <string>
-#include <regex>
+#include <regex.h>
 #endif
 
 #include <assert.h>
@@ -3417,69 +3417,89 @@ bool starts_with( const char * str, const char * start )
         char cFileName[ MAX_PATH ];
     };
 
-    // regex code found on stackoverflow from pooya13
-
-    std::regex wildcardToRegex( const std::string& wildcard, bool caseSensitive = true )
+    int match_dos_wildcard( const char *filename, const char *pattern )
     {
-        std::string regexString( wildcard );
-        regexString = std::regex_replace( regexString, std::regex("\\\\"), "\\\\" );
-        regexString = std::regex_replace( regexString, std::regex("\\^"), "\\^" );
-        regexString = std::regex_replace( regexString, std::regex("\\."), "\\." );
-        regexString = std::regex_replace( regexString, std::regex("\\$"), "\\$" );
-        regexString = std::regex_replace( regexString, std::regex("\\|"), "\\|" );
-        regexString = std::regex_replace( regexString, std::regex("\\("), "\\(" );
-        regexString = std::regex_replace( regexString, std::regex("\\)"), "\\)" );
-        regexString = std::regex_replace( regexString, std::regex("\\{"), "\\{" );
-        regexString = std::regex_replace( regexString, std::regex("\\{"), "\\}" );
-        regexString = std::regex_replace( regexString, std::regex("\\["), "\\[" );
-        regexString = std::regex_replace( regexString, std::regex("\\]"), "\\]" );
-        regexString = std::regex_replace( regexString, std::regex("\\+"), "\\+" );
-        regexString = std::regex_replace( regexString, std::regex("\\/"), "\\/" );
+        // Convert DOS wildcard pattern to POSIX regex
+        char *regex = (char *) malloc( strlen( pattern ) * 2 + 3 );
+        char *dest = regex;
+        *dest++ = '^';
+        while ( *pattern )
+        {
+            switch ( *pattern )
+            {
+                case '*':
+                    *dest++ = '.';
+                    *dest++ = '*';
+                    break;
+                case '?':
+                    *dest++ = '.';
+                    break;
+                case '.':
+                    *dest++ = '\\';
+                    *dest++ = '.';
+                    break;
+                default:
+                    *dest++ = *pattern;
+            }
+            pattern++;
+        }
+        *dest++ = '$';
+        *dest = 0;
+    
+        // Compile the regex
+        regex_t regex_compiled;
+        int cflags = REG_NOSUB;
+#ifdef __APPLE__
+        cflags |= REG_ICASE; // by default, MacOS is case insensitive
+#endif
 
-        // Convert wildcard specific chars * and ? to their regex equivalents:
+        int reti = regcomp( &regex_compiled, regex, cflags );
+        if ( reti )
+        {
+            tracer.Trace( "Could not compile regex, error %#x\n", reti );
+            free( regex );
+            return 0;
+        }
+    
+        // Match the filename against the regex
+        reti = regexec( &regex_compiled, filename, 0, NULL, 0 );
+        tracer.Trace( "  result of matching regex '%s' with file '%s': %#x\n", regex, filename, reti );
+        regfree( &regex_compiled );
+        free( regex );
+    
+        return ( 0 == reti );
+    } //match_dos_wildcard
 
-        regexString = std::regex_replace( regexString, std::regex("\\?"), "." );
-        regexString = std::regex_replace( regexString, std::regex("\\*"), ".*" );
-
-        return std::regex( regexString, caseSensitive ? std::regex_constants::ECMAScript : std::regex_constants::icase );
-    } //wildcardToRegex
-
-    bool wildMatch( const std::string & input, const std::string & wildcard )
+    bool wildMatch( const char * input, const char * wildcard )
     {
-        // very expensive to initialize this every time, but it's an emulator doing disk I/O, so it's OK
+        // very expensive to initialize the regex every time, but it's an emulator doing disk I/O, so it's OK
 
-        std::string wc = wildcard;
-        const char * pwildcard = wildcard.c_str();
         char ac[ 20 ];
 
         // in DOS, ???????? for filename and ??? for extension are really *, not literally matching that number of characters
+        // These odd ? rules are generally for DOS 1.0 FCB functions. Apps using later APIs with asciiz strings don't do this.
 
-        if ( !strcmp( pwildcard, "????????.???" ) )
-            wc = "*.*";
-        else if ( starts_with( pwildcard, "????????." ) )
+        if ( !strcmp( wildcard, "????????.???" ) )
+            strcpy( ac, "*.*" );
+        else if ( starts_with( wildcard, "????????." ) )
         {
             strcpy( ac, "*." );
-            strcat( ac, pwildcard + 9);
-            wc = ac;
+            strcat( ac, wildcard + 9);
         }
-        else if ( ends_with( pwildcard, ".???" ) )
+        else if ( ends_with( wildcard, ".???" ) )
         {
-            strcpy( ac, pwildcard );
+            strcpy( ac, wildcard );
             char * pdot = strchr( ac, '.' );
             strcpy( pdot, ".*" );
-            wc = ac;
         }
+        else
+            strcpy( ac, wildcard );
 
-        if ( !strcmp( wc.c_str(), "*.*" ) )
+        if ( !strcmp( ac, "*.*" ) )
             return true;
 
-        tracer.Trace( "  modified wildcard from '%s' to '%s'\n", wildcard.c_str(), wc.c_str() );
-        bool caseSensitive = true;
-#ifdef __APPLE__
-        caseSensitive = false; // by default, though the user may have changed this
-#endif
-        std::regex rgx = wildcardToRegex( wc, caseSensitive );
-        return std::regex_match( input, rgx );
+        tracer.Trace( "  modified wildcard from '%s' to '%s'\n", wildcard, ac );
+        return match_dos_wildcard( input, ac );
     } //wildMatch
 
     void tmTimeToDos( long sec, uint16_t & dos_time, uint16_t & dos_date )
@@ -3636,8 +3656,6 @@ bool starts_with( const char * str, const char * start )
 
     bool FindNextFileLinux( DIR * pdir, LINUX_FIND_DATA & fd )
     {
-        const char * justPattern = g_acFindFirstPattern;
-
         do
         {
             struct dirent * pent = readdir( pdir );
@@ -3656,7 +3674,7 @@ bool starts_with( const char * str, const char * start )
                 continue;
             }
 
-            if ( !wildMatch( pent->d_name, justPattern ) )
+            if ( !wildMatch( pent->d_name, g_acFindFirstPattern ) )
             {
                 tracer.Trace( "  filename didn't match pattern\n" );
                 continue;
