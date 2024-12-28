@@ -313,8 +313,6 @@ void i8086::op_rol8( uint8_t * pval, uint8_t shift )
         val <<= 1;
         if ( highBit )
             val |= 1;
-        else
-            val &= 0xfe;
         fCarry = highBit;
     }
 
@@ -338,8 +336,6 @@ void i8086::op_rol16( uint16_t * pval, uint8_t shift )
         val <<= 1;
         if ( highBit )
             val |= 1;
-        else
-            val &= 0xfffe;
         fCarry = highBit;
     }
 
@@ -359,8 +355,6 @@ void i8086::op_ror8( uint8_t * pval, uint8_t shift )
         val >>= 1;
         if ( lowBit )
             val |= 0x80;
-        else
-            val &= 0x7f;
         fCarry = lowBit;
     }
 
@@ -380,8 +374,6 @@ void i8086::op_ror16( uint16_t * pval, uint8_t shift )
         val >>= 1;
         if ( lowBit )
             val |= 0x8000;
-        else
-            val &= 0x7fff;
         fCarry = lowBit;
     }
 
@@ -401,8 +393,6 @@ not_inlined void i8086::op_rcl8( uint8_t * pval, uint8_t shift )
         val <<= 1;
         if ( fCarry )
             val |= 1;
-        else
-            val &= 0xfe;
         fCarry = newCarry;
     }
 
@@ -422,8 +412,6 @@ not_inlined void i8086::op_rcl16( uint16_t * pval, uint8_t shift )
         val <<= 1;
         if ( fCarry )
             val |= 1;
-        else
-            val &= 0xfffe;
         fCarry = newCarry;
     }
 
@@ -443,8 +431,6 @@ not_inlined void i8086::op_rcr8( uint8_t * pval, uint8_t shift )
         val >>= 1;
         if ( fCarry )
             val |= 0x80;
-        else
-            val &= 0x7f;
         fCarry = newCarry;
     }
 
@@ -464,8 +450,6 @@ not_inlined void i8086::op_rcr16( uint16_t * pval, uint8_t shift )
         val >>= 1;
         if ( fCarry )
             val |= 0x8000;
-        else
-            val &= 0x7fff;
         fCarry = newCarry;
     }
 
@@ -563,8 +547,6 @@ not_inlined void i8086::op_sar8( uint8_t * pval, uint8_t shift )
         val >>= 1;
         if ( highBit )
             val |= 0x80;
-        else
-            val &= 0x7f;
     }
 
     fOverflow = false; // only defined when shift is 1
@@ -585,8 +567,6 @@ void i8086::op_sar16( uint16_t * pval, uint8_t shift )
         val >>= 1;
         if ( highBit )
             val |= 0x8000;
-        else
-            val &= 0x7fff;
     }
 
     fOverflow = false; // only defined when shift is 1
