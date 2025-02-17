@@ -4095,7 +4095,7 @@ void handle_int_10( uint8_t c )
                 if ( 0x1b == ch ) // don't show escape characters; as left arrows aren't shown
                     ch = ' ';
 
-                if ( 0xd != ch )
+                if ( 0xd != ch && 0 != ch ) // IBM BASIC v1 likes to output character 0
                 {
                     printf( "%c", ch );
                     fflush( stdout );
