@@ -1194,9 +1194,9 @@ _prefix_set:
             {
                 _bc = 2;
                 if ( toreg() )
-                    AddMemCycles( 10 );
+                    AddMemCycles( 9 );
                 else
-                    AddCycles( 21 );
+                    AddCycles( 16 );
 
                 uint8_t math = ( _b0 >> 3 ) & 7;
                 if ( isword() )
