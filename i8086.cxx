@@ -108,7 +108,7 @@ void i8086::update_index8( uint16_t & index_register ) // si or di
         index_register--;
     else
         index_register++;
-} //update_index16
+} //update_index8
 
 void i8086::update_index16( uint16_t & index_register ) // si or di
 {
@@ -146,8 +146,7 @@ force_inlined uint8_t i8086::op_sub8( uint8_t lhs, uint8_t rhs, bool borrow )
 force_inlined uint16_t i8086::op_sub16( uint16_t lhs, uint16_t rhs, bool borrow )
 {
     uint16_t com_rhs = ~rhs; // com == ones-compliment
-    uint16_t borrow_int = borrow ? 0 : 1;
-    uint32_t res32 = (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) borrow_int;
+    uint32_t res32 = (uint32_t) lhs + (uint32_t) com_rhs + (uint32_t) ( borrow ? 0 : 1 );
     uint16_t res16 = res32 & 0xffff;
     fCarry = ( 0 == ( res32 & 0x10000 ) );
     set_PSZ16( res16 );

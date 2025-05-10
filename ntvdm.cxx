@@ -64,6 +64,7 @@
 #include <sys/timeb.h>
 #include <memory.h>
 #include <chrono>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <locale.h>
@@ -3812,6 +3813,27 @@ void invoke_assembler_routine( uint16_t code_segment )
     cpu.set_cs( code_segment );
 } //invoke_assembler_routine
 
+void send_character( uint8_t c )
+{
+    #if defined( _WIN32 ) || defined( WATCOM )
+        if ( 10 == c )
+        {
+            fflush( stdout );
+            _setmode( _fileno( stdout ), _O_BINARY ); // don't convert LF (10) to CR LF (13 10)
+        }
+    #endif
+
+    printf( "%c", c );
+
+    #if defined( _WIN32 ) || defined( WATCOM )
+        if ( 10 == c )
+        {
+            fflush( stdout );
+            _setmode( _fileno( stdout ), _O_TEXT ); // back in text mode
+        }
+    #endif
+} //send_character
+
 void handle_int_10( uint8_t c )
 {
     uint8_t row, col;
@@ -4095,9 +4117,9 @@ void handle_int_10( uint8_t c )
                 if ( 0x1b == ch ) // don't show escape characters; as left arrows aren't shown
                     ch = ' ';
 
-                if ( 0xd != ch && 0 != ch ) // IBM BASIC v1 likes to output character 0
+                if ( 0 != ch ) // IBM BASIC v1 likes to output character 0
                 {
-                    printf( "%c", ch );
+                    send_character( ch );
                     fflush( stdout );
                 }
             }
@@ -4130,11 +4152,8 @@ void handle_int_10( uint8_t c )
             }
             else
             {
-                if ( 0xd != ch )
-                {
-                    printf( "%c", ch );
-                    fflush( stdout );
-                }
+                send_character( ch );
+                fflush( stdout );
             }
 
             return;
@@ -4203,11 +4222,8 @@ void handle_int_10( uint8_t c )
             }
             else
             {
-                if ( 0xd != ch )
-                {
-                    printf( "%c", ch );
-                    fflush( stdout );
-                }
+                send_character( ch );
+                fflush( stdout );
             }
 
             return;
@@ -4852,13 +4868,10 @@ void output_character( char ch )
     }
     else
     {
-        if ( 0x0d != ch )
-        {
-            if ( 8 == ch )
-                printf( "%c ", ch );
-            printf( "%c", ch );
-            fflush( stdout );
-        }
+        if ( 8 == ch )
+            printf( "%c ", ch );
+        send_character( ch );
+        fflush( stdout );
     }
 } //output_character
 
@@ -5018,11 +5031,8 @@ void handle_int_21( uint8_t c )
     
                 char ch = cpu.dl();
                 tracer.Trace( "    direct console output %02x, '%c'\n", (uint8_t) ch, printable( (uint8_t) ch ) );
-                if ( 0x0d != ch )
-                {
-                    printf( "%c", ch );
-                    fflush( stdout );
-                }
+                send_character( ch );
+                fflush( stdout );
             }
     
             return;
@@ -6660,9 +6670,9 @@ void handle_int_21( uint8_t c )
                         {
                             // intel c v4.5 generates apps where sprintf and printf insert a 0xf7 instead of the final digit of a floating point number
 
-                            if ( 0x0d != p[ x ] && 0x0b != p[ x ] && 0xf7 != p[ x ] )
+                            if ( 0x0b != p[ x ] && 0xf7 != p[ x ] )
                             {
-                                printf( "%c", p[ x ] );
+                                send_character( p[ x ] );
                                 tracer.Trace( "%c", printable( p[x] ) );
                             }
                         }
@@ -8516,7 +8526,6 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint8_t l
     return BSSegment;
 } //LoadAsBootSector
 
-        
 bool CheckForIntelC45App( FILE * fp )
 {
     bool isIntel = false;
@@ -9056,7 +9065,7 @@ uint32_t flat_address( uint16_t segment, uint16_t offset )
 
 void ValidateStateLooksOK()
 {
-    // Microsoft Fortran v4, v5, v5.1 executes cod in memory that it has been freed.
+    // Microsoft Fortran v4, v5, v5.1 execute code in memory that it has been freed.
     // Microsoft Pascal v4 executes code in memory that it has freed.
     // Microsoft BASIC Compiler v5 executes code in memory that it has freed.
     // QuickC 2.51 frees memory then executes it just before running compiled binaries.
@@ -9459,7 +9468,7 @@ int main( int argc, char * argv[] )
         * (uint16_t *) ( pbiosdata + 0x66 ) = 48;             // cga palette mask
         * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
         * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start
-        * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer start
+        * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer
         * (uint8_t *)  ( pbiosdata + 0x84 ) = DefaultScreenRows - 1; // 25 - 1
         * (uint8_t *)  ( pbiosdata + 0x87 ) = 0x60;           // video mode options for ega+
         * (uint8_t *)  ( pbiosdata + 0x88 ) = 9;              // ega feature bits
