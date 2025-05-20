@@ -101,31 +101,31 @@ using namespace std::chrono;
 
 #define USE_ASSEMBLY_FOR_KBD true
 
-// machine code for various interrupts. generated with tasm\mint.bat. 
-uint64_t int16_0_code[] = { 
-0x01b4c08e0040b806, 0x8326faf9741669cd, 0x1a3e832602001a06, 0x1a06c726077c3e00, 0x0000cb07fb001e00, 
-}; 
-uint64_t int21_1_code[] = { 
-0xcd0ab41669cd00b4, 0x000000cb01b41069, 
-}; 
-uint64_t int21_8_code[] = { 
-0xb4c08e0040b85306, 0x26faf9741669cd01, 0xd03e8026001a1e8b, 0x01478a260d740000, 0x11eb0000d006c626, 0x0975003c078a2690, 0x16eb0100d006c626, 0x2602001a06832690, 
-0x26077c3e001a3e83, 0xb4fb001e001a06c7, 0x00000000cb075b08, 
-}; 
-uint64_t int21_a_code[] = { 
-0x000144c6f28b5653, 0xcd01b43674003c80, 0x3c16cd00b4fa7416, 0x7400017c800c7508, 0x339010eb014cfeec, 0x3c024088015c8adb, 0xd08a0144fe10740d, 0x3a01448a21cd02b4, 
-0x00cb5b5ef8ca7504, 
-}; 
-uint64_t int21_3f_code[] = { 
-0x00f1bf5657525153, 0x0000eb06c72ef28b, 0xc5e9037500f98300, 0x50b9037e50f98300, 0xa12e00e90e892e00, 0x7c00ef063b2e00ed, 0xb4fa7416cd01b46d, 0x00e93e832e16cd00, 
-0x2e1075083c147401, 0x2ee2740000ef3e83, 0x2e901eeb00ef0eff, 0x2e01882e00ef1e8b, 0x22740d3c00ef06ff, 0xe93e832e0875083c, 0x02b4d08a06740100, 0x3b2e00efa12e21cd, 
-0x004f3d197400e906, 0x2e00ef1e8b2ea775, 0x00ef06ff2e0a01c6, 0x8b2e21cd02b40ab2, 0x8b2e018b2e00ed1e, 0x06ff2e008900eb1e, 0x2e00ed06ff2e00eb, 0x00ef063b2e00eda1, 
-0x0000ed06c72e1175, 0x000000ef06c72e00, 0x2e00e9a12e900ceb, 0xa12ec07500eb063b, 0x5b595a5f5ef800eb, 0x00000000000000cb, 0x0000000000000000, 0x0000000000000000, 
-0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 
-0x0000000000000000, 
-}; 
-// end of machine code 
-      
+// machine code for various interrupts. generated with tasm\mint.bat.
+uint64_t int16_0_code[] = {
+0x01b4c08e0040b806, 0x8326faf9741669cd, 0x1a3e832602001a06, 0x1a06c726077c3e00, 0x0000cb07fb001e00,
+};
+uint64_t int21_1_code[] = {
+0xcd0ab41669cd00b4, 0x000000cb01b41069,
+};
+uint64_t int21_8_code[] = {
+0xb4c08e0040b85306, 0x26faf9741669cd01, 0xd03e8026001a1e8b, 0x01478a260d740000, 0x11eb0000d006c626, 0x0975003c078a2690, 0x16eb0100d006c626, 0x2602001a06832690,
+0x26077c3e001a3e83, 0xb4fb001e001a06c7, 0x00000000cb075b08,
+};
+uint64_t int21_a_code[] = {
+0x000144c6f28b5653, 0xcd01b43674003c80, 0x3c16cd00b4fa7416, 0x7400017c800c7508, 0x339010eb014cfeec, 0x3c024088015c8adb, 0xd08a0144fe10740d, 0x3a01448a21cd02b4,
+0x00cb5b5ef8ca7504,
+};
+uint64_t int21_3f_code[] = {
+0x00f1bf5657525153, 0x0000eb06c72ef28b, 0xc5e9037500f98300, 0x50b9037e50f98300, 0xa12e00e90e892e00, 0x7c00ef063b2e00ed, 0xb4fa7416cd01b46d, 0x00e93e832e16cd00,
+0x2e1075083c147401, 0x2ee2740000ef3e83, 0x2e901eeb00ef0eff, 0x2e01882e00ef1e8b, 0x22740d3c00ef06ff, 0xe93e832e0875083c, 0x02b4d08a06740100, 0x3b2e00efa12e21cd,
+0x004f3d197400e906, 0x2e00ef1e8b2ea775, 0x00ef06ff2e0a01c6, 0x8b2e21cd02b40ab2, 0x8b2e018b2e00ed1e, 0x06ff2e008900eb1e, 0x2e00ed06ff2e00eb, 0x00ef063b2e00eda1,
+0x0000ed06c72e1175, 0x000000ef06c72e00, 0x2e00e9a12e900ceb, 0xa12ec07500eb063b, 0x5b595a5f5ef800eb, 0x00000000000000cb, 0x0000000000000000, 0x0000000000000000,
+0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+0x0000000000000000,
+};
+// end of machine code
+
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint8_t lenAppArgs, uint16_t segment, bool setupRegs,
                      uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad );
@@ -248,8 +248,8 @@ struct IntCalled
 
 const uint8_t DefaultVideoAttribute = 7;                          // light grey text
 const uint8_t DefaultVideoMode = 3;                               // 3=80x25 16 colors
-const uint32_t ScreenColumns = 80;      
-const uint32_t DefaultScreenRows = 25;         
+const uint32_t ScreenColumns = 80;
+const uint32_t DefaultScreenRows = 25;
 const uint32_t ScreenColumnsM1 = ScreenColumns - 1;               // columns minus 1
 const uint32_t ScreenBufferSegment = 0xb800;                      // location in i8086 physical RAM of CGA display. 16k, 4k per page.
 const uint32_t MachineCodeSegment = 0x0060;                       // machine code for keyboard/etc. starts here
@@ -365,7 +365,7 @@ bool ValidDOSPathname( char * pc )
 
 bool is_a_folder( const char * path )
 {
-#ifdef _WIN32                
+#ifdef _WIN32
     uint32_t attr = GetFileAttributesA( path );
     if ( INVALID_FILE_ATTRIBUTES == attr )
         return false;
@@ -378,7 +378,7 @@ bool is_a_folder( const char * path )
         return false;
 
     return ( S_ISDIR( statbuf.st_mode ) );
-#endif                
+#endif
 } //is_a_folder
 
 void ensure_ends_in_slash( char * p )
@@ -832,7 +832,7 @@ struct DOSPSP
     uint32_t int24CriticalError;     // 12
     uint16_t segParent;              // 16 parent process segment address of PSP
     uint8_t  fileHandles[20];        // 18 undocumented, but MS COBOL writes to this
-    uint16_t segEnvironment;         // 2c 
+    uint16_t segEnvironment;         // 2c
     uint32_t ssspEntry;              // 2e ss:sp on entry to last int21 function. undocumented
     uint16_t handleArraySize;        // 32 undocumented. dos 3+: number of entries in jft, default 20
     uint32_t handleArrayPointer;     // 34 undocumented. dos 3+: pointer to jft
@@ -1281,7 +1281,7 @@ void reset_mcb_tags()
     {
         DosAllocation & da = g_allocEntries[i];
         DOSMemoryControlBlock *pmcb = (DOSMemoryControlBlock *) cpu.flat_address( da.segment - 1, 0 );
-        
+
         if ( i == ( g_allocEntries.size() - 1 ) )
         {
             pmcb->header = 'Z';
@@ -1400,7 +1400,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
                     uint16_t freePara = g_allocEntries[ i + 1 ].segment - 1 - after;
                     if ( freePara > largestGap )
                         largestGap = freePara;
-    
+
                     if ( freePara >= request_paragraphs )
                     {
                         tracer.Trace( "  using gap from previously freed memory: %02x\n", after );
@@ -1418,7 +1418,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
                 }
             }
         }
-    
+
         if ( 0 == allocatedSeg )
         {
             DosAllocation & last = g_allocEntries[ cEntries - 1 ];
@@ -1432,7 +1432,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
                 largest_block = largestGap;
 
             largest_block--; // don't include the MCB
-    
+
             tracer.Trace( "  ERROR: unable to allocate %02x paragraphs. returning that %02x paragraphs are free\n", request_paragraphs, largest_block );
             return 0;
         }
@@ -1498,7 +1498,7 @@ void UpdateScreenCursorPosition( uint8_t row, uint8_t col )
 {
     //tracer.Trace( "  updating screen cursor position to %d %d\n", row, col );
     assert( g_use80xRowsMode );
-#ifdef _WIN32    
+#ifdef _WIN32
     COORD pos = { col, row };
     SetConsoleCursorPosition( g_hConsoleOutput, pos );
 #else
@@ -1776,12 +1776,12 @@ bool GetDOSFilenameFromFCB( DOSFCB &fcb, char * filename )
 
     *filename = 0;
 
-#ifndef _WIN32 
+#ifndef _WIN32
     if ( g_forcePathsUpper )
         strupr( orig );
     else if ( g_forcePathsLower )
         strlwr( orig );
-#endif    
+#endif
 
     return ( 0 != *orig && '.' != *orig );
 } //GetDOSFilenameFromFCB
@@ -1861,12 +1861,13 @@ void traceDisplayBufferAsHex()
 
 // hacks for a bug in Windows Terminal, which treats these lower characters as control. It used to be just
 // a handlful of them, but a recent regression (noticed Dec 2024) impact nearly all of them.
+// and now in May 2025 I see Microsoft regressed yet more of the characters including 0x1e and 0x1f.
 // see this for the original issue: https://github.com/dotnet/runtime/issues/80644
 
 static const wchar_t CP437_to_Unicode_Windows_Hack[ 32 ] =
 {
     0x0020, 0x263a, 0x263b, 0x2665, 0x2666, 0x2663, 0x2660, 0x00b7, 0x00b7, 0x00b7, 0x00b7, 0x00b7, 0x00b7, 0x00b7, 0x00b7, 0x00b7,
-    0x2265, 0x2264, 0x007c, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x007c, 0x007c, 0x007c, 0x002d, 0x002d, 0x221f, 0x2194, 0x25b2, 0x25bc, // 16
+    0x2265, 0x2264, 0x007c, 0x203c, 0x00b6, 0x00a7, 0x25ac, 0x007c, 0x007c, 0x007c, 0x002d, 0x002d, 0x221f, 0x2194, 0x007c, 0x007c,
 };
 
 // Map 0000 to ' ' for display purposes. It only happens if a DOS app has a bug and tries to display character 0. Like brief.exe.
@@ -1914,16 +1915,16 @@ void UpdateDisplayRow( uint32_t y )
     {
         size_t offset = yoffset + x * 2;
         awcLine[ x ] = CP437_to_Unicode[ pbuf[ offset ] ];
-        aAttribs[ x ] = pbuf[ 1 + offset ]; 
+        aAttribs[ x ] = pbuf[ 1 + offset ];
     }
 
     COORD pos = { 0, (SHORT) y };
     SetConsoleCursorPosition( g_hConsoleOutput, pos );
-    
+
     BOOL ok = WriteConsoleW( g_hConsoleOutput, awcLine, ScreenColumns, 0, 0 );
     if ( !ok )
         tracer.Trace( "writeconsole failed row %u with error %d\n", y, GetLastError() );
-    
+
     DWORD dwWritten; // not optional
     ok = WriteConsoleOutputAttribute( g_hConsoleOutput, aAttribs, ScreenColumns, pos, &dwWritten );
     if ( !ok )
@@ -2010,7 +2011,7 @@ void UpdateDisplayRow( uint32_t y )
         if ( g_InARMOS )
 #endif
         {
-            if ( pbuf[ offset ] >= 7 && pbuf[ offset ] <= 27 )
+            if ( pbuf[ offset ] >= 7 && pbuf[ offset ] <= 0x1f )
                 awc[ x ] = CP437_to_Unicode_Windows_Hack[ pbuf[ offset ] ];
         }
 #endif
@@ -2057,8 +2058,10 @@ bool UpdateDisplay()
                 UpdateDisplayRow( y );
         }
 
-        //if ( tracer.IsEnabled() )
-        //    traceDisplayBufferAsHex();
+#if 0
+        if ( tracer.IsEnabled() )
+            traceDisplayBufferAsHex();
+#endif
 
         return true;
     }
@@ -2090,7 +2093,7 @@ void ClearDisplay()
     BOOL WINAPI ControlHandlerProc( DWORD fdwCtrlType )
     {
         // this happens in a third thread, which is implicitly created
-    
+
         if ( CTRL_C_EVENT == fdwCtrlType )
         {
             tracer.Trace( "ControlHandlerProc is incrementing the ^c count\n ");
@@ -2098,7 +2101,7 @@ void ClearDisplay()
             g_SendControlCInt = true;
             return TRUE;
         }
-    
+
         return FALSE;
     } //ControlHandlerProc
 #else
@@ -2314,7 +2317,7 @@ const uint8_t ascii_to_scancode[ 128 ] =
      35,  23,  36,  37,  38,  50,  49,  24, // 104  h - o
      25,  16,  19,  31,  20,  22,  47,  17, // 112  p - w
      45,  21,  24,  26,  43,  27,  41,  14, // 120  x y z { | } ~ DEL
-};     
+};
 
 #ifdef _WIN32
 bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scancode )
@@ -2630,7 +2633,7 @@ void consume_keyboard()
                     bool used = process_key_event( records[ x ], asciiChar, scancode );
                     if ( !used )
                         continue;
-        
+
                     tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scancode );
                     kbd_buf.Add( asciiChar, scancode );
                 }
@@ -2893,7 +2896,7 @@ void consume_keyboard()
                                 else
                                     tracer.Trace( "unknown next %d\n", next );
                             }
-                        }                       
+                        }
                         else if ( '3' == thirdAscii ) // DEL
                         {
                             uint8_t nextA = g_consoleConfig.portable_getch();
@@ -2920,7 +2923,7 @@ void consume_keyboard()
                         }
                         else if ( '5' == thirdAscii ) // pgup
                         {
-                            uint8_t nextA = g_consoleConfig.portable_getch(); 
+                            uint8_t nextA = g_consoleConfig.portable_getch();
                             tracer.Trace( "    nextA for pgup: %d\n", nextA );
                             if ( MODIFIER_DOWN == nextA )
                             {
@@ -2942,7 +2945,7 @@ void consume_keyboard()
                         }
                         else if ( '6' == thirdAscii ) // pgdown
                         {
-                            uint8_t nextA = g_consoleConfig.portable_getch(); 
+                            uint8_t nextA = g_consoleConfig.portable_getch();
                             tracer.Trace( "    nextA for pgup: %d\n", nextA );
                             if ( MODIFIER_DOWN == nextA )
                             {
@@ -2979,7 +2982,7 @@ void consume_keyboard()
                 }
                 else if ( secondAscii <= 'z' && secondAscii >= 'a' )
                 {
-                    // ALT + a through z 
+                    // ALT + a through z
 
                     // somewhat massive hack because I don't know how to tell if ALT is pressed on Linux
                     g_altPressedRecently = true;
@@ -2999,7 +3002,7 @@ void consume_keyboard()
                 {
                     uint8_t fnumber = g_consoleConfig.portable_getch();
                     tracer.Trace( "f1-f4 fnumber: %d\n", fnumber );
-                    
+
                     if ( fnumber >= 80 && fnumber <= 83 ) // 80-83 map to scancode 59-62
                         kbd_buf.Add( 0, fnumber - 21 );
                     else if ( 65 == fnumber )
@@ -3010,9 +3013,9 @@ void consume_keyboard()
                         kbd_buf.Add( 0, 0x4d ); // right
                     else if ( 68 == fnumber )
                         kbd_buf.Add( 0, 0x4b ); // left
-                    else if ( 70 == fnumber ) 
+                    else if ( 70 == fnumber )
                         kbd_buf.Add( 0, 0x4f ); // end
-                    else if ( 72 == fnumber ) 
+                    else if ( 72 == fnumber )
                         kbd_buf.Add( 0, 0x47 ); // home
                     else
                         tracer.Trace( "unknown ESC O fnumber %d\n", fnumber );
@@ -3276,34 +3279,34 @@ bool starts_with( const char * str, const char * start )
         FileTimeToLocalFileTime( &ftSystem, &ft );
         SYSTEMTIME st = {0};
         FileTimeToSystemTime( &ft, &st );
-    
+
         // low 5 bits seconds, next 6 bits minutes, high 5 bits hours
-    
+
         dos_time = st.wSecond;
         dos_time |= ( st.wMinute << 5 );
         dos_time |= ( st.wHour << 11 );
-    
+
         // low 5 bits day, next 4 bits month, high 7 bits year less 1980
-    
+
         dos_date = st.wDay;
         dos_date |= ( st.wMonth << 5 );
         dos_date |= ( ( st.wYear - 1980 ) << 9 );
     } //FileTimeToDos
-    
+
     bool ProcessFoundFile( DosFindFile * pff, WIN32_FIND_DATAA & fd )
     {
         // these bits are the same on Windows and DOS
-    
+
         uint8_t matching_attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM ) );
-    
+
         // return normal files always and any of the 3 special classes if their bit is set in search_attributes
-    
+
         if ( ( 0 != matching_attr ) && ( 0 == ( matching_attr & pff->search_attributes ) ) )
         {
             tracer.Trace( "  file '%s' attr %#x doesn't match the attribute filter %#x\n", fd.cFileName, fd.dwFileAttributes, pff->search_attributes );
             return false;
         }
-    
+
         tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
         if ( 0 != fd.cAlternateFileName[ 0 ] )
             strcpy( pff->file_name, fd.cAlternateFileName );
@@ -3312,12 +3315,12 @@ bool starts_with( const char * str, const char * start )
         else
         {
             // this only works on volumes that have the feature enabled. Most don't.
-    
+
             DWORD result = GetShortPathNameA( fd.cFileName, pff->file_name, _countof( pff->file_name ) );
             if ( result > _countof( pff->file_name ) )
                 return false; // files with long names are just invisible to DOS apps
         }
-    
+
         _strupr( pff->file_name );
         pff->file_size = fd.nFileSizeLow;
         uint8_t attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY |
@@ -3327,21 +3330,21 @@ bool starts_with( const char * str, const char * start )
         tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
         return true;
     } //ProcessFoundFile
-    
+
     bool ProcessFoundFileFCB( WIN32_FIND_DATAA & fd, uint8_t attr, bool exFCB )
     {
         // note: extended FCB code isn't well-tested. Multiplan setup.exe is the only app I know that uses it and it fails for other reasons
         // non-extended FCBs will have attr = 0
-    
+
         attr &= ~ ( 8 ); // remove the volume label bit if set
         uint8_t matching_attr = ( fd.dwFileAttributes & ( FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM ) );
-    
+
         if ( ( matching_attr && ( 0 == attr ) ) || ( ( 0 != attr) && ( 0 == ( attr & matching_attr ) ) ) )
         {
             tracer.Trace( "  file '%s' attr %#x doesn't match the attribute filter %#x\n", fd.cFileName, fd.dwFileAttributes, attr );
             return false;
         }
-    
+
         tracer.Trace( "  actual found filename: '%s'\n", fd.cFileName );
         char acResult[ DOS_FILENAME_SIZE ];
         if ( 0 != fd.cAlternateFileName[ 0 ] )
@@ -3351,16 +3354,16 @@ bool starts_with( const char * str, const char * start )
         else
         {
             // this only works on volumes that have the feature enabled. Most don't.
-    
+
             DWORD result = GetShortPathNameA( fd.cFileName, acResult, _countof( acResult ) );
             if ( result > _countof( acResult ) )
                 return false; // files with long names are just invisible to DOS apps
         }
-    
+
         _strupr( acResult );
-    
+
         // now write the file into an FCB at the transfer address
-    
+
         DOSFCB *pfcb = 0;
         if ( exFCB )
         {
@@ -3373,7 +3376,7 @@ bool starts_with( const char * str, const char * start )
         }
         else
             pfcb = (DOSFCB *) GetDiskTransferAddress();
-    
+
         pfcb->drive = 0;
         for ( int i = 0; i < _countof( pfcb->name ); i++ )
             pfcb->name[ i ] = ' ';
@@ -3388,14 +3391,14 @@ bool starts_with( const char * str, const char * start )
             for ( int i = 0; i < _countof( pfcb->ext ) && 0 != acResult[i]; i++ )
                 pfcb->ext[i] = pdot[ i ];
         }
-    
+
         pfcb->fileSize = fd.nFileSizeLow;
         FileTimeToDos( fd.ftLastWriteTime, pfcb->time, pfcb->date );
-    
+
         pfcb->TraceFirst24();
         return true;
     } //ProcessFoundFileFCB
-    
+
     static HANDLE g_hFindFirst = INVALID_HANDLE_VALUE;
 
     void CloseFindFirst()
@@ -3446,7 +3449,7 @@ bool starts_with( const char * str, const char * start )
         }
         *dest++ = '$';
         *dest = 0;
-    
+
         // Compile the regex
         regex_t regex_compiled;
         int cflags = REG_NOSUB;
@@ -3461,13 +3464,13 @@ bool starts_with( const char * str, const char * start )
             free( regex );
             return 0;
         }
-    
+
         // Match the filename against the regex
         reti = regexec( &regex_compiled, filename, 0, NULL, 0 );
         tracer.Trace( "  result of matching regex '%s' with file '%s': %#x\n", regex, filename, reti );
         regfree( &regex_compiled );
         free( regex );
-    
+
         return ( 0 == reti );
     } //match_dos_wildcard
 
@@ -3511,9 +3514,9 @@ bool starts_with( const char * str, const char * start )
         uint16_t _mon = 1 + lt.tm_mon;
         uint16_t _year = 1900 + lt.tm_year - 1980;
         dos_date = _mday | ( _mon << 5 ) | ( _year << 9 );
-    
+
         uint16_t _hour = lt.tm_hour;
-        uint16_t _min = lt.tm_min; 
+        uint16_t _min = lt.tm_min;
         uint16_t _sec = lt.tm_sec; // 2-second granularity not enforced
         dos_time = _sec | ( _min << 5 ) | ( _hour << 11 );
 
@@ -3693,7 +3696,7 @@ bool starts_with( const char * str, const char * start )
             return true;
         } while ( true );
 
-        return false;            
+        return false;
     } //FindNextFileLinux
 
     DIR * FindFirstFileLinux( const char * pattern, LINUX_FIND_DATA & fd )
@@ -3739,7 +3742,7 @@ bool starts_with( const char * str, const char * start )
 
 bool GetFileDOSTimeDate( const char * path, uint16_t & dos_time, uint16_t & dos_date )
 {
-    #ifdef _WIN32                    
+    #ifdef _WIN32
         WIN32_FILE_ATTRIBUTE_DATA fad = {0};
         if ( GetFileAttributesExA( path, GetFileExInfoStandard, &fad ) )
         {
@@ -4313,7 +4316,7 @@ void handle_int_10( uint8_t c )
                 // This doesn't break Quick C 1.
                 // Not setting bx to 0 breaks apps like QBX 7.1
 
-                if ( ! ends_with( g_acApp, "qc.exe" ) ) 
+                if ( ! ends_with( g_acApp, "qc.exe" ) )
                     cpu.set_bx( 0 );
 
                 // setting this breaks quick pascal cpu.set_cx( 0x5 ); // primary cga 80x25
@@ -4534,7 +4537,7 @@ void handle_int_16( uint8_t c )
             // microsoft internal TSRs al = fe for qbasic and al = 0/ff for word
             return;
         }
-        default: 
+        default:
             tracer.Trace( "unhandled int16 command %u == %02x\n", c, c );
     }
 } //handle_int_16
@@ -4712,13 +4715,13 @@ bool command_exists( char * pc )
 
 const int day_of_week( int year, int month, int day )
 {
-    int monday0 = ( day                                                     
+    int monday0 = ( day
                     + ((153 * (month + 12 * ((14 - month) / 12) - 3) + 2) / 5)
-                    + (365 * (year + 4800 - ((14 - month) / 12)))             
-                    + ((year + 4800 - ((14 - month) / 12)) / 4)               
-                    - ((year + 4800 - ((14 - month) / 12)) / 100)             
-                    + ((year + 4800 - ((14 - month) / 12)) / 400)             
-                    - 32045                                                   
+                    + (365 * (year + 4800 - ((14 - month) / 12)))
+                    + ((year + 4800 - ((14 - month) / 12)) / 4)
+                    - ((year + 4800 - ((14 - month) / 12)) / 100)
+                    + ((year + 4800 - ((14 - month) / 12)) / 400)
+                    - 32045
                   ) % 7;
 
     // shift from monday = 0 to sunday = 0
@@ -4760,7 +4763,7 @@ bool FindCommandInPath( char * pc )
             {
                 while ( *penv && ';' == *penv )
                     penv++;
-    
+
                 char acPath[ MAX_PATH ];
                 int i = 0;
                 while ( *penv && ';' != *penv )
@@ -4771,14 +4774,14 @@ bool FindCommandInPath( char * pc )
                     tracer.Trace( "  empty value in path variable; giving up\n" );
                     return false;
                 }
-    
+
                 acPath[ i ] = 0;
                 if ( '\\' != acPath[ i - 1 ] && '/' != acPath[ i - 1 ] )
                 {
                     acPath[ i++ ] = '\\';
                     acPath[ i ] = 0;
                 }
-    
+
                 tracer.Trace( "  testing path '%s'\n", acPath );
                 strcat( acPath, pc );
                 if ( command_exists( acPath ) )
@@ -4923,7 +4926,7 @@ void handle_int_21( uint8_t c )
         case 0:
         {
             // terminate program
-    
+
             HandleAppExit();
             return;
         }
@@ -4958,7 +4961,7 @@ void handle_int_21( uint8_t c )
         {
             // output character in DL. move cursor as appropriate
             // todo: interpret 7 (beep), 8 (backspace), 9 (tab) to tab on multiples of 8. 10 lf should move cursor down and scroll if needed
-    
+
             char ch = cpu.dl();
             tracer.Trace( "  output char %d == %#02x == '%c'\n", ch, ch, printable( ch ) );
             output_character( ch );
@@ -4972,7 +4975,7 @@ void handle_int_21( uint8_t c )
             //      return 0 for extended keystroke, then on subsequent call return the scancode
             //      ignore ctrl+break and ctrl+prtsc
             // DL = !0xff means output the character
-    
+
             if ( 0xff == cpu.dl() )
             {
                 // input. don't block if nothing is available
@@ -5028,13 +5031,13 @@ void handle_int_21( uint8_t c )
             else
             {
                 // output
-    
+
                 char ch = cpu.dl();
                 tracer.Trace( "    direct console output %02x, '%c'\n", (uint8_t) ch, printable( (uint8_t) ch ) );
                 send_character( ch );
                 fflush( stdout );
             }
-    
+
             return;
         }
         case 7:
@@ -5083,7 +5086,7 @@ void handle_int_21( uint8_t c )
         case 9:
         {
             // print string $ terminated. prints chars up to a dollar sign $
-    
+
             char * p = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.TraceBinaryData( (uint8_t *) p, 0x40, 2 );
 
@@ -5143,7 +5146,7 @@ void handle_int_21( uint8_t c )
 
             while ( peek_keyboard() )
                 consume_keyboard();
-    
+
             cpu.set_ah( cpu.al() );
             tracer.Trace( "  recursing to int 0x21 with command %#x\n", cpu.ah() );
             i8086_invoke_syscall( 0x21 );
@@ -5175,17 +5178,17 @@ void handle_int_21( uint8_t c )
             acDir[0] = cpu.dl() + 'A';
             acDir[1] = ':';
             acDir[2] = 0;
-#ifdef _WIN32            
+#ifdef _WIN32
             BOOL ok = SetCurrentDirectoryA( acDir );
             tracer.Trace( "  result of SetCurrentDirectory to '%s': %d\n", acDir, ok );
-#endif            
+#endif
 
             return;
         }
         case 0xf:
         {
             // open file using FCB
-    
+
             tracer.Trace( "  open file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
@@ -5193,7 +5196,7 @@ void handle_int_21( uint8_t c )
 
             if ( 0 == pfcb->drive )
                 pfcb->drive = get_current_drive();
-    
+
             cpu.set_al( 0xff );
             if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
@@ -5212,7 +5215,7 @@ void handle_int_21( uint8_t c )
                 if ( fp )
                 {
                     tracer.Trace( "  file opened successfully\n" );
-        
+
                     if ( 0 == pfcb->drive )
                         pfcb->drive = 1 + get_current_drive();
                     pfcb->curBlock = 0;
@@ -5224,7 +5227,7 @@ void handle_int_21( uint8_t c )
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
                     // don't allocate enough RAM in the FCB for the recNumber (the last field). Memory trashing would result.
                     // pfcb->recNumber = 0;
-    
+
                     FileEntry fe = {0};
                     strcpy( fe.path, filename );
                     fe.fp = fp;
@@ -5234,7 +5237,7 @@ void handle_int_21( uint8_t c )
                     g_fileEntriesFCB.push_back( fe );
                     tracer.Trace( "  successfully opened file\n" );
                     trace_all_open_files_fcb();
-        
+
                     pfcb->Trace();
                     cpu.set_al( 0 );
                 }
@@ -5243,13 +5246,13 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR: couldn't parse filename in FCB\n" );
-    
+
             return;
         }
         case 0x10:
         {
             // close file using FCB
-    
+
             cpu.set_al( 0xff );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
@@ -5271,7 +5274,7 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR: file close is unable to parse filename from FCB\n" );
-    
+
             return;
         }
         case 0x11:
@@ -5300,7 +5303,7 @@ void handle_int_21( uint8_t c )
             if ( ok )
             {
                 tracer.Trace( "  searching for pattern '%s'\n", search_string );
-#ifdef _WIN32                
+#ifdef _WIN32
                 WIN32_FIND_DATAA fd = {0};
                 g_hFindFirst = FindFirstFileA( search_string, &fd );
                 if ( INVALID_HANDLE_VALUE != g_hFindFirst )
@@ -5361,9 +5364,9 @@ void handle_int_21( uint8_t c )
                 {
                     cpu.set_al( 0xff );
                     tracer.Trace( "  WARNING: find first file using FCB failed to find anything\n" );
-                } 
+                }
 #endif
-            }            
+            }
             else
             {
                 cpu.set_al( 0xff );
@@ -5456,21 +5459,21 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                cpu.set_al( 0xff ); 
+                cpu.set_al( 0xff );
                 tracer.Trace( "  ERROR: search for next FCB without a prior successful search for first\n" );
-            }                    
-#endif            
-    
+            }
+#endif
+
             return;
         }
         case 0x13:
         {
             // delete file using FCB
-    
+
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
-    
+
             cpu.set_al( 0xff );
             if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
@@ -5498,7 +5501,7 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR: couldn't parse filename in FCB\n" );
-    
+
             return;
         }
         case 0x14:
@@ -5605,32 +5608,32 @@ void handle_int_21( uint8_t c )
             // create file using FCB
             // Microsoft Pascal v1.0's first pass pas1 creates and writes ^z then 511 zeros to "con.lst".
             // ms-dos sends that to the console because "con". No special "con" handling exists here.
-    
+
             tracer.Trace( "  create file using FCB. ds %u dx %u\n", cpu.get_ds(), cpu.get_dx() );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
             cpu.set_al( 0xff );
-    
+
             if ( 0 == pfcb->drive )
                 pfcb->drive = get_current_drive();
-    
+
             if ( GetDOSFilenameFromFCB( *pfcb, filename ) )
             {
                 tracer.Trace( "  creating '%s'\n", filename );
-    
+
                 FILE * fp = fopen( filename, "w+b" );
                 if ( fp )
                 {
                     tracer.Trace( "  file created successfully\n" );
                     cpu.set_al( 0 );
-    
+
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
                     pfcb->fileSize = 0;
                     GetFileDOSTimeDate( filename, pfcb->time, pfcb->date );
                     pfcb->curRecord = 0;
-    
+
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
                     // don't allocate enough RAM in the FCB for the recNumber (the last field). Memory trashing would result.
                     // pfcb->recNumber = 0;
@@ -5652,19 +5655,19 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR: can't parse filename from FCB\n" );
-    
+
             return;
         }
         case 0x17:
         {
             // rename file using FCB. Returns AL 0 if success and 0xff on failure.
-    
+
             cpu.set_al( 0xff );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  mem: %p, pfcb %p\n", memory, pfcb );
             tracer.TraceBinaryData( (uint8_t *) pfcb, sizeof( DOSFCB ), 2 );
             DOSFCB * pfcbNew = (DOSFCB * ) ( 0x10 + (uint8_t *) pfcb );
-    
+
             char oldFilename[ DOS_FILENAME_SIZE ] = {0};
             if ( GetDOSFilenameFromFCB( *pfcb, oldFilename ) )
             {
@@ -5672,7 +5675,7 @@ void handle_int_21( uint8_t c )
                 if ( GetDOSFilenameFromFCB( *pfcbNew, newFilename ) )
                 {
                     tracer.Trace( "rename old name '%s', new name '%s'\n", oldFilename, newFilename );
-    
+
                     if ( !rename( oldFilename, newFilename ) )
                     {
                         tracer.Trace( "rename successful\n" );
@@ -5686,7 +5689,7 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR: can't parse old filename in FCB\n" );
-    
+
             return;
         }
         case 0x19:
@@ -5701,7 +5704,7 @@ void handle_int_21( uint8_t c )
         case 0x1a:
         {
             // set disk transfer address from ds:dx
-    
+
             tracer.Trace( "  set disk transfer address updated from %04x:%04x to %04x:%04x\n",
                           g_diskTransferSegment, g_diskTransferOffset, cpu.get_ds(), cpu.get_dx() );
             g_diskTransferSegment = cpu.get_ds();
@@ -5732,7 +5735,7 @@ void handle_int_21( uint8_t c )
             uint32_t driveMask = GetLogicalDrives(); // a = 0 ... z = 25
 #else
             uint32_t driveMask = 2;
-#endif            
+#endif
 
             if ( driveMask & ( 1 << drive ) )
             {
@@ -5775,7 +5778,7 @@ void handle_int_21( uint8_t c )
                     uint32_t seekOffset = pfcb->RandomOffset();
                     tracer.Trace( "  seek offset: %u\n", seekOffset );
                     pfcb->SetSequentialFromRandom(); // Digital Research PL/I compiler/linker depends on this
-    
+
                     bool ok = !fseek( fp, seekOffset, SEEK_SET );
                     if ( ok )
                     {
@@ -5788,7 +5791,7 @@ void handle_int_21( uint8_t c )
                                  cpu.set_al( 0 );
                              else
                                  cpu.set_al( 3 );
-        
+
                              // don't update the fcb's record number for this version of the API
                         }
                         else
@@ -5810,7 +5813,7 @@ void handle_int_21( uint8_t c )
             // random write using FCB. on output, 0 if success, 1 if disk full, 2 if DTA too small
             // The sequential offset is set to match the random offset before the write
             // Apps that use this: Lotus 123 v1.0A and Microsoft Pascal v1.0.
-    
+
             cpu.set_al( 1 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             pfcb->Trace();
@@ -5823,7 +5826,7 @@ void handle_int_21( uint8_t c )
                     uint32_t seekOffset = pfcb->RandomOffset();
                     tracer.Trace( "  seek offset: %u\n", seekOffset );
                     pfcb->SetSequentialFromRandom(); // Digital Research PL/I compiler/linker depends on this
-    
+
                     bool ok = !fseek( fp, seekOffset, SEEK_SET );
                     if ( ok )
                     {
@@ -5832,7 +5835,7 @@ void handle_int_21( uint8_t c )
                         {
                              tracer.Trace( "  write succeded: %u bytes\n", pfcb->recSize );
                              cpu.set_al( 0 );
-        
+
                              // don't update the fcb's record number for this version of the API
                         }
                         else
@@ -5846,7 +5849,7 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR random write using FCB can't parse filename\n" );
-    
+
             return;
         }
         case 0x24:
@@ -5865,7 +5868,7 @@ void handle_int_21( uint8_t c )
         case 0x25:
         {
             // set interrupt vector
-    
+
             tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_ds(), cpu.get_dx() );
             assert( i8086_interrupt_syscall != cpu.al() ); // owned by ntvdm; I haven't found any apps that use this
 
@@ -5894,8 +5897,8 @@ void handle_int_21( uint8_t c )
             // CX: number of records to read
             // DS:BX pointer to the FCB.
             // on exit, AL 0 success, 1 EOF no data read, 2 dta too small, 3 eof partial read (incomplete record filled with ^z)
-            // also, sequential I/O position is updated 
-    
+            // also, sequential I/O position is updated
+
             cpu.set_al( 1 ); // eof
             uint32_t cRecords = cpu.get_cx();
             cpu.set_cx( 0 );
@@ -5939,7 +5942,7 @@ void handle_int_21( uint8_t c )
                                     cpu.set_al( 0 );
                                 else
                                     cpu.set_al( 3 ); // eof encountered; not all requested records read or last record is partial
-        
+
                                 tracer.Trace( "  used disk transfer address %04x:%04x\n", g_diskTransferSegment, g_diskTransferOffset );
                                 tracer.TraceBinaryData( GetDiskTransferAddress(), recordsRead * pfcb->recSize, 4 );
                                 pfcb->SetRandomRecordNumber( pfcb->RandomRecordNumber() + (uint32_t) cpu.get_cx() );
@@ -5957,7 +5960,7 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR random block read using FCB can't parse filename\n" );
-    
+
             return;
         }
         case 0x28:
@@ -5965,7 +5968,7 @@ void handle_int_21( uint8_t c )
             // random block write using FCB.
             // in: CX = number of records, DS:BX the fcb
             // out: al = 0 if success, 1 if disk full, 2 if data too small, cx = number of records written
-    
+
             cpu.set_al( 1 );
             uint16_t recsToWrite = cpu.get_cx();
             cpu.set_cx( 0 );
@@ -5988,7 +5991,7 @@ void handle_int_21( uint8_t c )
                 {
                     uint32_t seekOffset = pfcb->RandomOffset();
                     tracer.Trace( "  seek offset: %u\n", seekOffset );
-    
+
                     bool ok = !fseek( fp, seekOffset, SEEK_SET );
                     if ( ok )
                     {
@@ -6013,7 +6016,7 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR random block write using FCB can't parse filename\n" );
-    
+
             return;
         }
         case 0x29:
@@ -6042,7 +6045,7 @@ void handle_int_21( uint8_t c )
             char * pfile_original = pfile;
             tracer.Trace( "  parse filename '%s'\n", pfile );
             tracer.TraceBinaryData( (uint8_t *) pfile, 64, 4 );
-    
+
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_es(), cpu.get_di() );
             uint8_t input_al = cpu.al();
 
@@ -6070,36 +6073,36 @@ void handle_int_21( uint8_t c )
             char * pf = pfile;
             if ( *pfile )
             {
-        
+
                 for ( int i = 0; i < _countof( pfcb->name ) && *pf && isFilenameChar( *pf ); i++ )
                     pfcb->name[ i ] = (char) toupper( *pf++ );
                 if ( '.' == *pf )
                     pf++;
                 for ( int i = 0; i < _countof( pfcb->ext ) && *pf && isFilenameChar( *pf ); i++ )
                     pfcb->ext[ i ] = (char) toupper( *pf++ );
-    
+
                 tracer.Trace( "  after copying filename, on char '%c', pf %p\n", *pf, pf );
-        
+
                 if ( strchr( pfile, '*' ) || strchr( pfile, '?' ) )
                     cpu.set_al( 1 );
                 else
                     cpu.set_al( 0 );
-    
+
                 star_to_question( pfcb->name, sizeof( pfcb->name ) );
                 star_to_question( pfcb->ext, sizeof( pfcb->ext ) );
             }
-    
+
             cpu.set_si( cpu.get_si() + (uint16_t) ( pf - pfile_original ) );
 
             pfcb->TraceFirst16();
             tracer.Trace( "  returning al %#x, si %04x\n", cpu.al(), cpu.get_si() );
-    
+
             return;
         }
         case 0x2a:
         {
             // get system date. al is day of week 0-6 0=sunday, cx = year 1980-2099, dh = month 1-12, dl = day 1-31
-    
+
             time_t t = time( 0 );
             struct tm current_dt = *localtime( &t );
             cpu.set_al( (uint8_t) day_of_week( current_dt.tm_year + 1900, current_dt.tm_mon + 1, current_dt.tm_mday ) );
@@ -6107,13 +6110,13 @@ void handle_int_21( uint8_t c )
             cpu.set_dh( (uint8_t) current_dt.tm_mon + 1 );
             cpu.set_dl( (uint8_t) current_dt.tm_mday );
             tracer.Trace( "  returning year %u, month %u, day %u, day of week %u\n", cpu.get_cx(), cpu.dh(), cpu.dl(), cpu.al() );
-    
+
             return;
-        }           
+        }
         case 0x2c:
         {
             // get system time into DX (seconds : hundredths of a second), CX (hours : minutes)
-    
+
             system_clock::time_point now = system_clock::now();
             uint64_t ms = duration_cast<milliseconds>( now.time_since_epoch() ).count() % 1000;
             time_t time_now = system_clock::to_time_t( now );
@@ -6131,7 +6134,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_dh( (uint8_t) 3 );
                 cpu.set_dl( (uint8_t) 69 );
             #endif
-    
+
             return;
         }
         case 0x2f:
@@ -6147,12 +6150,12 @@ void handle_int_21( uint8_t c )
         case 0x30:
         {
             // get version number
-    
-            //cpu.set_al( 2 ); 
-            //cpu.set_ah( 11 ); 
+
+            //cpu.set_al( 2 );
+            //cpu.set_ah( 11 );
             cpu.set_al( 3 ); // Many apps require 3.0+
-            cpu.set_ah( 3 ); 
-    
+            cpu.set_ah( 3 );
+
             tracer.Trace( "  returning DOS version %d.%d\n", cpu.al(), cpu.ah() );
             return;
         }
@@ -6211,7 +6214,7 @@ void handle_int_21( uint8_t c )
         case 0x33:
         {
             // get/set ctrl-break status
-    
+
             cpu.set_dl( 0 ); // it's off regardless of what is set
             return;
         }
@@ -6227,8 +6230,8 @@ void handle_int_21( uint8_t c )
         }
         case 0x35:
         {
-            // get interrupt vector. 
-    
+            // get interrupt vector.
+
             uint16_t * pvec = cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
             cpu.set_bx( pvec[ 0 ] );
             cpu.set_es( pvec[ 1 ] );
@@ -6240,7 +6243,7 @@ void handle_int_21( uint8_t c )
             // get disk space: in: dl code (0 default, 1 = A, 2 = B...
             // output: ax: sectors per cluster, bx = # of available clusters, cx = bytes per sector, dx = total clusters
             // use believable numbers for DOS for lots of disk space free.
-    
+
             cpu.set_ax( 8 );
             cpu.set_bx( 0x6fff );
             cpu.set_cx( 512 );
@@ -6288,7 +6291,7 @@ void handle_int_21( uint8_t c )
         {
             // create directory ds:dx asciiz directory name. cf set on error with code in ax
             char * pathOriginal = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
-            const char * path = DOSToHostPath( pathOriginal );            
+            const char * path = DOSToHostPath( pathOriginal );
             tracer.Trace( "  create directory '%s'\n", path );
 
 #ifdef _WIN32
@@ -6318,7 +6321,7 @@ void handle_int_21( uint8_t c )
             int ret = _rmdir( path );
 #else
             int ret = rmdir( path );
-#endif                        
+#endif
             if ( 0 == ret )
                 cpu.set_carry( false );
             else
@@ -6351,7 +6354,7 @@ void handle_int_21( uint8_t c )
             int ret = _chdir( path );
 #else
             int ret = chdir( path );
-#endif            
+#endif
         if ( 0 == ret )
                 cpu.set_carry( false );
             else
@@ -6366,7 +6369,7 @@ void handle_int_21( uint8_t c )
         case 0x3c:
         {
             // create file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
-    
+
             char * original_path = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * path = DOSToHostPath( original_path );
             tracer.Trace( "  create file '%s'\n", path );
@@ -6376,7 +6379,7 @@ void handle_int_21( uint8_t c )
         case 0x3d:
         {
             // open file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
-    
+
             char * original_path = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * path = DOSToHostPath( original_path );
             tracer.TraceBinaryData( (uint8_t *) path, 0x100, 2 );
@@ -6418,7 +6421,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( 2 );
                 cpu.set_carry( true );
             }
-    
+
             return;
         }
         case 0x3e:
@@ -6452,7 +6455,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
-    
+
             return;
         }
         case 0x3f:
@@ -6467,12 +6470,12 @@ void handle_int_21( uint8_t c )
             if ( ( handle <= 4 ) && ( (size_t) -1 == index ) )
             {
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
-    
+
                 if ( 0 == handle )
                 {
                     if ( g_use80xRowsMode )
                         UpdateDisplay();
-    
+
 #if USE_ASSEMBLY_FOR_KBD
                     // This assembler version allows the emulator to send timer and keyboard interrupts
 
@@ -6480,13 +6483,13 @@ void handle_int_21( uint8_t c )
 #else
                     // Callers like GWBasic ask for one character at a time but have no idea what a backspace is.
                     // So buffer until a cr, append a lf, and send that one character at a time.
-    
+
                     uint16_t request_len = cpu.get_cx();
                     static char acBuffer[ 128 ] = {0};
-    
+
                     uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                     cpu.set_carry( false );
-    
+
                     while ( 0 == acBuffer[ 0 ] )
                     {
                         size_t len = _countof( acBuffer );
@@ -6522,7 +6525,7 @@ void handle_int_21( uint8_t c )
                     strcpy( acBuffer, acBuffer + min_len );
                     tracer.Trace( "  returning %u characters\n", min_len );
 
-                    // gets_s writes to the display directly. redraw everything 
+                    // gets_s writes to the display directly. redraw everything
 
                     if ( g_use80xRowsMode )
                         ClearLastUpdateBuffer();
@@ -6535,10 +6538,10 @@ void handle_int_21( uint8_t c )
                     cpu.set_carry( true );
                     tracer.Trace( "  attempt to read from output handle %04x\n", handle );
                 }
-    
+
                 return;
             }
-    
+
             if ( (size_t) -1 != index )
             {
                 FILE * fp = g_fileEntries[ index ].fp;
@@ -6550,7 +6553,7 @@ void handle_int_21( uint8_t c )
                 uint32_t size = portable_filelen( fp );
                 cpu.set_ax( 0 );
                 tracer.Trace( "  current file position: %u, file size %u\n", cur, size );
-    
+
                 if ( cur < size )
                 {
                     uint32_t toRead = get_min( (uint32_t) len, size - cur );
@@ -6573,7 +6576,7 @@ void handle_int_21( uint8_t c )
                 }
                 else
                     tracer.Trace( "  ERROR: attempt to read beyond the end of file\n" );
-    
+
                 cpu.set_carry( false );
             }
             else
@@ -6582,14 +6585,14 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
-    
+
             return;
         }
         case 0x40:
         {
             // write to file using handle. BX=handle, CX=num bytes, DS:DX: buffer
             // on output: AX = # of bytes read or if CF is set 5=access denied, 6=invalid handle.
-    
+
             cpu.set_carry( false );
             uint16_t handle = cpu.get_bx();
             handle = MapFileHandleCobolHack( handle );
@@ -6599,7 +6602,7 @@ void handle_int_21( uint8_t c )
             if ( ( handle <= 4 ) && ( (size_t) -1 == index ) )
             {
                 cpu.set_ax( cpu.get_cx() );
-    
+
                 // reserved handles. 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
 
                 if ( DOS_HANDLE_INVALID == g_builtInHandles[ handle ] ) // if it's been closed, don't write
@@ -6607,9 +6610,9 @@ void handle_int_21( uint8_t c )
                     tracer.Trace( "attempt to write to closed handle %04x\n", handle );
                     return;
                 }
-    
+
                 uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
-    
+
                 if ( 1 == handle || 2 == handle )
                 {
                     if ( g_use80xRowsMode )
@@ -6618,7 +6621,7 @@ void handle_int_21( uint8_t c )
                         uint8_t * pbuf = GetVideoMem( displayPage );
                         GetCursorPosition( row, col, displayPage );
                         tracer.Trace( "  starting to write %u chars at row %u col %u, page %d\n", cpu.get_cx(), row, col, displayPage );
-        
+
                         for ( uint16_t t = 0; t < cpu.get_cx(); t++ )
                         {
                             uint8_t ch = p[ t ];
@@ -6684,16 +6687,16 @@ void handle_int_21( uint8_t c )
                     tracer.Trace( "  write to stdin seems odd -- was the real file closed previously?\n" );
                 return;
             }
-    
+
             if ( (size_t) -1 != index )
             {
                 FILE * fp = g_fileEntries[ index ].fp;
                 uint16_t len = cpu.get_cx();
                 uint8_t * p = cpu.flat_address8( cpu.get_ds(), cpu.get_dx() );
                 tracer.Trace( "  write file using handle, %04x bytes at address %p\n", len, p );
-    
+
                 cpu.set_ax( 0 );
-    
+
                 size_t numWritten = fwrite( p, len, 1, fp );
                 if ( numWritten || ( 0 == len ) )
                 {
@@ -6703,7 +6706,7 @@ void handle_int_21( uint8_t c )
                 }
                 else
                     tracer.Trace( "  ERROR: attempt to write to file failed, error %d = %s\n", errno, strerror( errno ) );
-    
+
                 cpu.set_carry( false );
             }
             else
@@ -6712,14 +6715,14 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
-    
+
             return;
         }
         case 0x41:
         {
             // delete file: ds:dx has asciiz name of file to delete.
             // return: cf set on error, ax = error code
-    
+
             char * original_path = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             const char * pfile = DOSToHostPath( original_path );
             tracer.Trace( "  deleting file '%s'\n", pfile );
@@ -6748,7 +6751,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_carry( true );
                 cpu.set_ax( 2 );
             }
-    
+
             return;
         }
         case 0x42:
@@ -6782,7 +6785,7 @@ void handle_int_21( uint8_t c )
                     cpu.set_carry( true );
                     return;
                 }
-    
+
                 tracer.Trace( "  move file pointer using handle %04x to %d bytes from %s\n", handle, offset,
                               0 == origin ? "beginning" : 1 == origin ? "current" : "end" );
 
@@ -6791,18 +6794,18 @@ void handle_int_21( uint8_t c )
                 uint32_t size = ftell( fp );
                 fseek( fp, cur, SEEK_SET );
                 tracer.Trace( "  file size is %u, current offset is %u\n", size, cur );
-    
+
                 if ( 0 == origin )
                     fseek( fp, offset, SEEK_SET );
                 else if ( 1 == origin )
                     fseek( fp, offset, SEEK_CUR );
-                else 
+                else
                     fseek( fp, offset, SEEK_END );
-    
+
                 cur = ftell( fp );
                 cpu.set_ax( cur & 0xffff );
                 cpu.set_dx( ( cur >> 16 ) & 0xffff );
-    
+
                 tracer.Trace( "  updated file offset is %u\n", cur );
                 cpu.set_carry( false );
             }
@@ -6812,7 +6815,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_ax( 6 );
                 cpu.set_carry( true );
             }
-    
+
             return;
         }
         case 0x43:
@@ -6822,12 +6825,12 @@ void handle_int_21( uint8_t c )
             // cx: attributes (bits: 0 ro, 1 hidden, 2 system, 3 volume, 4 subdir, 5 archive)
             // ds:dx: asciiz filename
             // returns: ax = error code if CF set. CX = file attributes on get.
-    
+
             char * pfile = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             tracer.Trace( "  get/put file attributes on file '%s'\n", pfile );
             const char * hostPath = DOSToHostPath( pfile );
             cpu.set_carry( true );
-    
+
             if ( 0 == cpu.al() ) // get
             {
                 if ( !_stricmp( pfile, "CON" ) ||
@@ -6840,7 +6843,7 @@ void handle_int_21( uint8_t c )
                     return;
                 }
 
-#ifdef _WIN32                
+#ifdef _WIN32
                 uint32_t attr = GetFileAttributesA( hostPath );
                 if ( INVALID_FILE_ATTRIBUTES != attr )
                 {
@@ -6869,29 +6872,29 @@ void handle_int_21( uint8_t c )
                     tracer.Trace( "  ERROR: unable to get file attributes on path '%s', errno %d, stat returned %d\n", hostPath, errno, ret );
                     cpu.set_ax( 2 ); // file not found seems likely
                 }
-#endif                
+#endif
             }
             else
             {
                 tracer.Trace( "  put file attributes on '%s' to %04x\n", hostPath, cpu.get_cx() );
-#ifdef _WIN32                
+#ifdef _WIN32
                 BOOL ok = SetFileAttributesA( hostPath, cpu.get_cx() );
                 cpu.set_carry( !ok );
-#endif                
+#endif
             }
-    
+
             tracer.Trace( "  result of get/put file attributes: carry %d\n", cpu.get_carry() );
             return;
         }
         case 0x44:
         {
             // i/o control for devices (ioctl)
-    
+
             uint8_t subfunction = cpu.al();
             // handles 0-4 are reserved in DOS stdin, stdout, stderr, stdaux, stdprn
             uint16_t handle = cpu.get_bx();
             cpu.set_carry( false );
-    
+
             tracer.Trace( "  ioctl subfunction %u, get device information for handle %04x\n", subfunction, handle );
 
             switch ( subfunction )
@@ -6902,17 +6905,17 @@ void handle_int_21( uint8_t c )
                     if ( ( handle <= 4 ) && ( (size_t) -1 == index ) )
                     {
                         // get device information
-        
+
                         cpu.set_dx( 0 );
                         cpu.set_carry( false );
-    
+
                         // This distinction is important for gwbasic and qbasic-generated-apps for both input and output to work in both modes.
                         // The 0x80 bit indicates it's a character device (cursor movement, etc.) vs. a file (or a teletype).
                         // Apps generated by quick basic 1 output to both the display memory and handle 1 if we tell the truth,
                         // so lie and say file/teletype are files. That doesn't break any other apps.
 
                         uint16_t result = 0;
-    
+
                         if ( 0 == handle ) // stdin
                             result = 1;
                         else if ( 1 == handle ) // stdout
@@ -6941,13 +6944,13 @@ void handle_int_21( uint8_t c )
                                 cpu.set_dx( cpu.get_dx() | 0x40 ); // file has not been written to
                         }
                     }
-    
+
                     break;
                 }
                 case 1:
                 {
                     // set device information (ignore)
-    
+
                     break;
                 }
                 case 8:
@@ -6981,7 +6984,7 @@ void handle_int_21( uint8_t c )
                     break;
                 }
             }
-    
+
             return;
         }
         case 0x45:
@@ -7088,7 +7091,7 @@ void handle_int_21( uint8_t c )
                 if ( -1 != index )
                 {
                     FileEntry & entry = g_fileEntries[ index ];
-    
+
                     FILE * fp = fopen( entry.path, ( 0 != entry.mode ) ? "r+b" : "rb" );
                     if ( fp )
                     {
@@ -7125,9 +7128,9 @@ void handle_int_21( uint8_t c )
         {
             // get current directory. BX = drive number, DS:SI = pointer to a 64-byte null-terminated buffer.
             // CF set on error. AX=15 for invalid drive
-    
+
             cpu.set_carry( true );
-#ifdef _WIN32            
+#ifdef _WIN32
             if ( GetCurrentDirectoryA( sizeof( cwd ), cwd ) )
             {
                 tracer.Trace( "  cwd '%s', g_acRoot '%s'\n", cwd, g_acRoot );
@@ -7154,7 +7157,7 @@ void handle_int_21( uint8_t c )
                 tracer.Trace( "  ERROR: unable to get the current working directory, error %d\n", GetLastError() );
 #else
             char acCurDir[ MAX_PATH ];
-            if ( getcwd( acCurDir, sizeof( acCurDir ) ) )            
+            if ( getcwd( acCurDir, sizeof( acCurDir ) ) )
             {
                 tracer.Trace( "  acCurDir '%s', g_acRoot '%s'\n", acCurDir, g_acRoot );
                 size_t len_cur = strlen( acCurDir );
@@ -7172,7 +7175,7 @@ void handle_int_21( uint8_t c )
                 slash_to_backslash( acCurDir );
                 strcpy( cwd, "C:" );
                 strcat( cwd, acCurDir );
-                tracer.Trace( "  cwd: '%s'\n", cwd );                
+                tracer.Trace( "  cwd: '%s'\n", cwd );
                 char * past_start = cwd + 3; // result does not contain drive or initial backslash 'x:\'
                 if ( strlen( past_start ) <= 63 )
                 {
@@ -7183,8 +7186,8 @@ void handle_int_21( uint8_t c )
             }
             else
                 tracer.Trace( "  ERROR: unable to get the current working directory, error %d\n", errno );
-#endif            
-    
+#endif
+
             return;
         }
         case 0x48:
@@ -7331,7 +7334,7 @@ void handle_int_21( uint8_t c )
             //                b = format invalid
             //            if al == 1: parameter block (struct AppExecute) updated: sp, ss, ip, cs
             //            if al == 1: AX pushed on the child's stack
-            //                
+            //
             // notes:     all handles, devices, and i/o redirection are inherited
             // crawl up the stack to the get cs:ip one frame above. that's where we'll return once the child process is complete.
 
@@ -7375,7 +7378,7 @@ void handle_int_21( uint8_t c )
                 acCommandPath[ 0 ] = cwd[ 0 ];
 #else
                 acCommandPath[ 0 ] = 'C';
-#endif                                
+#endif
             }
 
             bool found = FindCommandInPath( acCommandPath ); // dos doesn't do this -- command.com does. but be nice.
@@ -7495,7 +7498,7 @@ void handle_int_21( uint8_t c )
             // out: CF: true on error, false on success
             //      ax: error code if CF is true.
             //      disk transfer address: DosFindFile
-    
+
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             char * psearch_string = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
@@ -7569,19 +7572,19 @@ void handle_int_21( uint8_t c )
             {
                 cpu.set_ax( 2 ); // not found
                 tracer.Trace( "  WARNING: find first file failed to find anything\n" );
-            }                    
-#endif            
-    
+            }
+#endif
+
             return;
         }
         case 0x4f:
         {
             // find next asciiz. ds:dx should be unchanged from find first, but they are not used below for Win32
-    
+
             cpu.set_carry( true );
             DosFindFile * pff = (DosFindFile *) GetDiskTransferAddress();
             tracer.Trace( "  Find Next Asciiz\n" );
-    
+
 #ifdef _WIN32
             if ( INVALID_HANDLE_VALUE != g_hFindFirst )
             {
@@ -7643,12 +7646,12 @@ void handle_int_21( uint8_t c )
             }
             else
             {
-                cpu.set_ax( 0x12 ); 
+                cpu.set_ax( 0x12 );
                 tracer.Trace( "  ERROR: search for next without a prior successful search for first\n" );
-            }                    
+            }
 
-#endif            
-    
+#endif
+
             return;
         }
         case 0x50:
@@ -7712,7 +7715,7 @@ void handle_int_21( uint8_t c )
         {
             // rename file: ds:dx old name, es:di new name
             // CF set on error, AX with error code
-    
+
             char * poldname = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
             char * pnewname = (char *) cpu.flat_address( cpu.get_es(), cpu.get_di() );
 
@@ -7724,7 +7727,7 @@ void handle_int_21( uint8_t c )
             pfile = DOSToHostPath( pnewname );
             strcpy( acNew, pfile );
             pnewname = acNew;
-    
+
             tracer.Trace( "  renaming file '%s' to '%s', pointers are %p to %p\n", poldname, pnewname, poldname, pnewname );
             int renameok = ( 0 == rename( poldname, pnewname ) );
             if ( renameok )
@@ -7735,7 +7738,7 @@ void handle_int_21( uint8_t c )
                 cpu.set_carry( true );
                 cpu.set_ax( 2 );
             }
-    
+
             return;
         }
         case 0x57:
@@ -7751,7 +7754,7 @@ void handle_int_21( uint8_t c )
             //         cx: file time if getting
             //         dx: file date if getting
             //
-    
+
             cpu.set_carry( true );
             uint16_t handle = cpu.get_bx();
             const char * path = FindFileEntryPath( handle );
@@ -7809,7 +7812,7 @@ void handle_int_21( uint8_t c )
                 tracer.Trace( "  ERROR: can't get/set file date and time; file handle %04x not valid\n", handle );
                 cpu.set_ax( 6 );
             }
-    
+
             return;
         }
         case 0x58:
@@ -8146,7 +8149,7 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
             struct timeval tv = {0};
             gettimeofday( &tv, NULL );
             uint64_t milliseconds = ( (uint64_t) tv.tv_sec * 1000ULL ) + ( (uint64_t) tv.tv_usec / 1000ULL );
-#endif            
+#endif
 
             milliseconds -= g_msAtStart;
             uint64_t ticks = ( milliseconds * 18206ULL ) / 1000000ULL;
@@ -8254,7 +8257,7 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
             SleepAndScheduleInterruptCheck();
             cpu.set_al( 0x01 ); // not installed, do NOT install
         }
-        else if ( 0x98 == cpu.ah() || 0x97 == cpu.ah() ) // micro focus cobol. 
+        else if ( 0x98 == cpu.ah() || 0x97 == cpu.ah() ) // micro focus cobol.
         {
             // don't set al to anything or cobol and its generated apps won't run
         }
@@ -8314,7 +8317,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs
         const char * pFirstArg = acAppArgs;
         while ( ' ' == *pFirstArg )
             pFirstArg++;
-    
+
         if ( pFirstArg[ 0 ] )
         {
             tracer.Trace( "  app arguments: '%s'\n", pFirstArg );
@@ -8322,9 +8325,9 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs
             const char * pSpace = strchr( pFirstArg, ' ' );
             if ( pSpace )
                 pEnd = pSpace;
-    
+
             size_t full_len = ( pEnd - pFirstArg );
-    
+
             if ( full_len <= 12 ) // 8.3
             {
                 size_t name_len = full_len;
@@ -8400,7 +8403,7 @@ uint16_t LoadOverlay( const char * app, uint16_t CodeSegment, uint16_t segReloca
             tracer.Trace( "can't read .com file into RAM -- it's too big!\n" );
             return 1;
         }
-    
+
         size_t blocks_read = fread( cpu.flat_address( CodeSegment, 0 ), file_size, 1, file.get() );
         if ( 1 != blocks_read )
         {
@@ -8461,7 +8464,7 @@ uint16_t LoadOverlay( const char * app, uint16_t CodeSegment, uint16_t segReloca
                 tracer.Trace( "  can't read input exe file relocation data, error %d", errno );
                 return 1;
             }
-    
+
             for ( uint16_t r = 0; r < head.num_relocs; r++ )
             {
                 uint32_t offset = (uint32_t) relocations[ r ].offset + (uint32_t) relocations[ r ].segment * 16;
@@ -8496,7 +8499,7 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint8_t l
         FreeMemory( BSSegment );
         return 0;
     }
-    
+
     long file_size = portable_filelen( file.get() );
     if ( 512 != file_size )
     {
@@ -8504,7 +8507,7 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint8_t l
         FreeMemory( BSSegment );
         return 0;
     }
-    
+
     size_t blocks_read = fread( cpu.flat_address( 0x7c0, 0 ), 512, 1, file.get() );
     if ( 1 != blocks_read )
     {
@@ -8512,7 +8515,7 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint8_t l
         FreeMemory( BSSegment );
         return 0;
     }
-    
+
     // prepare to execute the boot sector
 
     cpu.set_cs( 0x7c0 );
@@ -8586,7 +8589,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             FreeMemory( ComSegment );
             return 0;
         }
-    
+
         size_t blocks_read = fread( cpu.flat_address( ComSegment, 0x100 ), file_size, 1, file.get() );
         if ( 1 != blocks_read )
         {
@@ -8664,7 +8667,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
         tracer.Trace( "  image size of code and initialized data: %u, code starts at %u\n", imageSize, codeStart );
 
         // DOS does something like this -- it loads more than it should or apps like those that quickbasic3 generates won't run
-               
+
         if ( file_size > ( imageSize + codeStart ) )
         {
             uint32_t difference = file_size - ( imageSize + codeStart );
@@ -8752,7 +8755,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
                 FreeMemory( DataSegment );
                 return 0;
             }
-    
+
             for ( uint16_t r = 0; r < head.num_relocs; r++ )
             {
                 uint32_t offset = (uint32_t) relocations[ r ].offset + (uint32_t) relocations[ r ].segment * 16;
@@ -8949,7 +8952,7 @@ void SquashDOSFullPathToRoot( char * fullPath )
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv )
 {
     char fullPath[ MAX_PATH ];
-#ifdef _WIN32    
+#ifdef _WIN32
     GetFullPathNameA( pathToExecute, _countof( fullPath ), fullPath, 0 );
 #else
     char * fpath = realpath( pathToExecute, 0 );
@@ -8984,7 +8987,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
             startLen += (uint16_t) l;
             pe += l;
         } while ( 0 != *pe );
-    
+
         bytesNeeded += startLen;
     }
     else
@@ -9185,7 +9188,7 @@ int main( int argc, char * argv[] )
 
 #ifndef _WIN32
         tzset(); // or localtime_r won't work correctly
-#endif        
+#endif
 
         // put the app name without a path or .exe into g_thisApp
 
@@ -9202,7 +9205,7 @@ int main( int argc, char * argv[] )
         char * pdot = strchr( g_thisApp, '.' );
         if ( pdot )
             *pdot = 0;
-    
+
         memset( memory, 0, sizeof( memory ) );
 
 #ifdef _WIN32
@@ -9215,7 +9218,7 @@ int main( int argc, char * argv[] )
         setlocale( LC_COLLATE, "en_US.UTF-8" );
 
         init_blankline( DefaultVideoAttribute );
-    
+
         char * pcAPP = 0;
         bool trace = false;
         uint64_t clockrate = 0;
@@ -9237,12 +9240,12 @@ int main( int argc, char * argv[] )
 #endif
 
         CKeyStrokes::KeystrokeMode keystroke_mode = CKeyStrokes::ksm_None; //CKeyStrokes::KeystrokeMode::ksm_None;
-    
+
         for ( int i = 1; i < argc; i++ )
         {
             char *parg = argv[i];
             char c = *parg;
-    
+
             if ( ( 0 == pcAPP ) && ( '-' == c
 #if defined( WATCOM ) || defined( _WIN32 )
                 || '/' == c
@@ -9250,7 +9253,7 @@ int main( int argc, char * argv[] )
                ) )
             {
                 char ca = (char) tolower( parg[1] );
-    
+
                 if ( 'b' == ca )
                     bootSectorLoad = true;
                 else if ( 's' == ca )
@@ -9284,13 +9287,13 @@ int main( int argc, char * argv[] )
                 else if ( 'u' == ca )
                     g_forcePathsUpper = true;
                 else if ( 'l' == ca )
-                    g_forcePathsLower = true;            
-#endif            
+                    g_forcePathsLower = true;
+#endif
                 else if ( 'e' == ca )
                 {
                     if ( penvVars )
                         usage( "environment variables can only be specified once\n" );
-    
+
                     if ( ':' == parg[2] )
                         penvVars = parg + 3;
                     else
@@ -9320,7 +9323,7 @@ int main( int argc, char * argv[] )
                         usage( "colon required after r argument" );
                     strcpy( acRootArg, parg + 3 );
                 }
-#ifdef _WIN32            
+#ifdef _WIN32
                 else if ( 'z' == ca )
                 {
                     if ( ':' == parg[2] )
@@ -9328,7 +9331,7 @@ int main( int argc, char * argv[] )
                     else
                         usage( "colon required after z argument" );
                 }
-#endif            
+#endif
                 else if ( 'v' == ca )
                     version();
                 else if ( '?' == ca )
@@ -9343,22 +9346,22 @@ int main( int argc, char * argv[] )
                 else if ( strlen( acAppArgs ) + 3 + strlen( parg ) < _countof( acAppArgs ) )
                 {
                     // DOS puts a space before the first argument and between arguments
-    
+
                     strcat( acAppArgs, " " );
                     strcat( acAppArgs, parg );
                 }
             }
         }
-    
+
         static char logFile[ MAX_PATH + 10 ];
         snprintf( logFile, sizeof( logFile ), "%s.log", g_thisApp );
         tracer.Enable( trace, logFile, true );
         tracer.SetQuiet( true );
         cpu.trace_instructions( traceInstructions );
-    
+
         tracer.Trace( "Use one thread: %d\n", g_UseOneThread );
-    
-#ifdef _WIN32    
+
+#ifdef _WIN32
         GetFullPathNameA( acRootArg, _countof( g_acRoot ), g_acRoot, 0 );
         DWORD attr = GetFileAttributesA( g_acRoot );
         if ( ( INVALID_FILE_ATTRIBUTES == attr ) || ( 0 == ( attr & FILE_ATTRIBUTE_DIRECTORY ) ) )
@@ -9391,14 +9394,14 @@ int main( int argc, char * argv[] )
             usage( "no command specified" );
             assume_false; // prevent false prefast warning from the msft compiler
         }
-    
+
         strcpy( g_acApp, pcAPP );
-#ifdef _WIN32    
+#ifdef _WIN32
         _strupr( g_acApp );
 #else
         const char * pLinuxPath = DOSToHostPath( g_acApp );
         strcpy( g_acApp, pLinuxPath );
-#endif    
+#endif
 
         if ( !file_exists( g_acApp ) )
         {
@@ -9413,9 +9416,9 @@ int main( int argc, char * argv[] )
                     strcpy( dot, ".EXE" );
                     if ( !file_exists( g_acApp ) )
                     {
-#ifdef _WIN32                    
+#ifdef _WIN32
                         usage( "can't find command file" );
-#else                    
+#else
                         tracer.Trace( "couldn't find input file '%s'\n", g_acApp );
                         char * pdot = strrchr( g_acApp, '.' );
                         strcpy( pdot, ".com" );
@@ -9428,15 +9431,15 @@ int main( int argc, char * argv[] )
                                 usage( "can't find command file" );
                             }
                         }
-#endif               
-                    }     
+#endif
+                    }
                 }
             }
         }
 
         // Microsoft Pascal v1.0's second pass PAS2.EXE requires end of 64k block, not the middle of a block.
         // Overload -h to do this as well -- have a conformant address space for apps.
-    
+
         if ( ends_with( g_acApp, "pas2.exe" ) || g_PackedFileCorruptWorkaround )
             g_segHardware = 0xa000;
 
@@ -9446,12 +9449,12 @@ int main( int argc, char * argv[] )
             BOOL ok = SetProcessAffinityMask( (HANDLE) -1, dwProcessAffinityMask );
             tracer.Trace( "Result of SetProcessAffinityMask( %#x ) is %d\n", dwProcessAffinityMask, ok );
         }
-#endif    
+#endif
 
         g_keyStrokes.SetMode( keystroke_mode );
-    
+
         // global bios memory
-    
+
         uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
         * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
         * (uint16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
@@ -9491,25 +9494,25 @@ int main( int argc, char * argv[] )
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfffc ) ) = '1';
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xfffe ) ) = 0xff; // original pc
         * (uint8_t *)  ( cpu.flat_address8( 0xf000, 0xffff ) ) = 0x55; // original pc
-    
+
 #if 0
         // wordperfect 6.0 looks at +4 in lists of lists for a far pointer to the system file table.
         // make that pointer point to an empty system file table.
-    
+
         * ( cpu.flat_address16( SegmentListOfLists, OffsetListOfLists + 4 ) ) = OffsetSystemFileTable;
         * ( cpu.flat_address16( SegmentListOfLists, OffsetListOfLists + 6 ) ) = SegmentListOfLists;
         * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable ) ) = 0xffff;
         * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable + 2 ) ) = 0xffff;
         * ( cpu.flat_address16( SegmentListOfLists, OffsetSystemFileTable + 4 ) ) = 0x30; // lots of files available
 #endif
-    
+
         // put dummy values in the list of lists
         uint16_t * pListOfLists = cpu.flat_address16( SegmentListOfLists, OffsetListOfLists );
         pListOfLists[ 2 ] = OffsetDeviceControlBlock; // low dword of first drive parameter block (ffff is end of list)
         pListOfLists[ 3 ] = SegmentListOfLists;       // high "
         uint16_t * pDeviceControlBlock = cpu.flat_address16( SegmentListOfLists, OffsetDeviceControlBlock );
         *pDeviceControlBlock = 0xffff; // end of list
-    
+
         // 256 interrupt vectors at address 0 - 3ff.
         // The first 0x40 are reserved for bios/dos and point to routines starting at InterruptRoutineSegment.
         // Each interrupt vector element has 4 bytes for segment and offset.
@@ -9520,7 +9523,7 @@ int main( int argc, char * argv[] )
         //   The Intel C v4.5 C runtime executed when running apps the compiler generates has code in the int1c handler that writes to the
         //   code below, breaking it. Intel apparently expects BIOS and DOS runtime code to look a certain way. This results in
         //   somewhat random crashes including stack trashing.
-    
+
         uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
         uint8_t * pRoutines = cpu.flat_address8( InterruptRoutineSegment, 0 );
         uint32_t codeOffset = 0;
@@ -9558,54 +9561,54 @@ int main( int argc, char * argv[] )
                 codeOffset += 6;
             }
         }
-    
+
         // write assembler routines into 0x0600 - 0x0bff. make each function segment-aligned so
         // execution can start at ip 0.
-    
+
 #if USE_ASSEMBLY_FOR_KBD
         uint16_t curseg = MachineCodeSegment;
-    
+
         memcpy( cpu.flat_address( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
         g_int21_3f_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int21_3f_code ), (uint16_t) 16 ) / 16 );
-    
+
         memcpy( cpu.flat_address( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
         g_int21_a_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int21_a_code ), (uint16_t) 16 ) / 16 );
-    
+
         memcpy( cpu.flat_address( curseg, 0 ), int21_1_code, sizeof( int21_1_code ) );
         g_int21_1_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int21_1_code ), (uint16_t) 16 ) / 16 );
-    
+
         memcpy( cpu.flat_address( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
         g_int21_8_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int21_8_code ), (uint16_t) 16 ) / 16 );
-    
+
         memcpy( cpu.flat_address( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
         g_int16_0_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int16_0_code ), (uint16_t) 16 ) / 16 );
-    
+
         tracer.Trace( "machine code: 21_3f %04x, 21_a %04x, 21_1 %04x, 21_8 %04x, 16_0 %04x\n",
                       g_int21_3f_seg, g_int21_a_seg, g_int21_1_seg, g_int21_8_seg, g_int16_0_seg );
-    
+
         assert( curseg <= InterruptRoutineSegment );
 #endif
 
         // allocate the environment space and load the binary
-    
+
         uint16_t segEnvironment = AllocateEnvironment( 0, g_acApp, penvVars );
         if ( 0 == segEnvironment )
             i8086_hard_exit( "unable to create environment for the app\n" );
-    
+
         g_currentPSP = LoadBinary( g_acApp, acAppArgs, (uint8_t) strlen( acAppArgs ), segEnvironment, true, 0, 0, 0, 0, bootSectorLoad );
         if ( 0 == g_currentPSP )
             i8086_hard_exit( "unable to load executable\n" );
         g_mainPSP = g_currentPSP;
-    
+
         // gwbasic calls ioctrl on stdin and stdout before doing anything that would indicate what mode it wants.
         // turbo pascal v3 doesn't give a good indication that it wants 80x25.
         // word for DOS 6.0 is the same -- hard code it
-    
+
         if ( ends_with( g_acApp, "gwbasic.exe" ) || ends_with( g_acApp, "mips.com" ) ||
              ends_with( g_acApp, "turbo.com" ) || ends_with( g_acApp, "word.exe" ) ||
              ends_with( g_acApp, "bc.exe" ) || ends_with( g_acApp, "mulisp.com" ) ||
@@ -9620,27 +9623,27 @@ int main( int argc, char * argv[] )
             SetScreenRows( rowCount );
             PerhapsFlipTo80xRows();
         }
-    
+
         g_haltExecution = false;
         cpu.set_interrupt( true ); // DOS starts apps with interrupts enabled
         cpu.enable_interrupt_syscall( true ); // call back to ntvdm on i8086_interrupt_syscall
         uint32_t * pDailyTimer = (uint32_t *) ( pbiosdata + 0x6c );
-    
+
         // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
         // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
         // Note that kbhit() makes the same call internally to the same cross-process API. It's no faster.
-    
+
         unique_ptr<CSimpleThread> peekKbdThread( g_UseOneThread ? 0 : new CSimpleThread( PeekKeyboardThreadProc ) );
 
         CPUCycleDelay delay( clockrate );
-        g_tAppStart = high_resolution_clock::now();    
+        g_tAppStart = high_resolution_clock::now();
         uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
         uint32_t dtLastInt8 = 0;
-    
+
         do
         {
             total_cycles += cpu.emulate( g_validateState ? 1 : 2000 );
-    
+
             if ( g_haltExecution )
                 break;
 
@@ -9648,24 +9651,24 @@ int main( int argc, char * argv[] )
                 ValidateStateLooksOK();
 
             delay.Delay( total_cycles );
-    
+
             // apps like mips.com write to video ram and never provide an opportunity to redraw the display
-    
+
             if ( g_use80xRowsMode )
                 throttled_UpdateDisplay( 200 );
-    
+
             *pDailyTimer = GetBiosDailyTimer(); // apps look here even if no timer interrupts happen because they aren't hooked
-    
+
             // check interrupt enable and trap flags externally to avoid side effects in the emulator
-    
+
             if ( cpu.get_interrupt() && !cpu.get_trap() )
             {
                 // if the keyboard peek thread has detected a keystroke, process it with an int 9.
                 // don't plumb through port 60 since most apps work without that. (not quick basic 2 though)
-    
+
                 if ( g_UseOneThread && g_consoleConfig.throttled_kbhit() )
                     g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
-    
+
                 if ( g_SendControlCInt )
                 {
                     tracer.Trace( "scheduling an int x23 -- control C\n" );
@@ -9673,7 +9676,7 @@ int main( int argc, char * argv[] )
                     cpu.external_interrupt( 0x23 );
                     continue;
                 }
-    
+
                 if ( g_KbdPeekAvailable && !g_int9_pending )
                 {
                     tracer.Trace( "%llu main loop: scheduling an int 9 -- keyboard\n", time_since_last() );
@@ -9682,7 +9685,7 @@ int main( int argc, char * argv[] )
                     g_KbdPeekAvailable = false;
                     continue;
                 }
-    
+
                 // If interrupt 8 (timer) or 0x1c (tick tock) are hooked by an app and 55 milliseconds have elapsed,
                 // invoke int 8, which by default then invokes int 1c.
                 // Never send timer interrupts for Intel C v4.5-generated apps because their 0x1c handler trashes both code and the stack.
@@ -9703,15 +9706,15 @@ int main( int argc, char * argv[] )
                     tracer.Trace( "can't schedule a keyboard int 9 because interrupts are disabled!\n" );
             }
         } while ( true );
-    
+
         if ( g_use80xRowsMode )  // get any last-second screen updates displayed
             UpdateDisplay();
-    
+
         high_resolution_clock::time_point tDone = high_resolution_clock::now();
-    
+
         if ( !g_UseOneThread )
             peekKbdThread->EndThread();
-    
+
         g_consoleConfig.RestoreConsole( clearDisplayOnExit );
 #ifdef _WIN32
         CloseHandle( g_heventKeyStroke );
@@ -9719,14 +9722,14 @@ int main( int argc, char * argv[] )
 
         if ( printVideoMemory )
             printDisplayBuffer( GetActiveDisplayPage() );
-    
+
         if ( showPerformance )
         {
             char ac[ 100 ];
             long long totalTime = duration_cast<std::chrono::milliseconds>( tDone - g_tAppStart ).count();
             printf( "\n" );
             printf( "elapsed milliseconds: %16s\n", CDJLTrace::RenderNumberWithCommas( totalTime, ac ) );
-    
+
             #ifdef I8086_TRACK_CYCLES
                 printf( "8086 cycles:      %20s\n", CDJLTrace::RenderNumberWithCommas( total_cycles, ac ) );
                 printf( "clock rate: " );
@@ -9745,15 +9748,15 @@ int main( int argc, char * argv[] )
                 else
                     printf( "      %20s Hz\n", CDJLTrace::RenderNumberWithCommas( clockrate, ac ) );
             #endif
-    
+
             #ifndef NDEBUG
                 uint8_t unique_first_opcodes = cpu.trace_opcode_usage();
                 printf( "unique first opcodes: %16u\n", unique_first_opcodes );
             #endif
-    
+
             printf( "app exit code:    %20d\n", g_appTerminationReturnCode );
         }
-    
+
         qsort( g_InterruptsCalled.data(), g_InterruptsCalled.size(), sizeof( IntCalled ), compare_int_entries );
         bool ah_used = false;
         size_t cEntries = g_InterruptsCalled.size();
