@@ -38,7 +38,7 @@ class CDJLTrace
 {
     private:
         FILE * fp;
-#ifndef WATCOM
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( M68K )
         std::mutex mtx;
 #endif
         bool quiet; // no pid
@@ -66,9 +66,9 @@ class CDJLTrace
 
         void ShowBinaryData( uint8_t * pData, uint32_t length, uint32_t indent, bool trace )
         {
-            int64_t offset = 0;
-            int64_t beyond = length;
-            const int64_t bytesPerRow = 32;
+            int32_t offset = 0;
+            int32_t beyond = length;
+            const int32_t bytesPerRow = 32;
             uint8_t buf[ bytesPerRow ];
             char acLine[ 200 ];
         
@@ -83,15 +83,15 @@ class CDJLTrace
                 *pline++ = ' ';
                 *pline++ = ' ';
 
-                int64_t end_of_row = offset + bytesPerRow;
-                int64_t cap = ( end_of_row > beyond ) ? beyond : end_of_row;
-                int64_t toread = ( ( offset + bytesPerRow ) > beyond ) ? ( length % bytesPerRow ) : bytesPerRow;
+                int32_t end_of_row = offset + bytesPerRow;
+                int32_t cap = ( end_of_row > beyond ) ? beyond : end_of_row;
+                int32_t toread = ( ( offset + bytesPerRow ) > beyond ) ? ( length % bytesPerRow ) : bytesPerRow;
         
                 memcpy( buf, pData + offset, toread );
 
-                uint64_t extraSpace = 2;
+                uint32_t extraSpace = 2;
         
-                for ( int64_t o = offset; o < cap; o++ )
+                for ( int32_t o = offset; o < cap; o++ )
                 {
                     pline = appendHexByte( pline, buf[ o - offset ] );
                     *pline++ = ' ';
@@ -103,12 +103,12 @@ class CDJLTrace
                     }
                 }
         
-                uint64_t spaceNeeded = extraSpace + ( ( bytesPerRow - ( cap - offset ) ) * 3 );
+                uint32_t spaceNeeded = extraSpace + ( ( bytesPerRow - ( cap - offset ) ) * 3 );
         
-                for ( uint64_t sp = 0; sp < ( 1 + spaceNeeded ); sp++ )
+                for ( uint32_t sp = 0; sp < ( 1 + spaceNeeded ); sp++ )
                     *pline++ = ' ';
         
-                for ( int64_t o = offset; o < cap; o++ )
+                for ( int32_t o = offset; o < cap; o++ )
                 {
                     char ch = buf[ o - offset ];
         
@@ -212,7 +212,7 @@ class CDJLTrace
         {
             if ( NULL != fp )
             {
-#ifndef WATCOM
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( M68K )
                 lock_guard<mutex> lock( mtx );
 #endif
 
@@ -248,7 +248,7 @@ class CDJLTrace
         {
             if ( NULL != fp )
             {
-#ifndef WATCOM
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( M68K )
                 lock_guard<mutex> lock( mtx );
 #endif
                 va_list args;
@@ -265,7 +265,7 @@ class CDJLTrace
             #ifdef DEBUG
             if ( NULL != fp && condition )
             {
-#ifndef WATCOM
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( M68K )
                 lock_guard<mutex> lock( mtx );
 #endif
 
@@ -284,7 +284,7 @@ class CDJLTrace
                     fflush( fp );
             }
             #else
-#if !defined( WATCOM ) && !defined( __APPLE__ ) && !defined( __clang__ )
+#if !defined( WATCOM ) && !defined( __APPLE__ ) && !defined( __clang__ ) && !defined (OLDGCC)
             condition; // unused
             format; // unused
 #endif

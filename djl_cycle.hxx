@@ -50,6 +50,8 @@ class CPUCycleDelay
 
                     #ifdef _WIN32
                         SleepEx( 1, FALSE );
+                    #elif defined( M68K )
+                        usleep( 1000 ); // 1 millisecond
                     #else
                         struct timespec ts = { 0, 1000000 };
                         nanosleep( &ts, 0 );

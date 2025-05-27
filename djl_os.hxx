@@ -67,9 +67,13 @@
 
 #else // Linux, MacOS, etc.
 
-    #ifndef OLDGCC
+    #if !defined( OLDGCC ) && !defined( M68K )
         #include <termios.h>
     #endif
+
+#ifdef M68K
+extern "C" int nanosleep( const struct timespec * duration, struct timespec * rem );
+#endif
 
     #include <thread>
     #include <sched.h>
@@ -83,7 +87,7 @@
 
     inline void set_process_affinity( uint64_t processAffinityMask )
     {
-#if !defined(__APPLE__) && !defined( OLDGCC )
+#if !defined(__APPLE__) && !defined( OLDGCC ) && !defined( M68K )
         cpu_set_t mask;
         CPU_ZERO( &mask );
 
@@ -130,7 +134,7 @@
         long sec = (long) ( total_ns / 1000000000 );
         struct timespec ts = { sec, ns };
 
-        #ifndef OLDGCC
+        #if !defined( OLDGCC )
             nanosleep( &ts, 0 );
         #endif
     } //sleep_ms
@@ -322,4 +326,35 @@ inline char printable( uint8_t x )
     return x;
 } //printable
 
+#if ( ( defined( __clang__ ) || defined( __GNUC__ ) ) && !defined( OLDGCC ) && !defined( M68K ) )
+
+    inline uint64_t flip_endian64( uint64_t x ) { return __builtin_bswap64( x ); }
+    inline uint32_t flip_endian32( uint32_t x ) { return __builtin_bswap32( x ); }
+    inline uint16_t flip_endian16( uint16_t x ) { return __builtin_bswap16( x ); }
+
+#elif defined( _MSC_VER )
+
+    inline uint64_t flip_endian64( uint64_t x ) { return _byteswap_uint64( x ); }
+    inline uint32_t flip_endian32( uint32_t x ) { return _byteswap_ulong( x ); }
+    inline uint16_t flip_endian16( uint16_t x ) { return _byteswap_ushort( x ); }
+
+#else
+
+    inline uint64_t flip_endian64( uint64_t x )
+    {
+        return ( ( x & 0xffull ) << 56 ) | ( ( x & 0xff00ull ) << 40 ) | ( ( x & 0xff0000ull ) << 24 ) | ( ( x & 0xff000000ull ) << 8 ) |
+               ( ( x & 0xff00000000ull ) >> 8 ) | ( ( x & 0xff0000000000ull ) >> 24 ) | ( ( x & 0xff000000000000ull ) >> 40 ) | ( ( x & 0xff00000000000000ull ) >> 56 );
+    } //flip_endian64
+
+    inline uint32_t flip_endian32( uint32_t x )
+    {
+        return ( ( x & 0xff ) << 24 ) | ( ( x & 0xff00) << 8 ) | ( ( x & 0xff0000) >> 8 ) | ( ( x & 0xff000000 ) >> 24 );
+    } //flip_endian32
+
+    inline uint16_t flip_endian16( uint16_t x )
+    {
+        return ( ( ( x & 0xff00 ) >> 8 ) | ( ( x & 0xff ) << 8 ) );
+    } //flip_endian16
+
+#endif
 
