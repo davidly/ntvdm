@@ -956,8 +956,8 @@ static bool tc_build_file_open()
         FileEntry & fe = g_fileEntries[ i ];
 
         for ( size_t e = 0; e < _countof( build_ext ); e++ )
-          if ( ends_with( fe.path, build_ext[ e ] ) )
-              return true;
+            if ( ends_with( fe.path, build_ext[ e ] ) )
+                return true;
     }
 
     return false;
@@ -8271,7 +8271,6 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
     else if ( 0x33 == interrupt_num )
     {
         // mouse
-
         cpu.set_ax( 0 ); // hardware / driver not installed
         return;
     }
@@ -8495,7 +8494,7 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint8_t l
     CFile file( fopen( acApp, "rb" ) );
     if ( 0 == file.get() )
     {
-        tracer.Trace( "open boot sector file, error %d\n", errno );
+        tracer.Trace( "error: can't open boot sector file, error %d\n", errno );
         FreeMemory( BSSegment );
         return 0;
     }
@@ -8511,7 +8510,7 @@ uint16_t LoadAsBootSector( const char * acApp, const char * acAppArgs, uint8_t l
     size_t blocks_read = fread( cpu.flat_address( 0x7c0, 0 ), 512, 1, file.get() );
     if ( 1 != blocks_read )
     {
-        tracer.Trace( "can't read boot sector file into RAM, error %d\n", errno );
+        tracer.Trace( "error: can't read boot sector file into RAM, error %d\n", errno );
         FreeMemory( BSSegment );
         return 0;
     }
