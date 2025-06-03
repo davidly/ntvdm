@@ -623,7 +623,6 @@ class ConsoleConfiguration
             {
                 // for files with CR/LF, skip the CR and turn the LF into a CR
                 // for files with LF, turn the LF into a CR
-                // Windows does this for free
 
 #ifndef _WIN32
                 if ( ( 13 == data ) && ( !feof( stdin ) ) )
@@ -635,6 +634,10 @@ class ConsoleConfiguration
                         look_ahead_available = true;
                 }
 #endif
+
+                if ( 10 == data )
+                    data = 13;
+
                 return data;
             }
             return EOF;

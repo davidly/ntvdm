@@ -20,6 +20,10 @@
 #include <cstring>
 #include <djl_os.hxx>
 
+#if defined( __GNUC__ ) && !defined( __APPLE__) && !defined( __clang__ )
+#pragma GCC diagnostic ignored "-Wformat="
+#endif
+
 #ifdef _WIN32
 #include <process.h>
 #endif
@@ -302,10 +306,10 @@ class CDJLTrace
             ShowBinaryData( pData, length, indent, false );
         } //PrintBinaryData
 
-        static char * RenderNumberWithCommas( long long n, char * pc )
+        static char * RenderNumberWithCommas( int64_t n, char * pc )
         {
             char actmp[ 32 ];
-            long long orig = n;
+            int64_t orig = n;
 
             if ( 0 == n )
             {
