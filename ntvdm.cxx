@@ -2572,6 +2572,19 @@ bool peek_keyboard( bool throttle = false, bool sleep_on_throttle = false, bool 
     return peek_keyboard( a, s );
 } //peek_keyboard
 
+char get_next_kbd_char()
+{
+    char c = (char) ConsoleConfiguration::portable_getch();
+    //tracer.Trace( "get_next_kbd_char got %d from portable_getch\n", c );
+    if ( 10 == c ) // linux and windows will return LF, not CR, which is what some DOS apps require
+    {
+        // some DOS require CR, not LF to terminate a line
+        tracer.Trace( "  get_next_kbd_char translated LF 10 to CR 13\n" );
+        c = 13;
+    }
+    return c;
+} //get_next_kbd_char
+
 void InjectKeystrokes()
 {
     CKbdBuffer kbd_buf;
@@ -2591,7 +2604,7 @@ void InjectKeystrokes()
 
     if ( !isatty( fileno( stdin ) ) && kbd_buf.IsEmpty() && ( 0 == feof( stdin) ) )
     {
-        int result = ConsoleConfiguration::portable_getch();
+        int result = get_next_kbd_char();
         if ( EOF != result )
         {
             char ch = 0x7f & result;
@@ -2669,20 +2682,20 @@ void consume_keyboard()
 
     while ( !kbd_buf.IsFull() && g_consoleConfig.portable_kbhit() )
     {
-        uint8_t asciiChar = 0xff & g_consoleConfig.portable_getch();
+        uint8_t asciiChar = 0xff & get_next_kbd_char();
         uint8_t scanCode = ascii_to_scancode[ asciiChar ];
         tracer.Trace( "    consumed ascii %02x, scancode %02x\n", asciiChar, scanCode );
         if ( 27 == asciiChar ) // escape
         {
             if ( g_consoleConfig.portable_kbhit() )
             {
-                uint8_t secondAscii = g_consoleConfig.portable_getch();
+                uint8_t secondAscii = get_next_kbd_char();
                 tracer.Trace( "    secondAscii: '%c' == %d\n", secondAscii, secondAscii );
                 if ( '[' == secondAscii )
                 {
                     if ( g_consoleConfig.portable_kbhit() )
                     {
-                        uint8_t thirdAscii = g_consoleConfig.portable_getch();
+                        uint8_t thirdAscii = get_next_kbd_char();
                         tracer.Trace( "    thirdAscii: '%c' == %d\n", thirdAscii, thirdAscii );
                         if ( 'D' == thirdAscii )
                             kbd_buf.Add( 0, 75 ); // left arrow
@@ -2694,19 +2707,19 @@ void consume_keyboard()
                             kbd_buf.Add( 0, 72 ); // up arrow
                         else if ( '1' == thirdAscii ) // F5-F8
                         {
-                            uint8_t fnumber = g_consoleConfig.portable_getch();
+                            uint8_t fnumber = get_next_kbd_char();
                             tracer.Trace( "    f5-f8 fnumber: %d\n", fnumber );
-                            uint8_t following = g_consoleConfig.portable_getch(); // discard the following character
+                            uint8_t following = get_next_kbd_char(); // discard the following character
                             tracer.Trace( "    following character: %d\n", following );
 
                             if ( MODIFIER_DOWN == following ) // ALT/CTRL depressed for F5-F8
                             {
-                                int nextA = g_consoleConfig.portable_getch(); // consume yet more
+                                int nextA = get_next_kbd_char(); // consume yet more
                                 tracer.Trace( "    nextA: %d\n", nextA );
 
                                 if ( 53 == fnumber )
                                 {
-                                    int nextB = g_consoleConfig.portable_getch(); // consume yet more
+                                    int nextB = get_next_kbd_char(); // consume yet more
                                     tracer.Trace( "    nextB: %d\n", nextB );
                                     if ( CTRL_DOWN == nextA )
                                         kbd_buf.Add( 0, 98 ); // CTRL
@@ -2720,7 +2733,7 @@ void consume_keyboard()
                                 }
                                 else if ( fnumber >= 55 && fnumber <= 57 )
                                 {
-                                    int nextB = g_consoleConfig.portable_getch(); // consume yet more
+                                    int nextB = get_next_kbd_char(); // consume yet more
                                     if ( CTRL_DOWN == nextA )
                                         kbd_buf.Add( 0, fnumber + 44 ); // CTRL
                                     else if ( ALT_DOWN == nextA )
@@ -2735,7 +2748,7 @@ void consume_keyboard()
                             else if ( ALT_DOWN == following ) // ALT depressed for F1-F4, HOME, etc.
                             {
                                 g_altPressedRecently = true;
-                                int next = g_consoleConfig.portable_getch();
+                                int next = get_next_kbd_char();
                                 tracer.Trace( "    next: %d\n", next );
                                 if ( next >= 80 && next <= 83 ) // F1-F4
                                     kbd_buf.Add( 0, next + 24 );
@@ -2756,7 +2769,7 @@ void consume_keyboard()
                             }
                             else if ( CTRL_DOWN == following ) // CTRL depressed for F1-F4, etc.
                             {
-                                int next = g_consoleConfig.portable_getch();
+                                int next = get_next_kbd_char();
                                 tracer.Trace( "    next: %d\n", next );
                                 if ( 68 == next ) // left
                                     kbd_buf.Add( 0, 115 );
@@ -2777,7 +2790,7 @@ void consume_keyboard()
                             }
                             else if ( SHIFT_DOWN == following ) // SHIFT pressed for F1-F4, etc.
                             {
-                                int next = g_consoleConfig.portable_getch();
+                                int next = get_next_kbd_char();
                                 tracer.Trace( "    next: %d\n", next );
                                 if ( 68 == next ) // left
                                     kbd_buf.Add( 52, 75 );
@@ -2808,7 +2821,7 @@ void consume_keyboard()
                         }
                         else if ( '2' == thirdAscii ) // INS + F9-F12
                         {
-                            uint8_t fnumber = g_consoleConfig.portable_getch();
+                            uint8_t fnumber = get_next_kbd_char();
                             tracer.Trace( "    ins + f9-f12 fnumber: %d\n", fnumber );
                             if ( 126 == fnumber )
                                 kbd_buf.Add( 0, 82 ); // INS
@@ -2816,14 +2829,14 @@ void consume_keyboard()
                             {
                                 int next = 0;
                                 if ( fnumber < 121 )
-                                    next = g_consoleConfig.portable_getch();
+                                    next = get_next_kbd_char();
 
                                 tracer.Trace( "    next %d\n", next );
 
                                 if ( MODIFIER_DOWN == next ) // ALT/CTRL is pressed
                                 {
-                                    int nextA = g_consoleConfig.portable_getch();
-                                    int nextB = g_consoleConfig.portable_getch();
+                                    int nextA = get_next_kbd_char();
+                                    int nextB = get_next_kbd_char();
                                     tracer.Trace( "    nextA: %d, nextB: %d\n", nextA, nextB );
 
                                     if ( ALT_DOWN == nextA ) // ALT
@@ -2869,14 +2882,14 @@ void consume_keyboard()
                                 }
                                 else if ( 51 == next )
                                 {
-                                    uint8_t nextA = g_consoleConfig.portable_getch();
+                                    uint8_t nextA = get_next_kbd_char();
                                     tracer.Trace( "    nextA: %d\n", nextA );
                                     kbd_buf.Add( 0, 162 ); // ALT + INS
                                     g_altPressedRecently = true;
                                 }
                                 else if ( 53 == next )
                                 {
-                                    uint8_t nextA = g_consoleConfig.portable_getch();
+                                    uint8_t nextA = get_next_kbd_char();
                                     tracer.Trace( "    nextA: %d\n", nextA );
                                     kbd_buf.Add( 0, 146 ); // INS
                                 }
@@ -2899,12 +2912,12 @@ void consume_keyboard()
                         }
                         else if ( '3' == thirdAscii ) // DEL
                         {
-                            uint8_t nextA = g_consoleConfig.portable_getch();
+                            uint8_t nextA = get_next_kbd_char();
                             tracer.Trace( "    nextA for DEL: %d\n", nextA );
                             if ( MODIFIER_DOWN == nextA )
                             {
-                                uint8_t nextB = g_consoleConfig.portable_getch();
-                                uint8_t nextC = g_consoleConfig.portable_getch();
+                                uint8_t nextB = get_next_kbd_char();
+                                uint8_t nextC = get_next_kbd_char();
                                 tracer.Trace( "    DEL nextB %d, nextC %d\n", nextB, nextC );
                                 if ( ALT_DOWN == nextB )
                                 {
@@ -2923,12 +2936,12 @@ void consume_keyboard()
                         }
                         else if ( '5' == thirdAscii ) // pgup
                         {
-                            uint8_t nextA = g_consoleConfig.portable_getch();
+                            uint8_t nextA = get_next_kbd_char();
                             tracer.Trace( "    nextA for pgup: %d\n", nextA );
                             if ( MODIFIER_DOWN == nextA )
                             {
-                                uint8_t nextB = g_consoleConfig.portable_getch();
-                                uint8_t nextC = g_consoleConfig.portable_getch();
+                                uint8_t nextB = get_next_kbd_char();
+                                uint8_t nextC = get_next_kbd_char();
                                 tracer.Trace( "    nextB: %d, nextC %d\n", nextB, nextC );
                                 if ( CTRL_DOWN == nextB ) // CTRL
                                     kbd_buf.Add( 0, 132 ); // CTRL + pgup
@@ -2945,12 +2958,12 @@ void consume_keyboard()
                         }
                         else if ( '6' == thirdAscii ) // pgdown
                         {
-                            uint8_t nextA = g_consoleConfig.portable_getch();
+                            uint8_t nextA = get_next_kbd_char();
                             tracer.Trace( "    nextA for pgup: %d\n", nextA );
                             if ( MODIFIER_DOWN == nextA )
                             {
-                                uint8_t nextB = g_consoleConfig.portable_getch();
-                                uint8_t nextC = g_consoleConfig.portable_getch();
+                                uint8_t nextB = get_next_kbd_char();
+                                uint8_t nextC = get_next_kbd_char();
                                 tracer.Trace( "    nextB: %d, nextC %d\n", nextB, nextC );
                                 if ( CTRL_DOWN == nextB ) // CTRL
                                     kbd_buf.Add( 0, 118 );
@@ -3000,7 +3013,7 @@ void consume_keyboard()
                 }
                 else if ( 'O' == secondAscii ) // F1-F4 and keypad
                 {
-                    uint8_t fnumber = g_consoleConfig.portable_getch();
+                    uint8_t fnumber = get_next_kbd_char();
                     tracer.Trace( "f1-f4 fnumber: %d\n", fnumber );
 
                     if ( fnumber >= 80 && fnumber <= 83 ) // 80-83 map to scancode 59-62
