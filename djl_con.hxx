@@ -4,6 +4,8 @@
 extern "C" int clock_gettime( clockid_t id, struct timespec * res );
 #endif
 
+static bool s_convert_redirected_LF_to_CR = false;
+
 #ifdef WATCOM
 
 #include <conio.h>
@@ -20,6 +22,8 @@ class ConsoleConfiguration
     public:
         ConsoleConfiguration() : outputEstablished( false ), prev_int_23( 0 ) {}
         ~ConsoleConfiguration() {}
+
+        static void ConvertRedirectedLFToCR( bool c ) { s_convert_redirected_LF_to_CR = c; }
 
         void EstablishConsoleOutput( int16_t width = 80, int16_t height = 24 )
         {
@@ -343,6 +347,8 @@ class ConsoleConfiguration
             RestoreConsole();
         }
 
+        static void ConvertRedirectedLFToCR( bool c ) { s_convert_redirected_LF_to_CR = c; }
+
         bool IsOutputEstablished() { return outputEstablished; }
 
         #ifdef _WIN32
@@ -630,12 +636,14 @@ class ConsoleConfiguration
                     if ( 0 == read( 0, &look_ahead, 1 ) ) // make gcc not complain by checking return code
                         look_ahead = 13;
 
-                    if ( 10 != look_ahead )
+                    if ( 10 == look_ahead )
+                        data = 10;
+                    else
                         look_ahead_available = true;
                 }
 #endif
 
-                if ( 10 == data )
+                if ( s_convert_redirected_LF_to_CR && ( 10 == data ) )
                     data = 13;
 
                 return data;

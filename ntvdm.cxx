@@ -9634,6 +9634,7 @@ int main( int argc, char * argv[] )
 
         unique_ptr<CSimpleThread> peekKbdThread( g_UseOneThread ? 0 : new CSimpleThread( PeekKeyboardThreadProc ) );
 
+        ConsoleConfiguration::ConvertRedirectedLFToCR( true );
         CPUCycleDelay delay( clockrate );
         g_tAppStart = high_resolution_clock::now();
         uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
