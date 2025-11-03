@@ -2000,7 +2000,7 @@ void UpdateDisplayRow( uint32_t y )
         // characters, not actual chacters. This is after they are converted to
         // UTF-8 and sent via write() to stdout. I can't find a way to configure
         // Windows Terminal to not do this. As a workaround, map those characters
-        // smiley faces, which is how I feel about this hack.
+        // to smiley faces, which is how I feel about this hack.
         // This is also why WriteConsoleW is used instead of ansi escape sequences
         // on Windows builds.
 
@@ -6154,7 +6154,10 @@ void handle_int_21( uint8_t c )
             //cpu.set_al( 2 );
             //cpu.set_ah( 11 );
             cpu.set_al( 3 ); // Many apps require 3.0+
-            cpu.set_ah( 3 );
+            cpu.set_ah( 30 );
+            cpu.set_bh( 0xff ); // MS-DOS vs. PC-DOS, which returns 0
+            cpu.set_bl( 0 ); // serial number
+            cpu.set_cx( 0 ); // serial number
 
             tracer.Trace( "  returning DOS version %d.%d\n", cpu.al(), cpu.ah() );
             return;
