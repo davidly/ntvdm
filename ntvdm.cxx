@@ -300,8 +300,7 @@ static high_resolution_clock::time_point g_tAppStart; // system time at app star
 static uint8_t g_bufferLastUpdate[ 80 * 50 * 2 ] = {0}; // used to check for changes in video memory. At most we support 80 by 50
 static CKeyStrokes g_keyStrokes;                     // read or write keystrokes between kslog.txt and the app
 static bool g_UseOneThread = false;                  // true if no keyboard thread should be used
-static bool g_InRVOS = false;                        // true if running in the RISC-V + Linux emulator RVOS
-static bool g_InARMOS = false;                       // true if running in the ARM64 + Linux emulator ARMOS
+static bool g_InEmulator = false;                    // true if running in another emulator: RVOS, ARMOS, X64OS, etc.
 static uint64_t g_msAtStart = 0;                     // milliseconds since epoch at app start
 static bool g_SendControlCInt = false;               // set to true when/if a ^C is detected and an interrupt should be sent
 static uint16_t g_builtInHandles[ 5 ] = { 0, 1, 2, 3, 4 }; // stdin, stdout, stderr, stdaux, stdprn are all mapped to self initially
@@ -1994,8 +1993,8 @@ void UpdateDisplayRow( uint32_t y )
         awc[ x ] = CP437_to_Unicode[ pbuf[ offset ] ];
         attribs[ x ] = pbuf[ 1 + offset ];
 
-#if defined( __riscv ) || defined( _WIN32 ) || defined( __aarch64__ )
-        // When NTVDM built for RISC-V runs in RVOS/ARMOS emulation on Windows, CP 437
+#if defined( __riscv ) || defined( _WIN32 ) || defined( __aarch64__ ) || defined( __amd64 )
+        // When NTVDM built for RISC-V runs in RVOS/ARMOS/X64OS emulation on Windows, CP 437
         // characters 7 through 13 are interpreted by Windows Terminal as control
         // characters, not actual chacters. This is after they are converted to
         // UTF-8 and sent via write() to stdout. I can't find a way to configure
@@ -2004,12 +2003,7 @@ void UpdateDisplayRow( uint32_t y )
         // This is also why WriteConsoleW is used instead of ansi escape sequences
         // on Windows builds.
 
-#if defined( __riscv )
-        if ( g_InRVOS )
-#endif
-#if defined( __aarch64__ )
-        if ( g_InARMOS )
-#endif
+        if ( g_InEmulator )
         {
             if ( pbuf[ offset ] >= 7 && pbuf[ offset ] <= 0x1f )
                 awc[ x ] = CP437_to_Unicode_Windows_Hack[ pbuf[ offset ] ];
@@ -9174,9 +9168,8 @@ int main( int argc, char * argv[] )
     try
     {
         char * posval = getenv( "OS" );
-        g_InRVOS = ( ( 0 != posval ) && !strcmp( posval, "RVOS" ) );
-        g_InARMOS = ( ( 0 != posval ) && !strcmp( posval, "ARMOS" ) );
-        g_UseOneThread = g_InRVOS || g_InARMOS;
+        g_InEmulator = ( ( 0 != posval ) && ( !strcmp( posval, "RVOS" ) || !strcmp( posval, "ARMOS" ) || !strcmp( posval, "X64OS" ) ) );
+        g_UseOneThread = g_InEmulator;
 
         g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
 
@@ -9777,7 +9770,7 @@ int main( int argc, char * argv[] )
     }
     catch ( bad_alloc & e )
     {
-        printf( "caught exception bad_alloc -- out of RAM. If in RVOS or ARMOS use -h or -m to add RAM. %s\n", e.what() );
+        printf( "caught exception bad_alloc -- out of RAM. If in RVOS, ARMOS, or X64OS use -h or -m to add RAM. %s\n", e.what() );
     }
     catch ( exception & e )
     {

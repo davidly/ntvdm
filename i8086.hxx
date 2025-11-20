@@ -143,7 +143,7 @@ struct i8086
         sp++;
         uint8_t h = mbyte( ss, sp );
         sp++;;
-        return ( (uint16_t) h << 8 ) | l;
+        return ( (uint16_t) h << 8 ) | (uint16_t) l;
     } //pop
 
     void * flat_address( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
