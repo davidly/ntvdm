@@ -6147,8 +6147,16 @@ void handle_int_21( uint8_t c )
 
             //cpu.set_al( 2 );
             //cpu.set_ah( 11 );
+
             cpu.set_al( 3 ); // Many apps require 3.0+
-            cpu.set_ah( 30 );
+
+            if ( ends_with( g_acApp, "qc.exe" ) ||  // QuickC v2.51 gives a warning if the DOS version is above 3.03. Avoid that
+                 ends_with( g_acApp, "qbx.exe" ) || // QuickBasic 7.1 gives an error and exits
+                 ends_with( g_acApp, "qp.exe" ) )   // QuickPascal 1.0 gives a warning
+                cpu.set_ah( 3 ); // 3.03
+            else
+                cpu.set_ah( 30 ); // 3.30
+
             cpu.set_bh( 0xff ); // MS-DOS vs. PC-DOS, which returns 0
             cpu.set_bl( 0 ); // serial number
             cpu.set_cx( 0 ); // serial number
@@ -6757,7 +6765,6 @@ void handle_int_21( uint8_t c )
             // bx == handle, cx:dx: 32-bit signed offset, al=mode. 0=beginning, 1=current. 2=end
             // on success, set dx:ax to the current offset from the start of the file. and clear carry flag
             // on failure, set carry flag and set ax to a DOS error code
-
 
             uint16_t handle = cpu.get_bx();
             handle = MapFileHandleCobolHack( handle );
