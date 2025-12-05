@@ -9175,7 +9175,7 @@ int main( int argc, char * argv[] )
     try
     {
         char * posval = getenv( "OS" );
-        g_InEmulator = ( ( 0 != posval ) && ( !strcmp( posval, "RVOS" ) || !strcmp( posval, "ARMOS" ) || !strcmp( posval, "X64OS" ) ) );
+        g_InEmulator = ( ( 0 != posval ) && ( !strcmp( posval, "RVOS" ) || !strcmp( posval, "ARMOS" ) || !strcmp( posval, "X64OS" ) || !strcmp( posval, "X32OS" ) ) );
         g_UseOneThread = g_InEmulator;
 
         g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
