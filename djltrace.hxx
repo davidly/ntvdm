@@ -29,7 +29,6 @@
 #endif
 
 #if !defined(_WIN32) && !defined(WATCOM)
-
     #include <sys/unistd.h>
     #ifdef __APPLE__
         #include <unistd.h>
@@ -42,7 +41,7 @@ class CDJLTrace
 {
     private:
         FILE * fp;
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( M68K )
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
         std::mutex mtx;
 #endif
         bool quiet; // no pid
@@ -216,7 +215,7 @@ class CDJLTrace
         {
             if ( NULL != fp )
             {
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( M68K )
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
                 lock_guard<mutex> lock( mtx );
 #endif
 
@@ -252,7 +251,7 @@ class CDJLTrace
         {
             if ( NULL != fp )
             {
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( M68K )
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
                 lock_guard<mutex> lock( mtx );
 #endif
                 va_list args;
@@ -264,12 +263,25 @@ class CDJLTrace
             }
         } //TraceQuiet
 
+        void TraceIt( const char * format, ... )
+        {
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
+            lock_guard<mutex> lock( mtx );
+#endif
+            va_list args;
+            va_start( args, format );
+            vfprintf( fp, format, args );
+            va_end( args );
+            if ( flush )
+                fflush( fp );
+        } //TraceIt
+
         void TraceDebug( bool condition, const char * format, ... )
         {
             #ifdef DEBUG
             if ( NULL != fp && condition )
             {
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( M68K )
+#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
                 lock_guard<mutex> lock( mtx );
 #endif
 
@@ -344,4 +356,3 @@ class CDJLTrace
 }; //CDJLTrace
 
 extern CDJLTrace tracer;
-

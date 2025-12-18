@@ -1,6 +1,6 @@
 #pragma once
 
-#ifdef M68K
+#ifdef __mc68000__
 extern "C" int clock_gettime( clockid_t id, struct timespec * res );
 #endif
 
@@ -88,7 +88,7 @@ class ConsoleConfiguration
             static const size_t longestEscapeSequence = 10; // probably overkill
             char aReady[ 1 + longestEscapeSequence ];
         #else
-#if !defined( OLDGCC ) && !defined( M68K )
+#if !defined( OLDGCC ) && !defined( __mc68000__ )
             struct termios orig_termios;
 #endif
         #endif
@@ -413,7 +413,7 @@ class ConsoleConfiguration
                     SetConsoleCtrlHandler( handler, TRUE );
                 }
             #else
-                #if !defined( OLDGCC ) && !defined( M68K ) // these will never run on actual Linux and the emulators or platform already are configured for raw keystrokes
+                #if !defined( OLDGCC ) && !defined( __mc68000__ ) // these will never run on actual Linux and the emulators or platform already are configured for raw keystrokes
                     tcgetattr( 0, &orig_termios );
     
                     // make input raw so it's possible to peek to see if a keystroke is available
@@ -491,7 +491,7 @@ class ConsoleConfiguration
                 tracer.Trace( "old and new console output mode: %04x, %04x\n", oldOutputConsoleMode, dwMode );
                 SetConsoleMode( consoleOutputHandle, dwMode );
             #else
-                #ifndef M68K
+                #ifndef __mc68000__
                     if ( isatty( fileno( stdout ) ) )
                     {
                         printf( "%c[1 q", 27 ); // 1 == cursor blinking block. 
@@ -513,7 +513,7 @@ class ConsoleConfiguration
                 #ifdef _WIN32
                     SetConsoleMode( consoleInputHandle, oldInputConsoleMode );
                 #else
-                    #if !defined( OLDGCC ) && !defined( M68K )
+                    #if !defined( OLDGCC ) && !defined( __mc68000__ )
                         tcsetattr( 0, TCSANOW, &orig_termios );
                     #endif
                 #endif
@@ -526,7 +526,7 @@ class ConsoleConfiguration
         {
             if ( outputEstablished )
             {
-                #if !defined( _WIN32 ) && !defined( M68K )
+                #if !defined( _WIN32 ) && !defined( __mc68000__ )
                     if ( isatty( fileno( stdout ) ) )
                     {
                         printf( "%c[0m", 27 ); // turn off display attributes
@@ -564,7 +564,7 @@ class ConsoleConfiguration
         {
             if ( isatty( fileno( stdout ) ) )
             {
-                #if !defined( M68K )
+                #if !defined( __mc68000__ )
                     printf( "\x1b[2J" ); // clear the screen
                     printf( "\x1b[1G" ); // cursor to top line
                     printf( "\x1b[1d" ); // cursor to left side
@@ -734,7 +734,7 @@ class ConsoleConfiguration
             // compute-bound mbasic.com apps run 10x slower than they should because mbasic polls for keyboard input.
             // Workaround: only call _kbhit() if 50 milliseconds has gone by since the last call.
 
-#ifdef M68K // newlib for embedded only has second-level granularity for high_resolution_clock, so use a different codepath for that
+#ifdef __mc68000__ // newlib for embedded only has second-level granularity for high_resolution_clock, so use a different codepath for that
             static struct timespec last_call;
             static int static_result = clock_gettime( CLOCK_REALTIME, &last_call );
             struct timespec tNow;
