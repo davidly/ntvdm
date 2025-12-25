@@ -3,17 +3,17 @@
 Not the real one, but this one can be compiled and executed on Windows 
 (x64 and ARM64), Linux (ARM32, ARM64, RISC-V, x64 and x32), and MacOS (tested with an M1).
 
-I wrote it so I could test my [BASIC](https://github.com/davidly/ttt/blob/main/ba.cxx) compiler. Tt emulates an Intel 8086
-processor  and MS-DOS 3.00 APIs well enough to be able to run some  command line and text mode applications. 
+I wrote it so I could test my [BASIC](https://github.com/davidly/ttt/blob/main/ba.cxx) compiler. It emulates an Intel 8086
+processor and MS-DOS 3.00 APIs well enough to be able to run some  command line and text mode applications. 
 
 There  are many better DOS emulators available, including [DOSBox](https://www.dosbox.com/), but  what
 makes this one different is that it provides a way to run a DOS application
 directly from the command line or shell/batch script in the current console
-window.
+window. This makes DOS compilers act like native apps on modern platforms.
 
-The  emulator will work with applications that hook interrupts via the  DOS
-mechanism or by directly writing to memory. This includes support for  int9
-and int0x1c in applications like Microsoft QuickBasic and Brief Editor.  
+The emulator will work with applications that hook interrupts via the DOS
+mechanism or by directly writing to memory. This includes support for int9
+and int0x1c in applications like Microsoft QuickBasic and the Brief Editor.  
 However it does not provide support for graphics, sound, mouse, or anything
 else that is not needed for simple text-mode apps.
 
