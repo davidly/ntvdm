@@ -394,4 +394,21 @@ inline char printable( uint8_t x )
     } //wcslen
 #endif
 
+inline bool is_parity_even8( uint8_t x )
+{
+     // use popcnt if possible. It's not available on the Q9650 and other older Intel CPUs. use fallback code below instead if needed.
+
+    #if defined( __GNUC__ ) || defined( __clang__ )
+        return ( ! ( __builtin_popcount( x ) & 1 ) );
+    #elif defined( _MSC_VER )
+        return ( ! ( __popcnt16( x ) & 1 ) );
+    #elif defined( __aarch64__ )
+        return ( ! ( std::bitset<8>( x ).count() & 1 ) );
+    #else
+        x ^= ( x >> 4 );
+        x ^= ( x >> 2 );
+        x ^= ( x >> 1 );
+        return ! ( x & 1 );
+    #endif
+} //is_parity_even8
 

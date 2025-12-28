@@ -231,17 +231,6 @@ struct i8086
         fOverflow = ( 0 != ( flags & ( 1 << 11 ) ) );
     } //unmaterializeFlags
 
-    bool is_parity_even8( uint8_t x ) // unused by apps and expensive to compute.
-    {
-#ifdef _M_AMD64
-        return ( ! ( __popcnt16( x ) & 1 ) ); // less portable, but faster. Not on Q9650 CPU and other older Intel CPUs. use code below instead if needed.
-#elif defined( __aarch64__ )
-        return ( ! ( std::bitset<8>( x ).count() & 1 ) );
-#else
-        return ( ( ~ ( x ^= ( x ^= ( x ^= x >> 4 ) >> 2 ) >> 1 ) ) & 1 );
-#endif
-    } //is_parity_even8
-
     void set_PSZ16( uint16_t val )
     {
         fParityEven = is_parity_even8( (uint8_t) val ); // only the lower 8 bits are used to determine parity on the 8086
