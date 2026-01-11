@@ -6390,6 +6390,7 @@ void handle_int_21( uint8_t c )
             tracer.TraceBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "  open file '%s'\n", path );
             uint8_t openmode = cpu.al() & 3; // ignore sharing mode and private bits
+            tracer.Trace( "  openmode: %#x\n", openmode );
             cpu.set_ax( 2 );
 
             if ( !_stricmp( original_path, "CON" ) ||
@@ -6882,8 +6883,10 @@ void handle_int_21( uint8_t c )
             {
                 tracer.Trace( "  put file attributes on '%s' to %04x\n", hostPath, cpu.get_cx() );
 #ifdef _WIN32
-                BOOL ok = SetFileAttributesA( hostPath, cpu.get_cx() );
-                cpu.set_carry( !ok );
+                cpu.set_carry( false ); // power c v1's C runtime makes a file read-only if you open() it O_RDONLY, which makes no sense. so don't attempt to honor the request.
+
+                // BOOL ok = SetFileAttributesA( hostPath, cpu.get_cx() );
+                // cpu.set_carry( !ok );
 #endif
             }
 
