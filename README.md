@@ -307,3 +307,13 @@ that work. For example:
 ```
 Many apps assume 25 lines and won't use more than that even with the -C:50 flag.
 
+...
+
+On macOS use the Option key to map to the DOS Alt key in apps like Quick Basic.
+For older versions of macOS you may need to configure your terminal window so
+this will work:
+
+1) Open Terminal.app.
+2) Go to the Terminal menu and select Preferences... (or press Cmd + ,).
+3) Click on the Settings tab, then select the Keyboard sub-tab.
+4) Ensure that the checkbox "Use Option as Meta key" is checked.
