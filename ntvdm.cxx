@@ -7984,6 +7984,12 @@ void handle_int_21( uint8_t c )
             // novell netware 4.0 - set error mode. ignore.
             return;
         }
+        case 0xfe: // emulator-specific
+        {
+            cpu.set_carry( false );
+            cpu.trace_instructions( cpu.dl() );
+            return;
+        }
         default:
         {
             tracer.Trace( "unhandled int21 command %u == %02x\n", c, c );
@@ -8853,7 +8859,16 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
         do
         {
             struct timespec to;
-            clock_gettime( CLOCK_REALTIME, &to );
+
+            #if 1 // this is required to build using g++ 11 on old systems like Mac OS X 10.7.5
+                struct timeval tv;
+                gettimeofday( &tv, 0 );
+                to.tv_sec = tv.tv_sec;
+                to.tv_nsec = tv.tv_usec * 1000;
+            #else
+                clock_gettime( CLOCK_REALTIME, &to );
+            #endif
+
             to.tv_nsec += ( 20 * 1000000 ); // 20 milliseconds
             if ( to.tv_nsec >= 1000000000 ) // overflow
             {
