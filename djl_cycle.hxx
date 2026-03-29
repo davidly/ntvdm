@@ -3,13 +3,13 @@
 #include <time.h>
 using namespace std;
 
-#ifndef WATCOM
+#if !defined( WATCOMDOS ) && !defined( WATCOMLINUX )
 using namespace std::chrono;
 #endif
 
 class CPUCycleDelay
 {
-#ifdef WATCOM // no implementation on DOS
+#if defined( WATCOMDOS ) || defined( WATCOMLINUX ) // no implementation on WATCOM
     public:
         CPUCycleDelay( uint64_t clockRate ) {}
         void Reset() {}

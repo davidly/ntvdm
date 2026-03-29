@@ -28,7 +28,7 @@
 #include <process.h>
 #endif
 
-#if !defined(_WIN32) && !defined(WATCOM)
+#if !defined(_WIN32) && !defined(WATCOMDOS) && !defined(WATCOMLINUX)
     #include <sys/unistd.h>
     #ifdef __APPLE__
         #include <unistd.h>
@@ -41,7 +41,7 @@ class CDJLTrace
 {
     private:
         FILE * fp;
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
+#if !defined( WATCOMDOS ) && !defined( WATCOMLINUX ) && !defined( __mc68000__ )
         std::mutex mtx;
 #endif
         bool quiet; // no pid
@@ -176,7 +176,7 @@ class CDJLTrace
                 }
                 else
                 {
-#ifdef WATCOM // workaround for WATCOM, which doesn't delete the file with "w+t" in spite of its documentation claiming otherwise
+#if defined( WATCOMDOS ) || defined( WATCOMLINUX ) // workaround for WATCOM, which doesn't delete the file with "w+t" in spite of its documentation claiming otherwise
                     if ( !strcmp( mode, "w+t" ) )
                         remove( pcLogFile );
 #endif
@@ -215,7 +215,7 @@ class CDJLTrace
         {
             if ( NULL != fp )
             {
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
+#if !defined( WATCOMDOS ) && !defined( WATCOMLINUX ) && !defined( __mc68000__ )
                 lock_guard<mutex> lock( mtx );
 #endif
 
@@ -251,7 +251,7 @@ class CDJLTrace
         {
             if ( NULL != fp )
             {
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
+#if !defined( WATCOMDOS ) && !defined( WATCOMLINUX ) && !defined( __mc68000__ )
                 lock_guard<mutex> lock( mtx );
 #endif
                 va_list args;
@@ -265,7 +265,7 @@ class CDJLTrace
 
         void TraceIt( const char * format, ... )
         {
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
+#if !defined( WATCOMDOS ) && !defined( WATCOMLINUX ) && !defined( __mc68000__ )
             lock_guard<mutex> lock( mtx );
 #endif
             va_list args;
@@ -281,7 +281,7 @@ class CDJLTrace
             #ifdef DEBUG
             if ( NULL != fp && condition )
             {
-#if !defined( WATCOM ) && !defined( OLDGCC ) && !defined( __mc68000__ )
+#if !defined( WATCOMDOS ) && !defined( WATCOMLINUX ) && !defined( __mc68000__ )
                 lock_guard<mutex> lock( mtx );
 #endif
 
@@ -300,7 +300,7 @@ class CDJLTrace
                     fflush( fp );
             }
             #else
-#if !defined( WATCOM ) && !defined( __APPLE__ ) && !defined( __clang__ ) && !defined (OLDGCC)
+#if !defined( WATCOMDOS ) && !defined( WATCOMLINUX ) && !defined( __APPLE__ ) && !defined( __clang__ )
             condition; // unused
             format; // unused
 #endif

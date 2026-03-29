@@ -6,7 +6,7 @@ extern "C" int clock_gettime( clockid_t id, struct timespec * res );
 
 static bool s_convert_redirected_LF_to_CR = false;
 
-#ifdef WATCOM
+#ifdef WATCOMDOS
 
 #include <conio.h>
 #include <graph.h>
@@ -44,6 +44,8 @@ class ConsoleConfiguration
         static int portable_getch() { return getch(); }
         static char * portable_gets_s( char * buf, size_t bufsize ) { return gets( buf ); }
 
+        void MakeKeyboardInputRaw() {};
+
         void RestoreConsoleInput()
         {
             if ( 0 != prev_int_23 )
@@ -69,9 +71,34 @@ class ConsoleConfiguration
 
 #else
 
-#include <chrono>
-using namespace std;
-using namespace std::chrono;
+#ifdef WATCOMLINUX
+    #include <termios.h>
+    #include <sys/select.h>
+    
+    inline void cfmakeraw(struct termios *t) // Open Watcom 2.0 targeting Linux doesn't provide this function
+    {
+        /* Disable input processing: ignore breaks, parity, cr-to-nl, and flow control */
+        t->c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+        
+        /* Disable output processing (e.g., nl-to-cr translation) */
+        t->c_oflag &= ~OPOST;
+        
+        /* Disable echoing, canonical mode (line buffering), signals, and extended functions */
+        t->c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+        
+        /* Set character size to 8 bits and disable parity */
+        t->c_cflag &= ~(CSIZE | PARENB);
+        t->c_cflag |= CS8;
+        
+        /* Set non-blocking/character-at-a-time read behavior */
+        t->c_cc[VMIN] = 1;  /* Minimum characters to read */
+        t->c_cc[VTIME] = 0; /* No timeout */
+    } //cfmakeraw
+#else
+    #include <chrono>
+    using namespace std;
+    using namespace std::chrono;
+#endif
 
 class ConsoleConfiguration
 {
@@ -88,9 +115,7 @@ class ConsoleConfiguration
             static const size_t longestEscapeSequence = 10; // probably overkill
             char aReady[ 1 + longestEscapeSequence ];
         #else
-#if !defined( OLDGCC ) && !defined( __mc68000__ )
             struct termios orig_termios;
-#endif
         #endif
 
         bool inputEstablished, outputEstablished;
@@ -401,7 +426,7 @@ class ConsoleConfiguration
                 if ( 0 == pCtrlCRoutine )
                 {
                     DWORD dwMode = oldInputConsoleMode;
-                    dwMode &= ~ENABLE_PROCESSED_INPUT;
+                    dwMode &= ~( ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT );
                     SetConsoleMode( consoleInputHandle, dwMode );
                     tracer.Trace( "old and new console input mode: %#x, %#x\n", oldInputConsoleMode, dwMode );
                 }
@@ -413,22 +438,25 @@ class ConsoleConfiguration
                     SetConsoleCtrlHandler( handler, TRUE );
                 }
             #else
-                #if !defined( OLDGCC ) && !defined( __mc68000__ ) // these will never run on actual Linux and the emulators or platform already are configured for raw keystrokes
-                    tcgetattr( 0, &orig_termios );
-    
-                    // make input raw so it's possible to peek to see if a keystroke is available
-    
-                    struct termios new_termios;
-                    memcpy( &new_termios, &orig_termios, sizeof( new_termios ) );
-    
-                    cfmakeraw( &new_termios );
-                    new_termios.c_oflag = orig_termios.c_oflag;
-                    tcsetattr( 0, TCSANOW, &new_termios );
-                #endif
+                tcgetattr( 0, &orig_termios ); // save this in case it changes so it can be restored at shutdown
             #endif
 
             inputEstablished = true;
         } //EstablishConsoleInput
+
+        void MakeKeyboardInputRaw()
+        {
+            #ifndef WIN32
+                // make input raw so it's possible to peek to see if a keystroke is available
+        
+                struct termios new_termios;
+                memcpy( &new_termios, &orig_termios, sizeof( new_termios ) );
+        
+                cfmakeraw( &new_termios );
+                new_termios.c_oflag = orig_termios.c_oflag;
+                tcsetattr( 0, TCSANOW, &new_termios );
+            #endif
+        } //MakeKeyboardInputRaw
 
         void EstablishConsoleOutput( int16_t width = 80, int16_t height = 24 )
         {
@@ -491,13 +519,11 @@ class ConsoleConfiguration
                 tracer.Trace( "old and new console output mode: %04x, %04x\n", oldOutputConsoleMode, dwMode );
                 SetConsoleMode( consoleOutputHandle, dwMode );
             #else
-                #ifndef __mc68000__
-                    if ( isatty( fileno( stdout ) ) )
-                    {
-                        printf( "%c[1 q", 27 ); // 1 == cursor blinking block. 
-                        fflush( stdout );
-                    }
-                #endif
+                if ( isatty( fileno( stdout ) ) )
+                {
+                    printf( "%c[1 q", 27 ); // 1 == cursor blinking block. 
+                    fflush( stdout );
+                }
             #endif
 
                 outputEstablished = true;
@@ -513,9 +539,7 @@ class ConsoleConfiguration
                 #ifdef _WIN32
                     SetConsoleMode( consoleInputHandle, oldInputConsoleMode );
                 #else
-                    #if !defined( OLDGCC ) && !defined( __mc68000__ )
-                        tcsetattr( 0, TCSANOW, &orig_termios );
-                    #endif
+                    tcsetattr( 0, TCSANOW, &orig_termios );
                 #endif
 
                 inputEstablished = false;
@@ -526,7 +550,7 @@ class ConsoleConfiguration
         {
             if ( outputEstablished )
             {
-                #if !defined( _WIN32 ) && !defined( __mc68000__ )
+                #if !defined( _WIN32 )
                     if ( isatty( fileno( stdout ) ) )
                     {
                         printf( "%c[0m", 27 ); // turn off display attributes
@@ -564,12 +588,10 @@ class ConsoleConfiguration
         {
             if ( isatty( fileno( stdout ) ) )
             {
-                #if !defined( __mc68000__ )
-                    printf( "\x1b[2J" ); // clear the screen
-                    printf( "\x1b[1G" ); // cursor to top line
-                    printf( "\x1b[1d" ); // cursor to left side
-                    fflush( stdout );
-                #endif
+                printf( "\x1b[2J" ); // clear the screen
+                printf( "\x1b[1G" ); // cursor to top line
+                printf( "\x1b[1d" ); // cursor to left side
+                fflush( stdout );
             }
         } //SendClsSequence
 
@@ -597,7 +619,7 @@ class ConsoleConfiguration
         int portable_kbhit()
         {
             if ( !isatty( fileno( stdin ) ) )
-                return ( 0 == feof( stdin) );
+                return ( 0 == feof( stdin ) );
 
             #ifdef _WIN32
                 if ( 0 != aReady[ 0 ] )
@@ -728,19 +750,28 @@ class ConsoleConfiguration
             #endif
         } //portable_getch
 
+        static uint64_t ns_to_ms( uint64_t ns )
+        {
+            const uint64_t ms_per_ns = 1000000;
+            return ( ns + ( ms_per_ns / 2 ) ) / ms_per_ns;
+        } //ns_to_ms
+    
         bool throttled_kbhit()
         {
             // _kbhit() does device I/O in Windows, which sleeps for a tiny amount waiting for a reply, so 
             // compute-bound mbasic.com apps run 10x slower than they should because mbasic polls for keyboard input.
             // Workaround: only call _kbhit() if 50 milliseconds has gone by since the last call.
 
-#ifdef __mc68000__ // newlib for embedded only has second-level granularity for high_resolution_clock, so use a different codepath for that
+// newlib for embedded only has second-level granularity for high_resolution_clock, so use a different codepath for that
+// also, Open Watcom i386 doesn't support high_resolution_clock
+#if defined( __mc68000__ ) || defined( WATCOMLINUX )
             static struct timespec last_call;
             static int static_result = clock_gettime( CLOCK_REALTIME, &last_call );
             struct timespec tNow;
             int result = clock_gettime( CLOCK_REALTIME, &tNow );
-            uint32_t difference = (uint32_t) ( ( ( tNow.tv_sec - last_call.tv_sec ) * 1000 ) + ( ( tNow.tv_nsec - last_call.tv_nsec ) / 1000000 ) );
-
+            uint64_t before = (uint64_t) last_call.tv_sec * 1000ull + ns_to_ms( last_call.tv_nsec );
+            uint64_t after = (uint64_t) tNow.tv_sec * 1000ull + ns_to_ms( tNow.tv_nsec );
+            uint32_t difference = after - before;
 #else
             static high_resolution_clock::time_point last_call = high_resolution_clock::now();
             high_resolution_clock::time_point tNow = high_resolution_clock::now();
@@ -794,4 +825,4 @@ class ConsoleConfiguration
         } //portable_gets_s
 }; //ConsoleConfiguration
 
-#endif // WATCOM
+#endif // WATCOMDOS

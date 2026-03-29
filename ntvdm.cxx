@@ -9197,6 +9197,7 @@ int main( int argc, char * argv[] )
         g_UseOneThread = g_InEmulator;
 
         g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
+        g_consoleConfig.MakeKeyboardInputRaw();
 
 #ifdef _WIN32
         g_msAtStart = GetTickCount64(); // struct timeval not availabe on Win32
