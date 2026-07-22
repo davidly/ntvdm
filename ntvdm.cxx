@@ -526,6 +526,27 @@ const char * DOSToHostPath( const char * p )
     assert( !strstr( host_path, "//" ) );
     assert( !strstr( host_path, "\\\\" ) );
 
+    // DOS ignores characters past 3 in a file extension.
+    // Apps like DCP Modula-2 depend on it, putting trash after the extension for file open calls
+    // This version: Modula-2 DCP Version 2.0, VEB Robotron-Projekt Dresden, (c) 1988
+    // It's funny because the version of open that does this is called the "asciiz" version yet that's a lie.
+    // int 21 ip 00bf ah 3d al 00 bx 0a30 cx 0040 dx 0ad1 di 0ae0 si 0437 ds 0ecb cs 00c0 ss 0ecb es 0ecb bp 81cc sp 81c2 open file
+    //    0000  43 3a 5c 4d 32 43 5c 4d 43 50 31 2e 4f 56 52 56 : 52 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  C:\M2C\MCP1.OVRVR...............
+
+    char * last_slash = strrchr( host_path, '\\' );
+    if ( !last_slash )
+        last_slash = strrchr( host_path, '/' );
+    if ( last_slash )
+    {
+        char * extension = strchr( last_slash + 1, '.' );
+        if ( extension )
+        {
+            extension++;
+            if ( strlen( extension ) > 3 )
+                extension[ 3 ] = 0;
+        }
+    }
+
     return host_path;
 } //DOSToHostPath
 
@@ -6386,6 +6407,7 @@ void handle_int_21( uint8_t c )
             // open file. DS:dx pointer to asciiz pathname. al= open mode (dos 2.x ignores). AX=handle
 
             char * original_path = (char *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
+            tracer.TraceBinaryData( (uint8_t *) original_path, 0x100, 2 );
             const char * path = DOSToHostPath( original_path );
             tracer.TraceBinaryData( (uint8_t *) path, 0x100, 2 );
             tracer.Trace( "  open file '%s'\n", path );
