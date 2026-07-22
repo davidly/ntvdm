@@ -33,10 +33,10 @@ other emulators.
 The emulator can simulate running at a given clock rate, however the number
 of cycles needed for each instruction varies widely between various sources.
 The code doesn't check for misaligned memory access and doesn't get details of
-mult/div operations correct, so the results are only an aproximatiion. 
+mult/div operations correct, so the cycle count results are only an aproximation. 
 
 Using mips version 1.20 (a benchmark application from 1986 written by Chips
-and Technologies) then if the clock is set to /s:4500000 (4.5 Mhz) the 8086
+and Technologies) if the clock is set to /s:4500000 (4.5 Mhz) the 8086
 emulator runs at about the same speed an actual 8088 running at 4.77Mhz.
 
 Given  the  wide variability online regarding the  performance differences
