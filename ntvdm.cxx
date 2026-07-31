@@ -2359,6 +2359,95 @@ const uint8_t ascii_to_scancode[ 128 ] =
 };
 
 #ifdef _WIN32
+// A small, host-side queue of raw hardware make/break scancode bytes (bit 7 clear = key down/make,
+// bit 7 set = key up/break), fed directly from Windows console key events -- including standalone
+// modifier keys (Alt/Ctrl/Shift/CapsLock) that the BIOS/DOS-level path below deliberately swallows.
+// This exists purely so apps that poll I/O port 0x60 directly, bypassing BIOS/DOS entirely (e.g.
+// QuickBASIC 2), see an authentic scancode stream. It's entirely separate from CKbdBuffer, which
+// continues to serve BIOS/DOS-level keyboard reads (int16/int21) exactly as before; nothing here
+// changes what those code paths see.
+
+class CRawScancodeQueue
+{
+    private:
+        static const int CAPACITY = 32;
+        uint8_t entries[ CAPACITY ];
+        int head; // next slot to read
+        int tail; // next slot to write
+        int count;
+
+    public:
+        CRawScancodeQueue() : head( 0 ), tail( 0 ), count( 0 ) {}
+
+        void Push( uint8_t scancode )
+        {
+            if ( count >= CAPACITY )
+                return; // drop if full -- a port-0x60 poller will just miss a stale event
+
+            entries[ tail ] = scancode;
+            tail = ( tail + 1 ) % CAPACITY;
+            count++;
+        } //Push
+
+        bool Pop( uint8_t & scancode )
+        {
+            if ( 0 == count )
+                return false;
+
+            scancode = entries[ head ];
+            head = ( head + 1 ) % CAPACITY;
+            count--;
+            return true;
+        } //Pop
+
+        bool IsEmpty() { return ( 0 == count ); }
+};
+
+static CRawScancodeQueue g_rawScancodes;
+
+// The Windows console can coalesce a modifier keydown (Alt/Ctrl/Shift) into another key's own event,
+// reporting it only via that record's dwControlKeyState instead of ever delivering a standalone
+// KEY_EVENT_RECORD for the modifier itself (observed for Alt+F: only one INPUT_RECORD ever arrives,
+// for 'F', with ALT_PRESSED set in its control-key state -- no separate Alt-down record). Apps reading
+// raw scancodes directly (e.g. QuickBASIC 2, for Alt+letter menu shortcuts) need an explicit modifier
+// scancode to know the modifier is held. Track what the raw queue currently believes is down and
+// synthesize a make/break transition whenever a record's actual control-key-state disagrees, so the
+// raw stream stays self-consistent even when Windows doesn't report the modifier's own transition.
+static bool g_rawShiftDown = false;
+static bool g_rawCtrlDown = false;
+static bool g_rawAltDown = false;
+
+void SyncRawModifiers( DWORD controlKeyState )
+{
+    bool shift = ( 0 != ( controlKeyState & SHIFT_PRESSED ) );
+    bool ctrl  = ( 0 != ( controlKeyState & ( LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED ) ) );
+    bool alt   = ( 0 != ( controlKeyState & ( LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED ) ) );
+
+    if ( shift != g_rawShiftDown )
+    {
+        g_rawScancodes.Push( shift ? 0x2a : 0xaa );
+        g_rawShiftDown = shift;
+    }
+
+    if ( ctrl != g_rawCtrlDown )
+    {
+        g_rawScancodes.Push( ctrl ? 0x1d : 0x9d );
+        g_rawCtrlDown = ctrl;
+    }
+
+    if ( alt != g_rawAltDown )
+    {
+        g_rawScancodes.Push( alt ? 0x38 : 0xb8 );
+        g_rawAltDown = alt;
+    }
+} //SyncRawModifiers
+
+// Set the first time a guest reads port 0x60 directly. Until then, apps that never poll port 0x60
+// (the vast majority -- everything using BIOS/DOS keyboard calls) must not have g_rawScancodes'
+// fullness influence int9 scheduling below, since nothing will ever Pop() from that queue for them
+// and it would otherwise get stuck non-empty forever, causing a runaway int9 flood.
+static bool g_port60EverRead = false;
+
 bool process_key_event( INPUT_RECORD & rec, uint8_t & asciiChar, uint8_t & scancode )
 {
     if ( KEY_EVENT != rec.EventType )
@@ -2572,10 +2661,18 @@ bool peek_keyboard( uint8_t & asciiChar, uint8_t & scancode )
         for ( uint32_t x = 0; x < numRead; x++ )
         {
             bool used = process_key_event( records[ x ], asciiChar, scancode );
-            if ( !used )
-                continue;
-            tracer.Trace( "    peeked ascii %02x = '%c', scancode %02x\n", asciiChar, printable( asciiChar ), scancode );
-            return true;
+            if ( used )
+            {
+                tracer.Trace( "    peeked ascii %02x = '%c', scancode %02x\n", asciiChar, printable( asciiChar ), scancode );
+                return true;
+            }
+
+            // A port-60 poller (e.g. QuickBASIC 2) needs even "unused" transitions -- key-ups and bare
+            // modifiers -- retired via consume_keyboard() below, not silently discarded by the
+            // FlushConsoleInputBuffer() call beneath. Without this, key-up scancodes never reach the raw
+            // queue at all, since process_key_event() only reports "used" for translated key-downs.
+            if ( g_port60EverRead && ( KEY_EVENT == records[ x ].EventType ) )
+                return true;
         }
     }
 
@@ -2669,6 +2766,29 @@ void consume_keyboard()
                 uint8_t asciiChar = 0, scancode = 0;
                 for ( DWORD x = 0; x < numRead; x++ )
                 {
+                    // Feed the raw scancode queue for every physical key transition this call actually
+                    // retires from the OS input queue, including standalone modifier keys and key-ups,
+                    // regardless of whether process_key_event() below finds it "used" for CKbdBuffer.
+                    // This must live here (at the point of real ReadConsoleInput-driven removal), not
+                    // inside process_key_event() itself: that function is also called from the async
+                    // peek thread's non-destructive PeekConsoleInput path, and pushing there too would
+                    // double-count every real keystroke once for the peek and again for this consume.
+
+                    if ( KEY_EVENT == records[ x ].EventType )
+                    {
+                        SyncRawModifiers( records[ x ].Event.KeyEvent.dwControlKeyState );
+
+                        WORD vk = records[ x ].Event.KeyEvent.wVirtualKeyCode;
+                        bool isPureModifier = ( VK_SHIFT == vk || VK_CONTROL == vk || VK_MENU == vk );
+                        if ( !isPureModifier ) // SyncRawModifiers() above already accounts for this record if it's a bare modifier
+                        {
+                            uint8_t rawScancode = (uint8_t) records[ x ].Event.KeyEvent.wVirtualScanCode;
+                            if ( !records[ x ].Event.KeyEvent.bKeyDown )
+                                rawScancode |= 0x80;
+                            g_rawScancodes.Push( rawScancode );
+                        }
+                    }
+
                     bool used = process_key_event( records[ x ], asciiChar, scancode );
                     if ( !used )
                         continue;
@@ -3237,6 +3357,20 @@ uint8_t i8086_invoke_in_byte( uint16_t port )
     else if ( 0x60 == port ) // keyboard data
     {
         tracer.Trace( "  invoke_in_byte port 60 keyboard data\n" );
+#ifdef _WIN32
+        // Apps that poll this port directly, bypassing BIOS/DOS entirely (e.g. QuickBASIC 2), get an
+        // authentic make (bit 7 clear) / break (bit 7 set) scancode stream here, including standalone
+        // modifier keys -- fed by process_key_event into a queue kept separate from CKbdBuffer, so
+        // BIOS/DOS-level reads (int16/int21) are unaffected by this.
+        g_port60EverRead = true;
+        uint8_t rawScancode;
+        if ( g_rawScancodes.Pop( rawScancode ) )
+        {
+            tracer.Trace( "  invoke_in_byte, port %02x returning raw scancode %02x\n", port, rawScancode );
+            return rawScancode;
+        }
+        return 0x80; // nothing new to report
+#else
         uint8_t asciiChar, scancode;
         if ( peek_keyboard( asciiChar, scancode ) )
         {
@@ -3247,6 +3381,7 @@ uint8_t i8086_invoke_in_byte( uint16_t port )
         }
         else
             return 0x80;
+#endif
     }
     else if ( 0x61 == port ) // keyboard controller port
     {
@@ -9753,8 +9888,8 @@ int main( int argc, char * argv[] )
             // reading the real clock is a real syscall -- expensive under a CPU emulator like sparcos/m68 --
             // and the daily timer only needs ~55ms (18.2 Hz) granularity, so don't refresh it every single
             // iteration of this loop (which runs every ~2000 emulated 8086 cycles).
-            if ( 0 == ( dailyTimerCheckCount++ & 0x3f ) )
-                *pDailyTimer = GetBiosDailyTimer(); // apps look here even if no timer interrupts happen because they aren't hooked
+            if ( !g_InEmulator || ( 0 == ( dailyTimerCheckCount++ & 0x3f ) ) )
+                *pDailyTimer = GetBiosDailyTimer(); // apps (like brief) look here even if no timer interrupts happen because they aren't hooked
 
             // check interrupt enable and trap flags externally to avoid side effects in the emulator
 
@@ -9774,8 +9909,37 @@ int main( int argc, char * argv[] )
                     continue;
                 }
 
-                if ( g_KbdPeekAvailable && !g_int9_pending )
+                // Real hardware fires one IRQ1 (int9) per scancode byte. Apps that read port 0x60
+                // directly (e.g. QuickBASIC 2) expect exactly that -- one int9 per queued raw make/break
+                // byte, not one per logical keystroke -- or bytes past the first in a batch (e.g. a
+                // shifted letter is 4 raw bytes: shift-down, letter-down, letter-up, shift-up) never get
+                // announced and pile up in g_rawScancodes until it fills and starts silently dropping.
+                // Gated on g_port60EverRead: apps that never read port 0x60 (the vast majority, using
+                // BIOS/DOS calls) never Pop() from g_rawScancodes, so it would otherwise fill up and
+                // stay non-empty forever, causing a runaway int9 flood for every other app.
+
+#ifdef _WIN32
+                bool kbdIntNeeded = g_KbdPeekAvailable || ( g_port60EverRead && !g_rawScancodes.IsEmpty() );
+#else
+                bool kbdIntNeeded = g_KbdPeekAvailable;
+#endif
+
+                if ( kbdIntNeeded && !g_int9_pending )
                 {
+#ifdef _WIN32
+                    // A guest that hooks int9 itself (e.g. QuickBASIC 2) and reads port 60 directly never
+                    // runs ntvdm's internal default int9 handler, which is the only other place that calls
+                    // consume_keyboard() to actually remove the event from the Windows console input queue
+                    // (peek_keyboard(), used to detect it, is non-destructive). Without this, the same stale
+                    // event gets rediscovered by the peek thread forever. Called unconditionally, not gated
+                    // on g_port60EverRead: that flag only flips true partway through servicing the very
+                    // first int9 a port-60 poller receives, so gating this call on it would miss pushing
+                    // that first keystroke's raw scancode(s) in time. Harmless for every other app too: any
+                    // event found here gets pushed into g_rawScancodes and CKbdBuffer as normal, and if a
+                    // BIOS/DOS-level int9 handler runs afterward, its own consume_keyboard() call just
+                    // finds nothing new pending.
+                    consume_keyboard();
+#endif
                     tracer.Trace( "%llu main loop: scheduling an int 9 -- keyboard\n", time_since_last() );
                     cpu.external_interrupt( 9 );
                     g_int9_pending = true;
