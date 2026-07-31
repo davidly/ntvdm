@@ -1,6 +1,6 @@
 #pragma once
 
-#ifndef _WIN32
+#if !defined( _WIN32 ) && !defined( sparc ) && !defined( __mc68000__ )
 
 #include <pthread.h>
 
@@ -17,12 +17,14 @@ class C_pthread_mutex_t_lock
 
 class CSimpleThread
 {
-#ifdef _WIN32    
+#ifdef _WIN32
     private:
         HANDLE heventStop;
         HANDLE hthread;
+    #elif defined( sparc ) || defined( __mc68000__ )
+    // no member state -- this target never actually starts a thread (see below)
 #else
-    public: 
+    public:
         pthread_t the_thread;
         pthread_cond_t end_condition;
         pthread_mutex_t the_mutex;
@@ -50,14 +52,20 @@ class CSimpleThread
                 heventStop = INVALID_HANDLE_VALUE;
             }
         }
-#else        
+#elif defined( sparc ) || defined( __mc68000__ )
+        // SPARCOS/M68: avoid pthread entirely -- their emulators don't yet support all the syscalls
+        // glibc/uclibc need for it. g_UseOneThread is forced true on these targets (see main()), so
+        // this constructor is declared to match the call site but is never actually invoked.
+        CSimpleThread( void * ( * start_routine )( void * ) ) {}
+        void EndThread() {}
+#else
         CSimpleThread( void * ( * start_routine )( void * ) ) : the_thread( 0 )
         {
             stop_running = false;
             end_condition = (pthread_cond_t) PTHREAD_COND_INITIALIZER;
             the_mutex = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
-            pthread_cond_init( & end_condition, 0 );   
-            int ret = pthread_create( & the_thread, 0, start_routine, (void *) this );  
+            pthread_cond_init( & end_condition, 0 );
+            int ret = pthread_create( & the_thread, 0, start_routine, (void *) this );
             tracer.Trace( "simplethread: return value from pthread_create: %d\n", ret );
         }
 
@@ -87,4 +95,4 @@ class CSimpleThread
 
         ~CSimpleThread() { EndThread(); }
 }; //CSimpleThread
-       
+

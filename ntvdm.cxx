@@ -64,6 +64,7 @@
 #include <sys/timeb.h>
 #include <memory.h>
 #include <chrono>
+#include <mutex>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,10 +77,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#if !defined( sparc ) && !defined( __mc68000__ )
 #include <pthread.h>
+#endif
 #include <time.h>
 #include <string>
-#include <regex.h>
 #endif
 
 #include <assert.h>
@@ -126,9 +128,25 @@ uint64_t int21_3f_code[] = {
 };
 // end of machine code
 
+// The uint64_t arrays above are a compact encoding of raw 8086 instruction bytes (8 bytes per element,
+// least-significant-byte-first as authored). memcpy'ing them directly is only correct on little-endian
+// hosts; on big-endian hosts each 8-byte group must be flipped back to its original byte order first.
+
+void copy_machine_code( void * dst, const uint64_t * src, size_t bytes )
+{
+#ifdef TARGET_BIG_ENDIAN
+    size_t count = bytes / sizeof( uint64_t );
+    uint64_t * pdst = (uint64_t *) dst;
+    for ( size_t i = 0; i < count; i++ )
+        pdst[ i ] = flip_endian64( src[ i ] );
+#else
+    memcpy( dst, src, bytes );
+#endif
+} //copy_machine_code
+
 uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecute, const char * pcmdLineEnv );
 uint16_t LoadBinary( const char * app, const char * acAppArgs, uint8_t lenAppArgs, uint16_t segment, bool setupRegs,
-                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad );
+                     le16_t * reg_ss, le16_t * reg_sp, le16_t * reg_cs, le16_t * reg_ip, bool bootSectorLoad );
 uint16_t LoadOverlay( const char * app, uint16_t segLoadAddress, uint16_t segmentRelocationFactor );
 
 uint16_t GetSegment( uint8_t * p )
@@ -155,81 +173,81 @@ struct FileEntry
 
 struct AppExecuteMode3
 {
-    uint16_t segLoadAddress;
-    uint16_t segmentRelocationFactor;
+    le16_t segLoadAddress;
+    le16_t segmentRelocationFactor;
 
     void Trace()
     {
         tracer.Trace( "  AppExecuteMode3:\n" );
-        tracer.Trace( "    segLoadAddress: %#x\n", segLoadAddress );
-        tracer.Trace( "    segmentRelocationFactor: %#x\n", segmentRelocationFactor );
+        tracer.Trace( "    segLoadAddress: %#x\n", (uint16_t) segLoadAddress );
+        tracer.Trace( "    segmentRelocationFactor: %#x\n", (uint16_t) segmentRelocationFactor );
     } //Trace
 };
 
 struct AppExecute
 {
-    uint16_t segEnvironment;            // for mode 3, this is segment load address
-    uint16_t offsetCommandTail;         // for mode 3, this is segment relocation factor
-    uint16_t segCommandTail;
-    uint16_t offsetFirstFCB;
-    uint16_t segFirstFCB;
-    uint16_t offsetSecondFCB;
-    uint16_t segSecondFCB;
-    uint16_t func1SP; // these 4 are return values if al = 1
-    uint16_t func1SS;
-    uint16_t func1IP;
-    uint16_t func1CS;
+    le16_t segEnvironment;            // for mode 3, this is segment load address
+    le16_t offsetCommandTail;         // for mode 3, this is segment relocation factor
+    le16_t segCommandTail;
+    le16_t offsetFirstFCB;
+    le16_t segFirstFCB;
+    le16_t offsetSecondFCB;
+    le16_t segSecondFCB;
+    le16_t func1SP; // these 4 are return values if al = 1
+    le16_t func1SS;
+    le16_t func1IP;
+    le16_t func1CS;
 
     void Trace()
     {
         tracer.Trace( "  app execute block:\n" );
-        tracer.Trace( "    segEnvironment:    %04x\n", segEnvironment );
-        tracer.Trace( "    offsetCommandTail: %04x\n", offsetCommandTail );
-        tracer.Trace( "    segCommandTail:    %04x\n", segCommandTail );
+        tracer.Trace( "    segEnvironment:    %04x\n", (uint16_t) segEnvironment );
+        tracer.Trace( "    offsetCommandTail: %04x\n", (uint16_t) offsetCommandTail );
+        tracer.Trace( "    segCommandTail:    %04x\n", (uint16_t) segCommandTail );
     }
 };
 
 struct ExeHeader
 {
-    uint16_t signature;
-    uint16_t bytes_in_last_block;
-    uint16_t blocks_in_file;
-    uint16_t num_relocs;
-    uint16_t header_paragraphs;
-    uint16_t min_extra_paragraphs;
-    uint16_t max_extra_paragraphs;
-    uint16_t relative_ss;
-    uint16_t sp;
-    uint16_t checksum;
-    uint16_t ip;
-    uint16_t relative_cs;
-    uint16_t reloc_table_offset;
-    uint16_t overlay_number;
+    le16_t signature;
+    le16_t bytes_in_last_block;
+    le16_t blocks_in_file;
+    le16_t num_relocs;
+    le16_t header_paragraphs;
+    le16_t min_extra_paragraphs;
+    le16_t max_extra_paragraphs;
+    le16_t relative_ss;
+    le16_t sp;
+    le16_t checksum;
+    le16_t ip;
+    le16_t relative_cs;
+    le16_t reloc_table_offset;
+    le16_t overlay_number;
 
     void Trace()
     {
         tracer.Trace( "  exe header:\n" );
-        tracer.Trace( "    signature:            %04x = %u\n", signature, signature );
-        tracer.Trace( "    bytes in last block:  %04x = %u\n", bytes_in_last_block, bytes_in_last_block );
-        tracer.Trace( "    blocks in file:       %04x = %u\n", blocks_in_file, blocks_in_file );
-        tracer.Trace( "    num relocs:           %04x = %u\n", num_relocs, num_relocs );
-        tracer.Trace( "    header paragraphs:    %04x = %u\n", header_paragraphs, header_paragraphs );
-        tracer.Trace( "    min extra paragraphs: %04x = %u\n", min_extra_paragraphs, min_extra_paragraphs );
-        tracer.Trace( "    max extra paragraphs: %04x = %u\n", max_extra_paragraphs, max_extra_paragraphs );
-        tracer.Trace( "    relative ss:          %04x = %u\n", relative_ss, relative_ss );
-        tracer.Trace( "    sp:                   %04x = %u\n", sp, sp );
-        tracer.Trace( "    checksum:             %04x = %u\n", checksum, checksum );
-        tracer.Trace( "    ip:                   %04x = %u\n", ip, ip );
-        tracer.Trace( "    relative cs:          %04x = %u\n", relative_cs, relative_cs );
-        tracer.Trace( "    reloc table offset:   %04x = %u\n", reloc_table_offset, reloc_table_offset );
-        tracer.Trace( "    overlay_number:       %04x = %u\n", overlay_number, overlay_number );
+        tracer.Trace( "    signature:            %04x = %u\n", (uint16_t) signature, (uint16_t) signature );
+        tracer.Trace( "    bytes in last block:  %04x = %u\n", (uint16_t) bytes_in_last_block, (uint16_t) bytes_in_last_block );
+        tracer.Trace( "    blocks in file:       %04x = %u\n", (uint16_t) blocks_in_file, (uint16_t) blocks_in_file );
+        tracer.Trace( "    num relocs:           %04x = %u\n", (uint16_t) num_relocs, (uint16_t) num_relocs );
+        tracer.Trace( "    header paragraphs:    %04x = %u\n", (uint16_t) header_paragraphs, (uint16_t) header_paragraphs );
+        tracer.Trace( "    min extra paragraphs: %04x = %u\n", (uint16_t) min_extra_paragraphs, (uint16_t) min_extra_paragraphs );
+        tracer.Trace( "    max extra paragraphs: %04x = %u\n", (uint16_t) max_extra_paragraphs, (uint16_t) max_extra_paragraphs );
+        tracer.Trace( "    relative ss:          %04x = %u\n", (uint16_t) relative_ss, (uint16_t) relative_ss );
+        tracer.Trace( "    sp:                   %04x = %u\n", (uint16_t) sp, (uint16_t) sp );
+        tracer.Trace( "    checksum:             %04x = %u\n", (uint16_t) checksum, (uint16_t) checksum );
+        tracer.Trace( "    ip:                   %04x = %u\n", (uint16_t) ip, (uint16_t) ip );
+        tracer.Trace( "    relative cs:          %04x = %u\n", (uint16_t) relative_cs, (uint16_t) relative_cs );
+        tracer.Trace( "    reloc table offset:   %04x = %u\n", (uint16_t) reloc_table_offset, (uint16_t) reloc_table_offset );
+        tracer.Trace( "    overlay_number:       %04x = %u\n", (uint16_t) overlay_number, (uint16_t) overlay_number );
     }
 };
 
 struct ExeRelocation
 {
-    uint16_t offset;
-    uint16_t segment;
+    le16_t offset;
+    le16_t segment;
 };
 
 struct DosAllocation
@@ -267,7 +285,9 @@ CDJLTrace tracer;
 
 static uint16_t g_segHardware = ScreenBufferSegment; // first byte beyond where apps have available memory
 static uint16_t blankLine[ScreenColumns] = {0};      // an optimization for filling lines with blanks
-static std::mutex g_mtxEverything;                   // one mutex for all shared state
+#ifdef _WIN32                                        // only locked by the Windows-only code paths below;
+static std::mutex g_mtxEverything;                   // some cross-compiled targets (e.g. m68k newlib) lack std::mutex entirely
+#endif
 static ConsoleConfiguration g_consoleConfig;         // to get into and out of 80x25 mode
 static bool g_haltExecution = false;                 // true when the app is shutting down
 static uint16_t g_diskTransferSegment = 0;           // segment of current disk transfer area
@@ -566,9 +586,9 @@ struct DosFindFile
     uint8_t undocumentedB[ 0x8  ]; // no attempt to mock this because I haven't found apps that use it
 
     uint8_t file_attributes;       // at offset 0x15
-    uint16_t file_time;            //           0x16
-    uint16_t file_date;            //           0x18
-    uint32_t file_size;            //           0x1a
+    le16_t file_time;                //           0x16
+    le16_t file_date;                //           0x18
+    le32_t file_size;                //           0x1a
     char file_name[ DOS_FILENAME_SIZE ];     // 0x1e      8.3, blanks stripped, null-terminated
 };
 #pragma pack(pop)
@@ -639,20 +659,20 @@ class CKbdBuffer
 {
     private:
         uint8_t * pbiosdata;
-        uint16_t * phead;
-        uint16_t * ptail;
+        le16_t * phead;
+        le16_t * ptail;
 
     public:
         CKbdBuffer()
         {
             pbiosdata = cpu.flat_address8( 0x40, 0 );
-            phead = (uint16_t *) ( pbiosdata + 0x1a );
-            ptail = (uint16_t *) ( pbiosdata + 0x1c );
+            phead = (le16_t *) ( pbiosdata + 0x1a );
+            ptail = (le16_t *) ( pbiosdata + 0x1c );
         }
 
         bool IsFull() { return ( ( *phead == ( *ptail + 2 ) ) || ( ( 0x1e == *phead ) && ( 0x3c == *ptail ) ) ); }
         bool IsEmpty() { return ( *phead == *ptail ); }
-        void Trace() { tracer.Trace( "  kbd buffer head = %04x, tail = %04x\n", *phead, *ptail ); }
+        void Trace() { tracer.Trace( "  kbd buffer head = %04x, tail = %04x\n", (uint16_t) *phead, (uint16_t) *ptail ); }
 
         void Add( uint8_t asciiChar, uint8_t scancode, bool userGenerated = true )
         {
@@ -672,7 +692,7 @@ class CKbdBuffer
                 (*ptail)++;
                 if ( *ptail >= 0x3e )
                     *ptail = 0x1e;
-                tracer.Trace( "    added asciichar %02x scancode %02x, new head = %04x, tail: %04x\n", asciiChar, scancode, *phead, *ptail );
+                tracer.Trace( "    added asciichar %02x scancode %02x, new head = %04x, tail: %04x\n", asciiChar, scancode, (uint16_t) *phead, (uint16_t) *ptail );
             }
         } //Add
 
@@ -695,7 +715,7 @@ class CKbdBuffer
             (*phead)++;
             if ( *phead >= 0x3e )
                 *phead = 0x1e;
-            tracer.Trace( "    consumed char %02x, new head = %04x, tail %04x\n", r, *phead, *ptail );
+            tracer.Trace( "    consumed char %02x, new head = %04x, tail %04x\n", r, (uint16_t) *phead, (uint16_t) *ptail );
             return r;
         } //Consume
 
@@ -841,39 +861,39 @@ void SleepAndScheduleInterruptCheck()
 #pragma pack( push, 1 )
 struct DOSPSP
 {
-    uint16_t int20Code;              // 00 machine code cd 20 to end app
-    uint16_t topOfMemory;            // 02 in segment (paragraph) form. one byte beyond what's allocated to the program.
+    le16_t int20Code;                  // 00 machine code cd 20 to end app
+    le16_t topOfMemory;                // 02 in segment (paragraph) form. one byte beyond what's allocated to the program.
     uint8_t  reserved;               // 04 generally 0
     uint8_t  dispatcherCPM;          // 05 obsolete cp/m-style code to call dispatcher
-    uint16_t comAvailable;           // 06 .com programs bytes available in segment (cp/m holdover)
-    uint16_t farJumpCPM;             // 08 remainder of jump started above
-    uint32_t int22TerminateAddress;  // 0a When a child process ends, there is where execution resumes in the parent.
-    uint32_t int23ControlBreak;      // 0e
-    uint32_t int24CriticalError;     // 12
-    uint16_t segParent;              // 16 parent process segment address of PSP
+    le16_t comAvailable;               // 06 .com programs bytes available in segment (cp/m holdover)
+    le16_t farJumpCPM;                 // 08 remainder of jump started above
+    le32_t int22TerminateAddress;      // 0a When a child process ends, there is where execution resumes in the parent.
+    le32_t int23ControlBreak;          // 0e
+    le32_t int24CriticalError;         // 12
+    le16_t segParent;                  // 16 parent process segment address of PSP
     uint8_t  fileHandles[20];        // 18 undocumented, but MS COBOL writes to this
-    uint16_t segEnvironment;         // 2c
-    uint32_t ssspEntry;              // 2e ss:sp on entry to last int21 function. undocumented
-    uint16_t handleArraySize;        // 32 undocumented. dos 3+: number of entries in jft, default 20
-    uint32_t handleArrayPointer;     // 34 undocumented. dos 3+: pointer to jft
-    uint32_t previousPSP;            // 38 undocumented. default 0xffff:ffff. pointer to previous psp
-    uint16_t parentAX;               // 3c These parentXX fields aren't in DOS. They save register values
-    uint16_t parentBX;               // so when execution resumes after a child process ends all is as it was.
-    uint16_t parentCX;
-    uint16_t parentDX;
-    uint16_t parentDI;
-    uint16_t parentSI;
-    uint16_t parentES;
-    uint16_t parentDS;
-    uint16_t parentBP;
+    le16_t segEnvironment;             // 2c
+    le32_t ssspEntry;                  // 2e ss:sp on entry to last int21 function. undocumented
+    le16_t handleArraySize;            // 32 undocumented. dos 3+: number of entries in jft, default 20
+    le32_t handleArrayPointer;         // 34 undocumented. dos 3+: pointer to jft
+    le32_t previousPSP;                // 38 undocumented. default 0xffff:ffff. pointer to previous psp
+    le16_t parentAX;                   // 3c These parentXX fields aren't in DOS. They save register values
+    le16_t parentBX;                   // so when execution resumes after a child process ends all is as it was.
+    le16_t parentCX;
+    le16_t parentDX;
+    le16_t parentDI;
+    le16_t parentSI;
+    le16_t parentES;
+    le16_t parentDS;
+    le16_t parentBP;
     uint8_t  reserved2[ 2 ];
     uint8_t  dispatcher[3];          // undocumented
     uint8_t  builtInClosed;          // bitmask of built-in handles closed by this process for restoration at exit
     uint8_t  reserved3[8];
     uint8_t  firstFCB[16];           // 5c later parts of a real fcb shared with secondFCB
     uint8_t  secondFCB[16];          // 6c only the first part is used
-    uint16_t parentSS;               // 7c not DOS standard -- I use it to restore SS on child app exit
-    uint16_t parentSP;               // 7e not DOS standard -- I use it to restore SP on child app exit
+    le16_t parentSS;                   // 7c not DOS standard -- I use it to restore SS on child app exit
+    le16_t parentSP;                   // 7e not DOS standard -- I use it to restore SP on child app exit
     uint8_t  countCommandTail;       // 80 # of characters in command tail. This byte and beyond later used as Disk Transfer Address
     uint8_t  commandTail[127];       // 81 command line characters after executable, CR=0xd terminated
 
@@ -894,20 +914,20 @@ struct DOSPSP
 
         tracer.Trace( "  PSP: %04x\n", GetSegment( (uint8_t *) this ) );
         tracer.TraceBinaryData( (uint8_t *) this, sizeof( DOSPSP ), 4 );
-        tracer.Trace( "    topOfMemory: %04x\n", topOfMemory );
-        tracer.Trace( "    segParent: %04x\n", segParent );
+        tracer.Trace( "    topOfMemory: %04x\n", (uint16_t) topOfMemory );
+        tracer.Trace( "    segParent: %04x\n", (uint16_t) segParent );
         tracer.Trace( "    builtInClosed: %02x\n", builtInClosed );
-        tracer.Trace( "    int22 return / terminate address: %04x\n", int22TerminateAddress );
-        tracer.Trace( "    int23 control break address: %04x\n", int23ControlBreak );
-        tracer.Trace( "    int24 critical error address: %04x\n", int24CriticalError );
+        tracer.Trace( "    int22 return / terminate address: %04x\n", (uint32_t) int22TerminateAddress );
+        tracer.Trace( "    int23 control break address: %04x\n", (uint32_t) int23ControlBreak );
+        tracer.Trace( "    int24 critical error address: %04x\n", (uint32_t) int24CriticalError );
         tracer.Trace( "    command tail: len %u, '%.*s'\n", (uint32_t) countCommandTail, (uint32_t) countCommandTail, commandTail );
         //tracer.TraceBinaryData( (uint8_t *) &countCommandTail, 0x80, 8 );
         tracer.Trace( "    handleArraySize: %u\n", (uint32_t) handleArraySize );
-        tracer.Trace( "    handleArrayPointer: %04x\n", handleArrayPointer );
+        tracer.Trace( "    handleArrayPointer: %04x\n", (uint32_t) handleArrayPointer );
 
         TraceHandleMap();
 
-        tracer.Trace( "    segEnvironment: %04x\n", segEnvironment );
+        tracer.Trace( "    segEnvironment: %04x\n", (uint16_t) segEnvironment );
         if ( 0 != segEnvironment )
         {
             const char * penv = (char *) cpu.flat_address( segEnvironment, 0 );
@@ -1240,8 +1260,8 @@ uint16_t FindFirstFreeFileHandle()
 struct DOSMemoryControlBlock
 {
     uint8_t header;        // 'M' for member or 'Z' for last entry in the chain. Hi Mark!
-    uint16_t psp;          // PSP of owning process or 0 if free or 8 if allocated by DOS
-    uint16_t paras;        // # of paragraphs for the allocation excluding the MCB to the next allocation (not the actual length)
+    le16_t psp;              // PSP of owning process or 0 if free or 8 if allocated by DOS
+    le16_t paras;            // # of paragraphs for the allocation excluding the MCB to the next allocation (not the actual length)
     uint8_t reserved[3];
     uint8_t appname[8];    // ascii name of app, null-terminated if < 8 chars long
     // beyond here is the segment handed to the app for the allocation
@@ -1259,7 +1279,7 @@ static void trace_all_allocations()
 
         tracer.Trace( "      alloc entry %d, process %04x, uses segment %04x, para len %04x, (MCB %04x - %04x)  header %c, psp %04x, paras %04x\n", i,
                       da.seg_process, da.segment, da.para_length, da.segment - 1, da.segment - 1 + da.para_length - 1,
-                      pmcb->header, pmcb->psp, pmcb->paras );
+                      pmcb->header, (uint16_t) pmcb->psp, (uint16_t) pmcb->paras );
         //tracer.TraceBinaryData( (uint8_t *) cpu.flat_address( da.segment, 0 ), get_min( 0x1000, ( da.para_length - 1 ) * 16 ), 8 );
     }
 } //trace_all_allocations
@@ -1374,8 +1394,7 @@ uint16_t AllocateMemory( uint16_t request_paragraphs, uint16_t & largest_block )
 
         // update the entry in the "list of lists" of the first memory control block
 
-        uint16_t *pFirstBlockInListOfLists = cpu.flat_address16( SegmentListOfLists, OffsetListOfLists - 2 );
-        *pFirstBlockInListOfLists = allocatedSeg;
+        cpu.setmword( SegmentListOfLists, OffsetListOfLists - 2, allocatedSeg );
         tracer.Trace( "  wrote segment of first allocation %04x to list of lists - 2 at %04x:%04x\n", allocatedSeg, SegmentListOfLists, OffsetListOfLists - 2 );
     }
     else
@@ -1590,27 +1609,32 @@ struct DOSFCB
     uint8_t drive;
     char name[8];
     char ext[3];
-    uint16_t curBlock;
-    uint16_t recSize;
-    uint32_t fileSize;
-    uint16_t date;
-    uint16_t time;
+    le16_t curBlock;
+    le16_t recSize;
+    le32_t fileSize;
+    le16_t date;
+    le16_t time;
     uint8_t reserved[8];     // unused
     uint8_t curRecord;       // where sequential i/o starts
-    uint32_t recNumber;      // where random i/o starts. the high byte is only valid when recSize < 64 bytes. Some apps don't allocate this field for sequential I/O!
+    le32_t recNumber;      // where random i/o starts. the high byte is only valid when recSize < 64 bytes. Some apps don't allocate this field for sequential I/O!
 
     uint32_t BlockSize() { return (uint32_t) recSize * 128; }
     uint32_t SequentialOffset() { return ( ( (uint32_t) curBlock * BlockSize() ) + ( (uint32_t) curRecord * (uint32_t) recSize ) ); }
     uint32_t RandomRecordNumber()
     {
         if ( recSize >= 64 )
-            return ( recNumber & 0xffffff );
+            return ( (uint32_t) recNumber & 0xffffff );
 
         return recNumber;
     }
     void SetRandomRecordNumber( uint32_t x )
     {
-        memcpy( &recNumber, &x, ( recSize >= 64 ) ? 3 : 4 );
+        // only the low 3 bytes are valid when recSize >= 64; preserve the existing high byte in that case.
+        // (can't memcpy here -- recNumber's storage may be byte-swapped for a big-endian host)
+        if ( recSize >= 64 )
+            recNumber = ( ( (uint32_t) recNumber ) & 0xff000000 ) | ( x & 0xffffff );
+        else
+            recNumber = x;
     }
     uint32_t RandomOffset() { return ( RandomRecordNumber() * recSize ); }
     void SetSequentialFromRandom()
@@ -1658,14 +1682,14 @@ struct DOSFCB
                       name[4],name[5],name[6],name[7] );
         tracer.Trace( "    ext          '%c%c%c'\n", ext[0],ext[1],ext[2] );
         tracer.Trace( "    ext          %02x, %02x, %02x\n", ext[0],ext[1],ext[2] );
-        tracer.Trace( "    curBlock:    %u\n", curBlock );
-        tracer.Trace( "    recSize:     %u\n", recSize );
+        tracer.Trace( "    curBlock:    %u\n", (uint16_t) curBlock );
+        tracer.Trace( "    recSize:     %u\n", (uint16_t) recSize );
     } //TraceFirst16
 
     void TraceFirst24()
     {
         TraceFirst16();
-        tracer.Trace( "    fileSize:    %u\n", fileSize );
+        tracer.Trace( "    fileSize:    %u\n", (uint32_t) fileSize );
 
         uint32_t day = date & 0x1f;
         uint32_t month = ( date >> 5 ) & 0xf;
@@ -3436,57 +3460,50 @@ bool starts_with( const char * str, const char * start )
         char cFileName[ MAX_PATH ];
     };
 
-    int match_dos_wildcard( const char *filename, const char *pattern )
+    bool match_dos_wildcard_r( const char * filename, const char * pattern )
     {
-        // Convert DOS wildcard pattern to POSIX regex
-        char *regex = (char *) malloc( strlen( pattern ) * 2 + 3 );
-        char *dest = regex;
-        *dest++ = '^';
-        while ( *pattern )
+        // Simple recursive DOS wildcard ('*' and '?') matcher, anchored to the full string
+        // (equivalent to the prior POSIX regex "^...$" match), avoiding a <regex.h> dependency
+        // that isn't available on every cross-compiled target (e.g. the m68k newlib runtime).
+
+        while ( '*' != *pattern )
         {
-            switch ( *pattern )
-            {
-                case '*':
-                    *dest++ = '.';
-                    *dest++ = '*';
-                    break;
-                case '?':
-                    *dest++ = '.';
-                    break;
-                case '.':
-                    *dest++ = '\\';
-                    *dest++ = '.';
-                    break;
-                default:
-                    *dest++ = *pattern;
-            }
+            if ( 0 == *pattern )
+                return ( 0 == *filename );
+
+            if ( 0 == *filename )
+                return false;
+
+            char fc = *filename;
+            char pc = *pattern;
+#ifdef __APPLE__ // by default, MacOS is case insensitive
+            fc = (char) tolower( (uint8_t) fc );
+            pc = (char) tolower( (uint8_t) pc );
+#endif
+            if ( '?' != pc && fc != pc )
+                return false;
+
+            filename++;
             pattern++;
         }
-        *dest++ = '$';
-        *dest = 0;
 
-        // Compile the regex
-        regex_t regex_compiled;
-        int cflags = REG_NOSUB;
-#ifdef __APPLE__
-        cflags |= REG_ICASE; // by default, MacOS is case insensitive
-#endif
+        while ( '*' == *pattern ) // collapse consecutive '*'
+            pattern++;
 
-        int reti = regcomp( &regex_compiled, regex, cflags );
-        if ( reti )
+        for ( const char * p = filename; ; p++ )
         {
-            tracer.Trace( "Could not compile regex, error %#x\n", reti );
-            free( regex );
-            return 0;
+            if ( match_dos_wildcard_r( p, pattern ) )
+                return true;
+            if ( 0 == *p )
+                return false;
         }
+    } //match_dos_wildcard_r
 
-        // Match the filename against the regex
-        reti = regexec( &regex_compiled, filename, 0, NULL, 0 );
-        tracer.Trace( "  result of matching regex '%s' with file '%s': %#x\n", regex, filename, reti );
-        regfree( &regex_compiled );
-        free( regex );
-
-        return ( 0 == reti );
+    int match_dos_wildcard( const char *filename, const char *pattern )
+    {
+        bool matched = match_dos_wildcard_r( filename, pattern );
+        tracer.Trace( "  result of matching wildcard '%s' with file '%s': %d\n", pattern, filename, matched );
+        return matched;
     } //match_dos_wildcard
 
     bool wildMatch( const char * input, const char * wildcard )
@@ -3521,7 +3538,7 @@ bool starts_with( const char * str, const char * start )
         return match_dos_wildcard( input, ac );
     } //wildMatch
 
-    void tmTimeToDos( long sec, uint16_t & dos_time, uint16_t & dos_date )
+    void tmTimeToDos( time_t sec, uint16_t & dos_time, uint16_t & dos_date )
     {
         struct tm lt;
         localtime_r( &sec, &lt );
@@ -3573,12 +3590,19 @@ bool starts_with( const char * str, const char * start )
         _strupr( pff->file_name );
         pff->file_size = statbuf.st_size;
         pff->file_attributes = matching_attr;
+        {
+            uint16_t file_time, file_date;
 #ifdef __APPLE__
-        tmTimeToDos( statbuf.st_mtimespec.tv_sec, pff->file_time, pff->file_date );
+            tmTimeToDos( statbuf.st_mtimespec.tv_sec, file_time, file_date );
+#elif defined( __mc68000__ ) // this newlib target's struct stat lacks the nanosecond-precision st_mtim substruct
+            tmTimeToDos( statbuf.st_mtime, file_time, file_date );
 #else
-        tmTimeToDos( statbuf.st_mtim.tv_sec, pff->file_time, pff->file_date );
+            tmTimeToDos( statbuf.st_mtim.tv_sec, file_time, file_date );
 #endif
-        tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, pff->file_size, pff->file_attributes );
+            pff->file_time = file_time;
+            pff->file_date = file_date;
+        }
+        tracer.Trace( "  search found '%s', size %u, attributes %#x\n", pff->file_name, (uint32_t) pff->file_size, pff->file_attributes );
         return true;
     } //ProcessFoundFile
 
@@ -3650,11 +3674,18 @@ bool starts_with( const char * str, const char * start )
         }
 
         pfcb->fileSize = statbuf.st_size;
+        {
+            uint16_t file_time, file_date;
 #ifdef __APPLE__
-        tmTimeToDos( statbuf.st_mtimespec.tv_sec, pfcb->time, pfcb->date );
+            tmTimeToDos( statbuf.st_mtimespec.tv_sec, file_time, file_date );
+#elif defined( __mc68000__ ) // this newlib target's struct stat lacks the nanosecond-precision st_mtim substruct
+            tmTimeToDos( statbuf.st_mtime, file_time, file_date );
 #else
-        tmTimeToDos( statbuf.st_mtim.tv_sec, pfcb->time, pfcb->date );
+            tmTimeToDos( statbuf.st_mtim.tv_sec, file_time, file_date );
 #endif
+            pfcb->time = file_time;
+            pfcb->date = file_date;
+        }
         pfcb->TraceFirst24();
         return true;
     } //ProcessFoundFileFCB
@@ -3773,6 +3804,8 @@ bool GetFileDOSTimeDate( const char * path, uint16_t & dos_time, uint16_t & dos_
         {
             #ifdef __APPLE__
                 tmTimeToDos( statbuf.st_mtimespec.tv_sec, dos_time, dos_date );
+            #elif defined( __mc68000__ ) // this newlib target's struct stat lacks the nanosecond-precision st_mtim substruct
+                tmTimeToDos( statbuf.st_mtime, dos_time, dos_date );
             #else
                 tmTimeToDos( statbuf.st_mtim.tv_sec, dos_time, dos_date );
             #endif
@@ -4607,12 +4640,12 @@ void HandleAppExit()
     g_appTerminationReturnCode = cpu.al();
     tracer.Trace( "  app exit code: %d\n", g_appTerminationReturnCode );
     uint16_t pspToDelete = g_currentPSP;
-    tracer.Trace( "  app exiting, segment %04x, psp: %p, environment segment %04x\n", g_currentPSP, psp, psp->segEnvironment );
+    tracer.Trace( "  app exiting, segment %04x, psp: %p, environment segment %04x\n", g_currentPSP, psp, (uint16_t) psp->segEnvironment );
     FreeMemory( psp->segEnvironment );
 
     if ( psp && ( g_currentPSP != g_mainPSP ) )
     {
-        uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+        le32_t * pVectors = (le32_t *) cpu.flat_address( 0, 0 );
         pVectors[ 0x22 ] = psp->int22TerminateAddress;
         pVectors[ 0x23 ] = psp->int23ControlBreak;
         pVectors[ 0x24 ] = psp->int24CriticalError;
@@ -5236,7 +5269,12 @@ void handle_int_21( uint8_t c )
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
                     pfcb->fileSize = portable_filelen( fp );
-                    GetFileDOSTimeDate( filename, pfcb->time, pfcb->date );
+                    {
+                        uint16_t file_time, file_date;
+                        GetFileDOSTimeDate( filename, file_time, file_date );
+                        pfcb->time = file_time;
+                        pfcb->date = file_date;
+                    }
                     pfcb->curRecord = 0; // documentation says this shouldn't be initialized here. I haven't found an app that fails either way.
 
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
@@ -5551,7 +5589,7 @@ void handle_int_21( uint8_t c )
                         size_t num_read = fread( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
                         if ( num_read )
                         {
-                             tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, pfcb->recSize );
+                             tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, (uint16_t) pfcb->recSize );
                              if ( num_read == pfcb->recSize )
                                  cpu.set_al( 0 );
                              else
@@ -5599,7 +5637,7 @@ void handle_int_21( uint8_t c )
                         size_t num_written = fwrite( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
                         if ( num_written )
                         {
-                             tracer.Trace( "  write succeded: %u bytes. recsize %u bytes\n", num_written, pfcb->recSize );
+                             tracer.Trace( "  write succeded: %u bytes. recsize %u bytes\n", num_written, (uint16_t) pfcb->recSize );
                              cpu.set_al( 0 );
                              pfcb->curRecord++;
                              tracer.TraceBinaryData( GetDiskTransferAddress(), (uint32_t) num_written, 4 );
@@ -5646,7 +5684,12 @@ void handle_int_21( uint8_t c )
                     pfcb->curBlock = 0;
                     pfcb->recSize = 0x80;
                     pfcb->fileSize = 0;
-                    GetFileDOSTimeDate( filename, pfcb->time, pfcb->date );
+                    {
+                        uint16_t file_time, file_date;
+                        GetFileDOSTimeDate( filename, file_time, file_date );
+                        pfcb->time = file_time;
+                        pfcb->date = file_date;
+                    }
                     pfcb->curRecord = 0;
 
                     // Don't initialize recNumber as apps like PLI.EXE use files with sequential I/O only and
@@ -5801,7 +5844,7 @@ void handle_int_21( uint8_t c )
                         size_t num_read = fread( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
                         if ( num_read )
                         {
-                             tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, pfcb->recSize );
+                             tracer.Trace( "  read succeded: %u bytes. recsize %u bytes\n", num_read, (uint16_t) pfcb->recSize );
                              if ( num_read == pfcb->recSize )
                                  cpu.set_al( 0 );
                              else
@@ -5848,7 +5891,7 @@ void handle_int_21( uint8_t c )
                         size_t num_written = fwrite( GetDiskTransferAddress(), 1, pfcb->recSize, fp );
                         if ( num_written )
                         {
-                             tracer.Trace( "  write succeded: %u bytes\n", pfcb->recSize );
+                             tracer.Trace( "  write succeded: %u bytes\n", (uint16_t) pfcb->recSize );
                              cpu.set_al( 0 );
 
                              // don't update the fcb's record number for this version of the API
@@ -5887,7 +5930,7 @@ void handle_int_21( uint8_t c )
             tracer.Trace( "  setting interrupt vector %02x %s to %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_ds(), cpu.get_dx() );
             assert( i8086_interrupt_syscall != cpu.al() ); // owned by ntvdm; I haven't found any apps that use this
 
-            uint16_t * pvec = cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
+            le16_t * pvec = (le16_t *) cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
             pvec[0] = cpu.get_dx();
             pvec[1] = cpu.get_ds();
             return;
@@ -5918,7 +5961,7 @@ void handle_int_21( uint8_t c )
             uint32_t cRecords = cpu.get_cx();
             cpu.set_cx( 0 );
             DOSFCB * pfcb = (DOSFCB *) cpu.flat_address( cpu.get_ds(), cpu.get_dx() );
-            tracer.Trace( "  random block read using FCB, cRecords %u, record size %u\n", cRecords, pfcb->recSize );
+            tracer.Trace( "  random block read using FCB, cRecords %u, record size %u\n", cRecords, (uint16_t) pfcb->recSize );
             pfcb->Trace();
             uint32_t seekOffset = pfcb->RandomOffset();
 
@@ -5928,11 +5971,11 @@ void handle_int_21( uint8_t c )
                 if ( fp )
                 {
                     pfcb->fileSize = portable_filelen( fp );
-                    tracer.Trace( "  file size: %u\n", pfcb->fileSize );
+                    tracer.Trace( "  file size: %u\n", (uint32_t) pfcb->fileSize );
 
                     if ( seekOffset >= pfcb->fileSize )
                     {
-                        tracer.Trace( "  ERROR: random read >= end of file offset %u, filesize %u\n", seekOffset, pfcb->fileSize );
+                        tracer.Trace( "  ERROR: random read >= end of file offset %u, filesize %u\n", seekOffset, (uint32_t) pfcb->fileSize );
                         cpu.set_al( 1 ); // eof
                     }
                     else
@@ -6214,14 +6257,14 @@ void handle_int_21( uint8_t c )
                 g_appTerminationReturnCode = cpu.al();
                 tracer.Trace( "  tsr termination return code: %d\n", g_appTerminationReturnCode );
                 cpu.set_carry( false ); // indicate that the Create Process int x21 x4b (EXEC/Load and Execute Program) succeeded.
-                tracer.Trace( "  tsr's environment block: %04x\n", psp->segEnvironment );
+                tracer.Trace( "  tsr's environment block: %04x\n", (uint16_t) psp->segEnvironment );
                 g_currentPSP = psp->segParent;
                 cpu.set_cs( ( psp->int22TerminateAddress >> 16 ) & 0xffff );
                 cpu.set_ip( psp->int22TerminateAddress & 0xffff );
                 cpu.set_ss( psp->parentSS ); // not DOS standard, but workaround for apps like QCL.exe QuickC v1.0 that doesn't restore the stack
                 cpu.set_sp( psp->parentSP ); // ""
 
-                uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+                le32_t * pVectors = (le32_t *) cpu.flat_address( 0, 0 );
                 pVectors[ 0x22 ] = psp->int22TerminateAddress;
                 pVectors[ 0x23 ] = psp->int23ControlBreak;
                 pVectors[ 0x24 ] = psp->int24CriticalError;
@@ -6258,7 +6301,7 @@ void handle_int_21( uint8_t c )
         {
             // get interrupt vector.
 
-            uint16_t * pvec = cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
+            le16_t * pvec = (le16_t *) cpu.flat_address16( 0, 4 * (uint16_t) cpu.al() );
             cpu.set_bx( pvec[ 0 ] );
             cpu.set_es( pvec[ 1 ] );
             tracer.Trace( "  getting interrupt vector %02x %s which is %04x:%04x\n", cpu.al(), get_interrupt_string( cpu.al(), 0, ah_used ), cpu.get_es(), cpu.get_bx() );
@@ -6323,7 +6366,7 @@ void handle_int_21( uint8_t c )
 #ifdef _WIN32
             int ret = _mkdir( path );
 #else
-            int ret = mkdir( path, 0x777 );
+            int ret = mkdir( path, 0777 );
 #endif
             if ( 0 == ret )
                 cpu.set_carry( false );
@@ -7458,8 +7501,7 @@ void handle_int_21( uint8_t c )
                        // put 0xffff on the top of the child's stack.
 
                        pae->func1SP -= 2;
-                       uint16_t * pAX = cpu.flat_address16( pae->func1SS, pae->func1SP );
-                       *pAX = 0xffff;
+                       cpu.setmword( pae->func1SS, pae->func1SP, 0xffff );
                     }
 
                     strcpy( g_lastLoadedApp, acCommandPath );
@@ -7730,7 +7772,7 @@ void handle_int_21( uint8_t c )
             psp->segParent = g_currentPSP;
             psp->int20Code = 0x20cd;                  // int 20 instruction to terminate app like CP/M
 
-            uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+            le32_t * pVectors = (le32_t *) cpu.flat_address( 0, 0 );
             psp->int22TerminateAddress = pVectors[ 0x22 ];
             psp->int23ControlBreak = pVectors[ 0x23 ];
             psp->int24CriticalError = pVectors[ 0x24 ];
@@ -8191,7 +8233,7 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
             cpu.set_al( 0 );
 
             #if false // useful for creating logs that can be compared to fix bugs
-                static ULONGLONG faketicks = 0;
+                static uint64_t faketicks = 0;
                 faketicks += 10;
                 ticks = faketicks;
             #endif
@@ -8200,7 +8242,7 @@ void i8086_invoke_syscall( uint8_t interrupt_num )
             cpu.set_cl( ( ticks >> 16 ) & 0xff );
             cpu.set_dh( ( ticks >> 8 ) & 0xff );
             cpu.set_dl( ticks & 0xff );
-            tracer.Trace( "  real time %u ticks = %u : %u : %u : %u\n", ticks, cpu.ch(), cpu.cl(), cpu.dh(), cpu.dl() );
+            tracer.Trace( "  real time %llu ticks = %u : %u : %u : %u\n", ticks, cpu.ch(), cpu.cl(), cpu.dh(), cpu.dl() );
             return;
         }
         else if ( 2 == c )
@@ -8327,7 +8369,7 @@ void InitializePSP( uint16_t segment, const char * acAppArgs, uint8_t lenAppArgs
 
     psp->comAvailable = 0xfeff;               // .com programs bytes available in segment. reserve 0x100 for the stack by convention
 
-    uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+    le32_t * pVectors = (le32_t *) cpu.flat_address( 0, 0 );
     psp->int22TerminateAddress = pVectors[ 0x22 ];
     psp->int23ControlBreak = pVectors[ 0x23 ];
     psp->int24CriticalError = pVectors[ 0x24 ];
@@ -8465,7 +8507,7 @@ uint16_t LoadOverlay( const char * app, uint16_t CodeSegment, uint16_t segReloca
 
         if ( head.reloc_table_offset > 100 )
         {
-            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %u", head.reloc_table_offset );
+            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %u", (uint16_t) head.reloc_table_offset );
             return 1;
         }
 
@@ -8502,8 +8544,8 @@ uint16_t LoadOverlay( const char * app, uint16_t CodeSegment, uint16_t segReloca
             for ( uint16_t r = 0; r < head.num_relocs; r++ )
             {
                 uint32_t offset = (uint32_t) relocations[ r ].offset + (uint32_t) relocations[ r ].segment * 16;
-                uint16_t * target = (uint16_t *) ( pcode + offset );
-                //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + segRelocationFactor );
+                le16_t * target = (le16_t *) ( pcode + offset );
+                //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, (uint16_t) *target, (uint16_t) *target + segRelocationFactor );
                 *target += segRelocationFactor;
             }
         }
@@ -8583,7 +8625,7 @@ bool CheckForIntelC45App( FILE * fp )
 } //CheckForIntelC45App
 
 uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppArgs, uint16_t segEnvironment, bool setupRegs,
-                     uint16_t * reg_ss, uint16_t * reg_sp, uint16_t * reg_cs, uint16_t * reg_ip, bool bootSectorLoad )
+                     le16_t * reg_ss, le16_t * reg_sp, le16_t * reg_cs, le16_t * reg_ip, bool bootSectorLoad )
 {
     if ( bootSectorLoad )
         return LoadAsBootSector( acApp, acAppArgs, lenAppArgs, segEnvironment );
@@ -8634,8 +8676,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 
         // ensure the last two bytes (the top of the stack) are 0 so ret at app end exits the app via cp/m legacy mode
 
-        uint16_t * pstacktop = cpu.flat_address16( ComSegment, 0xfffe );
-        *pstacktop = 0;
+        cpu.setmword( ComSegment, 0xfffe, 0 );
 
         // prepare to execute the COM file
 
@@ -8689,7 +8730,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 
         if ( head.reloc_table_offset > 100 )
         {
-            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %u", head.reloc_table_offset );
+            tracer.Trace( "  probably not a 16-bit exe; head.reloc_table_offset: %u", (uint16_t) head.reloc_table_offset );
             return 0;
         }
 
@@ -8793,8 +8834,8 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             for ( uint16_t r = 0; r < head.num_relocs; r++ )
             {
                 uint32_t offset = (uint32_t) relocations[ r ].offset + (uint32_t) relocations[ r ].segment * 16;
-                uint16_t * target = (uint16_t *) ( pcode + offset );
-                //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, *target, *target + CodeSegment );
+                le16_t * target = (le16_t *) ( pcode + offset );
+                //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, (uint16_t) *target, (uint16_t) *target + CodeSegment );
                 *target += CodeSegment;
             }
         }
@@ -8869,6 +8910,14 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             }
         } while( true );
 
+        return 0;
+    } //PeekKeyboardThreadProc
+#elif defined( sparc ) || defined( __mc68000__ )
+    // never actually invoked -- g_UseOneThread is always true on these targets (see main()), so
+    // CSimpleThread's constructor never runs. This stub exists only so & PeekKeyboardThreadProc
+    // has something valid to take the address of without pulling in any pthread symbols.
+    void * PeekKeyboardThreadProc( void * param )
+    {
         return 0;
     } //PeekKeyboardThreadProc
 #else
@@ -9094,7 +9143,7 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     }
 
     *penv++ = 0; // extra 0 to indicate there are no more environment variables
-    * (uint16_t *) ( penv ) = 0x0001; // one more additional item per DOS 3.0+
+    * (le16_t *) ( penv ) = 0x0001; // one more additional item per DOS 3.0+
     penv += 2;
 
     strcpy( penv, fullPath );
@@ -9185,7 +9234,7 @@ void ValidateStateLooksOK()
     }
 
 #if 0
-    uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+    le32_t * pVectors = (le32_t *) cpu.flat_address( 0, 0 );
     for ( uint8_t intx = 0; intx < 0x40; intx++ )
     {
         if ( ( pVectors[ intx ] >> 16 ) != InterruptRoutineSegment )
@@ -9197,7 +9246,7 @@ void ValidateStateLooksOK()
 
 bool InterruptHookedByApp( uint8_t i )
 {
-    uint16_t seg = ( cpu.flat_address16( 0, 0 ) )[ 2 * i + 1 ]; // lower uint16_t has offset, upper has segment
+    uint16_t seg = cpu.mword( 0, 4 * i + 2 ); // lower word has offset, upper has segment
     return ( InterruptRoutineSegment != seg );
 } //InterruptHookedByApp
 
@@ -9215,7 +9264,8 @@ int main( int argc, char * argv[] )
     try
     {
         char * posval = getenv( "OS" );
-        g_InEmulator = ( ( 0 != posval ) && ( !strcmp( posval, "RVOS" ) || !strcmp( posval, "ARMOS" ) || !strcmp( posval, "X64OS" ) || !strcmp( posval, "X32OS" ) ) );
+        g_InEmulator = ( ( 0 != posval ) && ( !strcmp( posval, "RVOS" ) || !strcmp( posval, "ARMOS" ) || !strcmp( posval, "X64OS" ) || !strcmp( posval, "X32OS" ) ||
+                                               !strcmp( posval, "SPARCOS" ) || !strcmp( posval, "M68" ) ) );
         g_UseOneThread = g_InEmulator;
 
         g_consoleConfig.EstablishConsoleInput( (void *) ControlHandlerProc );
@@ -9499,22 +9549,22 @@ int main( int argc, char * argv[] )
         // global bios memory
 
         uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
-        * (uint16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
-        * (uint16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
-        * (uint16_t *) ( pbiosdata + 0x1a ) = 0x1e;           // keyboard buffer head
-        * (uint16_t *) ( pbiosdata + 0x1c ) = 0x1e;           // keyboard buffer tail
+        * (le16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
+        * (le16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
+        * (le16_t *) ( pbiosdata + 0x1a ) = 0x1e;           // keyboard buffer head
+        * (le16_t *) ( pbiosdata + 0x1c ) = 0x1e;           // keyboard buffer tail
         * (uint8_t *)  ( pbiosdata + 0x49 ) = DefaultVideoMode; // video mode is 3 == 80x25, 16 colors
-        * (uint16_t *) ( pbiosdata + 0x4a ) = ScreenColumns;  // 80
-        * (uint16_t *) ( pbiosdata + 0x4c ) = 0x1000;         // video regen buffer size
+        * (le16_t *) ( pbiosdata + 0x4a ) = ScreenColumns;  // 80
+        * (le16_t *) ( pbiosdata + 0x4c ) = 0x1000;         // video regen buffer size
         * (uint8_t *)  ( pbiosdata + 0x60 ) = 7;              // cursor ending/bottom scan line
         * (uint8_t *)  ( pbiosdata + 0x61 ) = 6;              // cursor starting/top scan line
         * (uint8_t *)  ( pbiosdata + 0x62 ) = 0;              // current display page
-        * (uint16_t *) ( pbiosdata + 0x63 ) = 0x3d4;          // base port for 6845 CRT controller. color
-        * (uint16_t *) ( pbiosdata + 0x65 ) = 41;             // 6845 crt mode control register value
-        * (uint16_t *) ( pbiosdata + 0x66 ) = 48;             // cga palette mask
-        * (uint16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
-        * (uint16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start
-        * (uint16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer
+        * (le16_t *) ( pbiosdata + 0x63 ) = 0x3d4;          // base port for 6845 CRT controller. color
+        * (le16_t *) ( pbiosdata + 0x65 ) = 41;             // 6845 crt mode control register value
+        * (le16_t *) ( pbiosdata + 0x66 ) = 48;             // cga palette mask
+        * (le16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
+        * (le16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start
+        * (le16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer
         * (uint8_t *)  ( pbiosdata + 0x84 ) = DefaultScreenRows - 1; // 25 - 1
         * (uint8_t *)  ( pbiosdata + 0x87 ) = 0x60;           // video mode options for ega+
         * (uint8_t *)  ( pbiosdata + 0x88 ) = 9;              // ega feature bits
@@ -9550,11 +9600,9 @@ int main( int argc, char * argv[] )
 #endif
 
         // put dummy values in the list of lists
-        uint16_t * pListOfLists = cpu.flat_address16( SegmentListOfLists, OffsetListOfLists );
-        pListOfLists[ 2 ] = OffsetDeviceControlBlock; // low dword of first drive parameter block (ffff is end of list)
-        pListOfLists[ 3 ] = SegmentListOfLists;       // high "
-        uint16_t * pDeviceControlBlock = cpu.flat_address16( SegmentListOfLists, OffsetDeviceControlBlock );
-        *pDeviceControlBlock = 0xffff; // end of list
+        cpu.setmword( SegmentListOfLists, OffsetListOfLists + 4, OffsetDeviceControlBlock ); // low word of first drive parameter block (ffff is end of list)
+        cpu.setmword( SegmentListOfLists, OffsetListOfLists + 6, SegmentListOfLists );        // high "
+        cpu.setmword( SegmentListOfLists, OffsetDeviceControlBlock, 0xffff ); // end of list
 
         // 256 interrupt vectors at address 0 - 3ff.
         // The first 0x40 are reserved for bios/dos and point to routines starting at InterruptRoutineSegment.
@@ -9567,7 +9615,7 @@ int main( int argc, char * argv[] )
         //   code below, breaking it. Intel apparently expects BIOS and DOS runtime code to look a certain way. This results in
         //   somewhat random crashes including stack trashing.
 
-        uint32_t * pVectors = (uint32_t *) cpu.flat_address( 0, 0 );
+        le32_t * pVectors = (le32_t *) cpu.flat_address( 0, 0 );
         uint8_t * pRoutines = cpu.flat_address8( InterruptRoutineSegment, 0 );
         uint32_t codeOffset = 0;
         for ( uint8_t intx = 0; intx < 0x40; intx++ )
@@ -9611,23 +9659,23 @@ int main( int argc, char * argv[] )
 #if USE_ASSEMBLY_FOR_KBD
         uint16_t curseg = MachineCodeSegment;
 
-        memcpy( cpu.flat_address( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
+        copy_machine_code( cpu.flat_address( curseg, 0 ), int21_3f_code, sizeof( int21_3f_code ) );
         g_int21_3f_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int21_3f_code ), (uint16_t) 16 ) / 16 );
 
-        memcpy( cpu.flat_address( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
+        copy_machine_code( cpu.flat_address( curseg, 0 ), int21_a_code, sizeof( int21_a_code ) );
         g_int21_a_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int21_a_code ), (uint16_t) 16 ) / 16 );
 
-        memcpy( cpu.flat_address( curseg, 0 ), int21_1_code, sizeof( int21_1_code ) );
+        copy_machine_code( cpu.flat_address( curseg, 0 ), int21_1_code, sizeof( int21_1_code ) );
         g_int21_1_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int21_1_code ), (uint16_t) 16 ) / 16 );
 
-        memcpy( cpu.flat_address( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
+        copy_machine_code( cpu.flat_address( curseg, 0 ), int21_8_code, sizeof( int21_8_code ) );
         g_int21_8_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int21_8_code ), (uint16_t) 16 ) / 16 );
 
-        memcpy( cpu.flat_address( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
+        copy_machine_code( cpu.flat_address( curseg, 0 ), int16_0_code, sizeof( int16_0_code ) );
         g_int16_0_seg = curseg;
         curseg += ( round_up( (uint16_t) sizeof( int16_0_code ), (uint16_t) 16 ) / 16 );
 
@@ -9670,7 +9718,7 @@ int main( int argc, char * argv[] )
         g_haltExecution = false;
         cpu.set_interrupt( true ); // DOS starts apps with interrupts enabled
         cpu.enable_interrupt_syscall( true ); // call back to ntvdm on i8086_interrupt_syscall
-        uint32_t * pDailyTimer = (uint32_t *) ( pbiosdata + 0x6c );
+        le32_t * pDailyTimer = (le32_t *) ( pbiosdata + 0x6c );
 
         // Peek for keystrokes in a separate thread. Without this, some DOS apps would require polling in the loop below,
         // but keyboard peeks are very slow -- it makes cross-process calls. With the thread, the loop below is faster.
@@ -9683,6 +9731,7 @@ int main( int argc, char * argv[] )
         g_tAppStart = high_resolution_clock::now();
         uint64_t total_cycles = 0; // this will be inaccurate if I8086_TRACK_CYCLES isn't defined
         uint32_t dtLastInt8 = 0;
+        uint32_t dailyTimerCheckCount = 0;
 
         do
         {
@@ -9701,7 +9750,11 @@ int main( int argc, char * argv[] )
             if ( g_use80xRowsMode )
                 throttled_UpdateDisplay( 200 );
 
-            *pDailyTimer = GetBiosDailyTimer(); // apps look here even if no timer interrupts happen because they aren't hooked
+            // reading the real clock is a real syscall -- expensive under a CPU emulator like sparcos/m68 --
+            // and the daily timer only needs ~55ms (18.2 Hz) granularity, so don't refresh it every single
+            // iteration of this loop (which runs every ~2000 emulated 8086 cycles).
+            if ( 0 == ( dailyTimerCheckCount++ & 0x3f ) )
+                *pDailyTimer = GetBiosDailyTimer(); // apps look here even if no timer interrupts happen because they aren't hooked
 
             // check interrupt enable and trap flags externally to avoid side effects in the emulator
 

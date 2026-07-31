@@ -1,4 +1,4 @@
-// 8086 emulator  
+// 8086 emulator
 // Written by David Lee in late 2022.
 // Useful: http://bitsavers.org/components/intel/8086/9800722-03_The_8086_Family_Users_Manual_Oct79.pdf
 //         https://www.eeeguide.com/8086-instruction-format/
@@ -327,7 +327,7 @@ void i8086::op_rol16( uint16_t * pval, uint8_t shift )
         return;
     }
 
-    uint16_t original = *pval;
+    uint16_t original = read_word( pval );
     uint16_t val = original;
     for ( uint8_t sh = 0; sh < shift; sh++ )
     {
@@ -339,7 +339,7 @@ void i8086::op_rol16( uint16_t * pval, uint8_t shift )
     }
 
     fOverflow = ( ( val & 0x8000 ) != ( original & 0x8000 ) ); // only defined when shift is 1
-    *pval = val;
+    write_word( pval, val );
 } //op_rol16
 
 void i8086::op_ror8( uint8_t * pval, uint8_t shift )
@@ -366,7 +366,7 @@ void i8086::op_ror16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    uint16_t val = *pval;
+    uint16_t val = read_word( pval );
     for ( uint8_t sh = 0; sh < shift; sh++ )
     {
         bool lowBit = ( 0 != ( 1 & val ) );
@@ -377,7 +377,7 @@ void i8086::op_ror16( uint16_t * pval, uint8_t shift )
     }
 
     fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ ( 0 != ( val & 0x4000 ) ) );  // only defined when shift is 1
-    *pval = val;
+    write_word( pval, val );
 } //op_ror16
 
 not_inlined void i8086::op_rcl8( uint8_t * pval, uint8_t shift )
@@ -404,7 +404,7 @@ not_inlined void i8086::op_rcl16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    uint16_t val = *pval;
+    uint16_t val = read_word( pval );
     for ( uint8_t sh = 0; sh < shift; sh++ )
     {
         bool newCarry = ( 0 != ( 0x8000 & val ) );
@@ -415,7 +415,7 @@ not_inlined void i8086::op_rcl16( uint16_t * pval, uint8_t shift )
     }
 
     fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ fCarry ); // only defined when shift is 1
-    *pval = val;
+    write_word( pval, val );
 } //op_rcl16
 
 not_inlined void i8086::op_rcr8( uint8_t * pval, uint8_t shift )
@@ -442,7 +442,7 @@ not_inlined void i8086::op_rcr16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    uint16_t val = *pval;
+    uint16_t val = read_word( pval );
     for ( uint8_t sh = 0; sh < shift; sh++ )
     {
         bool newCarry = ( 0 != ( 1 & val ) );
@@ -453,7 +453,7 @@ not_inlined void i8086::op_rcr16( uint16_t * pval, uint8_t shift )
     }
 
     fOverflow = ( ( 0 != ( val & 0x8000 ) ) ^ ( 0 != ( val & 0x4000 ) ) ); // only defined when shift is 1
-    *pval = val;
+    write_word( pval, val );
 } //op_rcr16
 
 void i8086::op_sal8( uint8_t * pval, uint8_t shift )
@@ -483,18 +483,20 @@ void i8086::op_sal16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
+    uint16_t val;
     if ( shift > 16 )
-        *pval = 0;
+        val = 0;
     else
     {
-        uint16_t orig = *pval;
-        *pval <<= ( shift - 1 );
-        fCarry = ( 0 != ( *pval & 0x8000 ) );
-        *pval <<= 1;
-        fOverflow = ! ( ( orig & 0x8000 ) == ( *pval & 0x8000 ) ); // only defined when shift is 1
+        uint16_t orig = read_word( pval );
+        val = orig << ( shift - 1 );
+        fCarry = ( 0 != ( val & 0x8000 ) );
+        val <<= 1;
+        fOverflow = ! ( ( orig & 0x8000 ) == ( val & 0x8000 ) ); // only defined when shift is 1
     }
 
-    set_PSZ16( *pval );
+    set_PSZ16( val );
+    write_word( pval, val );
 } //op_sal16
 
 void i8086::op_shr8( uint8_t * pval, uint8_t shift )
@@ -520,17 +522,20 @@ void i8086::op_shr16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
+    uint16_t val;
     if ( shift > 16 )
-        *pval = 0;
+        val = 0;
     else
     {
-        fOverflow = ( 0 != ( *pval & 0x8000 ) ); // only defined when shift is 1
-        *pval >>= ( shift - 1 );
-        fCarry = ( 0 != ( *pval & 1 ) );
-        *pval >>= 1;
+        val = read_word( pval );
+        fOverflow = ( 0 != ( val & 0x8000 ) ); // only defined when shift is 1
+        val >>= ( shift - 1 );
+        fCarry = ( 0 != ( val & 1 ) );
+        val >>= 1;
     }
 
-    set_PSZ16( *pval );
+    set_PSZ16( val );
+    write_word( pval, val );
 } //op_shr16
 
 not_inlined void i8086::op_sar8( uint8_t * pval, uint8_t shift )
@@ -558,7 +563,7 @@ void i8086::op_sar16( uint16_t * pval, uint8_t shift )
     if ( 0 == shift )
         return;
 
-    uint16_t val = *pval;
+    uint16_t val = read_word( pval );
     bool highBit = ( 0 != ( val & 0x8000 ) );
     for ( uint8_t sh = 0; sh < shift; sh++ )
     {
@@ -570,7 +575,7 @@ void i8086::op_sar16( uint16_t * pval, uint8_t shift )
 
     fOverflow = false; // only defined when shift is 1
     set_PSZ16( val );
-    *pval = val;
+    write_word( pval, val );
 } //op_sar16
 
 void i8086::op_cmps8()
@@ -581,7 +586,7 @@ void i8086::op_cmps8()
 
 void i8086::op_cmps16()
 {
-    op_sub16( * flat_address16( get_seg_value(), si ), * flat_address16( es, di ) ); // es cannot be overridden
+    op_sub16( mword( get_seg_value(), si ), mword( es, di ) ); // es cannot be overridden
     update_rep_sidi16();
 } //op_cmps16
 
@@ -624,7 +629,7 @@ void i8086::op_lods8()
 
 void i8086::op_lods16()
 {
-    ax = * flat_address16( get_seg_value(), si );
+    ax = mword( get_seg_value(), si );
     update_index16( si );
 } //op_lods16
 
@@ -636,7 +641,7 @@ void i8086::op_scas8()
 
 void i8086::op_scas16()
 {
-    op_sub16( ax, * flat_address16( es, di ) ); // es cannot be overridden
+    op_sub16( ax, mword( es, di ) ); // es cannot be overridden
     update_index16( di );
 } //op_scas16
 
@@ -660,10 +665,10 @@ void i8086::op_setmo16( uint16_t * pval, uint8_t shift )
         return;
     }
 
-    *pval = 0xffff;
+    write_word( pval, 0xffff );
     fCarry = false;
     fOverflow = false;
-    set_PSZ16( *pval );
+    set_PSZ16( 0xffff );
 } //op_setmo16
 #endif
 
@@ -693,7 +698,7 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
         case 2: op_rcl16( pval, amount ); break;
         case 3: op_rcr16( pval, amount ); break;
         case 4: op_sal16( pval, amount ); break;   // aka shl
-        case 5: op_shr16( pval, amount ); break; 
+        case 5: op_shr16( pval, amount ); break;
 #if I8086_UNDOCUMENTED
         case 6: op_setmo16( pval, amount ); break;
 #endif
@@ -714,9 +719,9 @@ not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction
     push( cs );
     push( ip + instruction_length );
 
-    uint16_t * vectorItem = flat_address16( 0, 4 * interrupt_num );
-    ip = vectorItem[ 0 ];
-    cs = vectorItem[ 1 ];
+    uint16_t vectorOffset = 4 * interrupt_num;
+    ip = mword( 0, vectorOffset );
+    cs = mword( 0, vectorOffset + 2 );
 
     if ( ( 0 == ip ) && ( 0 == cs ) )
     {
@@ -933,8 +938,8 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
     if ( ( 0 == _reg ) || ( I8086_UNDOCUMENTED && ( 1 == _reg ) ) ) // test reg16/mem16, immed16
     {
         AddMemCycles( 10 );
-        uint16_t lhs = * get_rm_ptr16();
-        uint16_t rhs = * (uint16_t *) ( _pcode + _bc );
+        uint16_t lhs = read_word( get_rm_ptr16() );
+        uint16_t rhs = read_iword( _pcode + _bc );
         _bc += 2;
         op_and16( lhs, rhs );
     }
@@ -942,18 +947,18 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
     {
         AddMemCycles( 19 );
         uint16_t * pval = get_rm_ptr16();
-        *pval = ~ ( *pval );
+        write_word( pval, ~ read_word( pval ) );
     }
     else if ( 3 == _reg ) // neg reg16/mem16 (subtract from 0)
     {
         AddMemCycles( 19 );
         uint16_t * pval = get_rm_ptr16();
-        *pval = op_sub16( 0, *pval );
+        write_word( pval, op_sub16( 0, read_word( pval ) ) );
     }
     else if ( 4 == _reg ) // mul. dx:ax = ax * src
     {
         AddCycles( 133 ); // assume worst-case
-        uint16_t rhs = * get_rm_ptr16();
+        uint16_t rhs = read_word( get_rm_ptr16() );
         uint32_t result = (uint32_t) ax * (uint32_t) rhs;
         dx = result >> 16;
         ax = result & 0xffff;
@@ -963,7 +968,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
     else if ( 5 == _reg ) // imul. dx:ax = ax * src
     {
         AddCycles( 154 ); // assume worst-case
-        uint16_t rhs = * get_rm_ptr16();
+        uint16_t rhs = read_word( get_rm_ptr16() );
         uint32_t result = (int32_t) (int16_t) ax * (int32_t) (int16_t) rhs;
         dx = result >> 16;
         ax = result & 0xffff;
@@ -974,7 +979,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
     else if ( 6 == _reg ) // div dx:ax / src. ax = result, dx = remainder
     {
         AddCycles( 162 ); // assume worst-case
-        uint16_t rhs = * get_rm_ptr16();
+        uint16_t rhs = read_word( get_rm_ptr16() );
         if ( 0 != rhs )
         {
             uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
@@ -995,7 +1000,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
     else if ( 7 == _reg ) // idiv dx:ax / src. signed division. ax = result, dx = remainder (same sign as result)
     {
         AddCycles( 184 ); // assume worst-case
-        uint16_t rhs = * get_rm_ptr16();
+        uint16_t rhs = read_word( get_rm_ptr16() );
         if ( 0 != rhs )
         {
             uint32_t lhs = ( (uint32_t) dx << 16 ) + (uint32_t) ax;
@@ -1011,7 +1016,7 @@ not_inlined bool i8086::op_f7() // return true if divide by 0
                 ax = (uint16_t) result;
                 dx = (uint16_t) ( l % r );
                 assert( ( 0 == dx ) || ( ( 0 == ( l & 0x80000000 ) ) ) == ( 0 == ( dx & 0x8000 ) ) ); // remainder is 0 or has same sign as dividend
-    
+
                 // Intel documentation says "The content of AF, CF, OF, PF, SF and ZF is undefined following IDIV."
                 // Some other emulators set O, S, and C flags.
             }
@@ -1033,21 +1038,21 @@ not_inlined bool i8086::op_ff()
     {
         AddCycles( 21 );
         uint16_t * pval = get_rm_ptr16();
-        *pval = op_inc16( *pval );
+        write_word( pval, op_inc16( read_word( pval ) ) );
         _bc++;
     }
     else if ( 1 == _reg ) // dec mem16
     {
         AddCycles( 21 );
         uint16_t * pval = get_rm_ptr16();
-        *pval = op_dec16( *pval );
+        write_word( pval, op_dec16( read_word( pval ) ) );
         _bc++;
     }
     else if ( 2 == _reg ) // call reg16/mem16 (intra segment)
     {
         AddCycles( 18 );
         AddMemCycles( 9 );
-        uint16_t func = * get_rm_ptr16();
+        uint16_t func = read_word( get_rm_ptr16() );
         uint16_t return_address = ip + _bc + 1;
         push( return_address );
         ip = func;
@@ -1061,8 +1066,8 @@ not_inlined bool i8086::op_ff()
 
         uint16_t save_cs = cs; // temporary variables required because push() may overwrite data in pdata[]
         uint16_t save_ip = ip + _bc + 1;
-        ip = pdata[ 0 ];
-        cs = pdata[ 1 ];
+        ip = read_word( pdata );
+        cs = read_word( pdata + 1 );
         push( save_cs );
         push( save_ip );
         return true;
@@ -1071,7 +1076,7 @@ not_inlined bool i8086::op_ff()
     {
         AddCycles( 13 );
         AddMemCycles( 3 );
-        ip = * get_rm_ptr16();
+        ip = read_word( get_rm_ptr16() );
         return true;
     }
     else if ( 5 == _reg ) // jmp mem16 (inter segment)
@@ -1079,16 +1084,16 @@ not_inlined bool i8086::op_ff()
         AddCycles( 16 );
         AddMemCycles( 9 );
         uint16_t * pdata = get_rm_ptr16();
-        ip = pdata[ 0 ];
-        cs = pdata[ 1 ];
+        ip = read_word( pdata );
+        cs = read_word( pdata + 1 );
         return true;
     }
     else if ( 6 == _reg || ( I8086_UNDOCUMENTED && ( 7 == _reg ) ) ) // push mem16
     {
         AddCycles( 22 );
         uint16_t * pval = get_rm_ptr16();
-        uint16_t val = *pval;
-        
+        uint16_t val = read_word( pval );
+
         if ( 3 == _mod && 4 == _rm ) // SP special case (for `push <reg>` behavior, might be undocumented)
             val -= 2;
 
@@ -1187,9 +1192,9 @@ _prefix_set:
         switch( _b0 )
         {
             case 0x00: case 0x01: case 0x02: case 0x03: case 0x08: case 0x09: case 0x0a: case 0x0b:  // add, or, adc, sbb, and, sub, xor, cmp
-            case 0x10: case 0x11: case 0x12: case 0x13: case 0x18: case 0x19: case 0x1a: case 0x1b: 
-            case 0x20: case 0x21: case 0x22: case 0x23: case 0x28: case 0x29: case 0x2a: case 0x2b: 
-            case 0x30: case 0x31: case 0x32: case 0x33: case 0x38: case 0x39: case 0x3a: case 0x3b: 
+            case 0x10: case 0x11: case 0x12: case 0x13: case 0x18: case 0x19: case 0x1a: case 0x1b:
+            case 0x20: case 0x21: case 0x22: case 0x23: case 0x28: case 0x29: case 0x2a: case 0x2b:
+            case 0x30: case 0x31: case 0x32: case 0x33: case 0x38: case 0x39: case 0x3a: case 0x3b:
             {
                 _bc = 2;
                 if ( toreg() )
@@ -1264,7 +1269,7 @@ _prefix_set:
                 uint16_t * preg = get_preg16( _b0 & 7 );
                 if ( _b0 <= 0x57 )
                     push( *preg );
-                else 
+                else
                     *preg = pop();
                 break;
             }
@@ -1300,7 +1305,7 @@ _prefix_set:
                     case 14: takejmp = fZero || ( fSign != fOverflow ); break;   // jle / jng         le = less than or equal, ng = not greather than
                     default: takejmp = !fZero && ( fSign == fOverflow  ); break; // jnle / jg   must be 15, but to work around a bogus compiler warning
                 }
-    
+
                 if ( takejmp )
                 {
                     ip += ( 2 + (int16_t) (int8_t) _b1 );
@@ -1320,7 +1325,7 @@ _prefix_set:
                 // mod=01: index register(s) plus signed 8-bit immediate offset
                 // mod=10: index register(s) plus signed 16-bit immediate offset
                 // mod=11: r/m specifies a register modified by W
-        
+
                 bool directAddress = ( 0 == _mod && 6 == _rm );
                 AddCycles( directAddress ? 13 : 6 );
                 int imm_offset;
@@ -1339,9 +1344,9 @@ _prefix_set:
                     else
                     {
                         _bc++;
-                        rhs = * (uint16_t *) ( _pcode + imm_offset );
+                        rhs = read_iword( _pcode + imm_offset );
                     }
-        
+
                     do_math16( math, get_rm_ptr16(), rhs );
                 }
                 else
@@ -1366,7 +1371,7 @@ _prefix_set:
                 AddMemCycles( 8 );
                 uint16_t src;
                 uint16_t * pleft = get_op_args16( src );
-                op_and16( *pleft, src );
+                op_and16( read_word( pleft ), src );
                 break;
             }
             case 0x86: // xchg reg8, reg8/mem8
@@ -1379,7 +1384,13 @@ _prefix_set:
             case 0x87: // xchg reg16, reg16/mem16
             {
                 AddMemCycles( 21 );
-                swap( * get_preg16( _reg ), * get_rm_ptr16() );
+                {
+                    uint16_t * preg = get_preg16( _reg );
+                    uint16_t * prm = get_rm_ptr16();
+                    uint16_t tmp = *preg;
+                    *preg = read_word( prm );
+                    write_word( prm, tmp );
+                }
                 _bc++;
                 break;
             }
@@ -1398,7 +1409,7 @@ _prefix_set:
                 AddMemCycles( 11 ); // 10/11/12 possible
                 uint16_t src;
                 uint16_t * pdst = get_op_args16( src );
-                * pdst = src;
+                write_word( pdst, src );
                 break;
             }
             case 0x8a: // mov reg8, r/m8
@@ -1412,15 +1423,15 @@ _prefix_set:
             {
                 _bc++;
                 AddMemCycles( 11 ); // 10/11/12 possible
-                * get_preg16( _reg ) = * get_rm_ptr16();
+                * get_preg16( _reg ) = read_word( get_rm_ptr16() );
                 break;
-            } 
+            }
             case 0x8c: // mov reg16/m16, sreg
             {
                 _bc++;
                 AddMemCycles( 11 ); // 10/11/12 possible
                 _reg &= 3; // the 8086 only checks the lower 2 bits of _reg.
-                * get_rm_ptr16() = * seg_reg( _reg ); // 0x8c is even, but it's a word instruction not byte
+                write_word( get_rm_ptr16(), * seg_reg( _reg ) ); // 0x8c is even, but it's a word instruction not byte
                 break;
             }
             case 0x8d: { _bc++; * get_preg16( _reg ) = get_rm_ea(); break; } // lea reg16, mem16
@@ -1429,13 +1440,13 @@ _prefix_set:
                 _bc++;
                 AddMemCycles( 11 ); // 10/11/12 possible
                 _reg &= 3; // the 8086 only checks the lower 2 bits of _reg.
-                * seg_reg( _reg ) = * get_rm_ptr16();
+                * seg_reg( _reg ) = read_word( get_rm_ptr16() );
                 break;
             }
             case 0x8f: // pop reg16/mem16
             {
                 AddMemCycles( 14 );
-                * get_rm_ptr16() = pop();
+                write_word( get_rm_ptr16(), pop() );
                 _bc++;
                 break;
             }
@@ -1467,7 +1478,7 @@ _prefix_set:
             }
             case 0xa1: // mov ax, mem16
             {
-                ax = * flat_address16( get_seg_value(), b12() );
+                ax = mword( get_seg_value(), b12() );
                 _bc += 2;
                 break;
             }
@@ -1479,7 +1490,7 @@ _prefix_set:
             }
             case 0xa3: // mov mem16, ax
             {
-                * flat_address16( get_seg_value(), b12() ) = ax;
+                setmword( get_seg_value(), b12(), ax );
                 _bc += 2;
                 break;
             }
@@ -1706,7 +1717,7 @@ _prefix_set:
                 // _reg != 0 is undefined for the 8086
                 _bc++;
                 uint16_t * pdst = get_rm_ptr16();
-                *pdst = * (uint16_t *) & _pcode[ _bc ];
+                write_word( pdst, read_iword( & _pcode[ _bc ] ) );
                 _bc += 2;
                 break;
             }
@@ -1732,16 +1743,16 @@ _prefix_set:
                     uint16_t old_cs = cs;
 
                     i8086_invoke_syscall( _pcode[ 2 ] ); // grab the real interrupt to invoke
-    
+
                     // if ip or cs changed, it's likely the interrupt loaded or ended an app via int21 4b execute program or int21 4c exit app
                     // the ip/cs now point to the new app or old parent app.
-                    
+
                     if ( old_ip != ip || old_cs != cs )
                     {
                         tracer.Trace( "after a syscall, old cs::ip %02x::%02x. new cs::ip %02x::%02x.\n", old_cs, old_ip, cs, ip );
                         continue;
                     }
-    
+
                     reset_disassembler(); // i8086_interrupt_syscall (0x69) from ntvdm is a 3-byte instruction, not 2
                     _bc += 2;
                     break;
@@ -1966,7 +1977,7 @@ _prefix_set:
             default:
                 unhandled_instruction();
         } //switch
-  
+
         ip += _bc;                                         // 8.7% of runtime (includes while check above)
     } //while
 

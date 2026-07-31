@@ -12,11 +12,34 @@ extern uint8_t memory[ 0x10fff0 ];
 #define I8086_UNDOCUMENTED true
 
 // when this (mostly unused as far as I can tell) interrupt is executed, i8086_invoke_syscall will be called.
-// Zenith and HP AT BIOSes may use it, along with DECnet and 10NET. 
+// Zenith and HP AT BIOSes may use it, along with DECnet and 10NET.
 const uint8_t i8086_interrupt_syscall = 0x69;
 
 struct i8086
 {
+    // al/bl/cl/dl are the low bytes of ax/bx/cx/dx; ah/bh/ch/dh are the high bytes.
+    // these are host-native register values (never guest memory), so only the byte
+    // offset used to alias each half differs by host endianness -- no runtime swap.
+
+#ifdef TARGET_BIG_ENDIAN
+    uint8_t al() { return * ( 1 + (uint8_t *) & ax ); }
+    uint8_t ah() { return * (uint8_t *) & ax; }
+    uint8_t bl() { return * ( 1 + (uint8_t *) & bx ); }
+    uint8_t bh() { return * (uint8_t *) & bx; }
+    uint8_t cl() { return * ( 1 + (uint8_t *) & cx ); }
+    uint8_t ch() { return * (uint8_t *) & cx; }
+    uint8_t dl() { return * ( 1 + (uint8_t *) & dx ); }
+    uint8_t dh() { return * (uint8_t *) & dx; }
+
+    void set_al( uint8_t val ) { * ( 1 + (uint8_t *) & ax ) = val; }
+    void set_bl( uint8_t val ) { * ( 1 + (uint8_t *) & bx ) = val; }
+    void set_cl( uint8_t val ) { * ( 1 + (uint8_t *) & cx ) = val; }
+    void set_dl( uint8_t val ) { * ( 1 + (uint8_t *) & dx ) = val; }
+    void set_ah( uint8_t val ) { * (uint8_t *) & ax = val; }
+    void set_bh( uint8_t val ) { * (uint8_t *) & bx = val; }
+    void set_ch( uint8_t val ) { * (uint8_t *) & cx = val; }
+    void set_dh( uint8_t val ) { * (uint8_t *) & dx = val; }
+#else
     uint8_t al() { return * (uint8_t *) & ax; }
     uint8_t ah() { return * ( 1 + (uint8_t *) & ax ); }
     uint8_t bl() { return * (uint8_t *) & bx; }
@@ -34,6 +57,7 @@ struct i8086
     void set_bh( uint8_t val ) { * ( 1 + (uint8_t *) & bx ) = val; }
     void set_ch( uint8_t val ) { * ( 1 + (uint8_t *) & cx ) = val; }
     void set_dh( uint8_t val ) { * ( 1 + (uint8_t *) & dx ) = val; }
+#endif
 
     uint16_t get_ax() { return ax; }
     uint16_t get_bx() { return bx; }
@@ -110,6 +134,16 @@ struct i8086
         reset();
         reset_disassembler();
 
+#ifdef TARGET_BIG_ENDIAN
+        reg8_pointers[ 0 ] = 1 + (uint8_t *) & ax; // al
+        reg8_pointers[ 1 ] = 1 + (uint8_t *) & cx; // cl
+        reg8_pointers[ 2 ] = 1 + (uint8_t *) & dx; // dl
+        reg8_pointers[ 3 ] = 1 + (uint8_t *) & bx; // bl
+        reg8_pointers[ 4 ] = (uint8_t *) & ax;  // ah
+        reg8_pointers[ 5 ] = (uint8_t *) & cx;  // ch
+        reg8_pointers[ 6 ] = (uint8_t *) & dx;  // dh
+        reg8_pointers[ 7 ] = (uint8_t *) & bx;  // bh
+#else
         reg8_pointers[ 0 ] = (uint8_t *) & ax;  // al
         reg8_pointers[ 1 ] = (uint8_t *) & cx;  // cl
         reg8_pointers[ 2 ] = (uint8_t *) & dx;  // dl
@@ -118,6 +152,7 @@ struct i8086
         reg8_pointers[ 5 ] = 1 + (uint8_t *) & cx; // ch
         reg8_pointers[ 6 ] = 1 + (uint8_t *) & dx; // dh
         reg8_pointers[ 7 ] = 1 + (uint8_t *) & bx; // bh
+#endif
 
         reg16_pointers[ 0 ] = & ax;
         reg16_pointers[ 1 ] = & cx;
@@ -149,8 +184,31 @@ struct i8086
     void * flat_address( uint16_t seg, uint16_t offset ) { return memory + flatten( seg, offset ); }
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return (uint8_t *) flat_address( seg, offset ); }
     uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) flat_address( seg, offset ); }
-    uint16_t mword( uint16_t seg, uint16_t offset ) { return * flat_address16( seg, offset ); }
+
+    // read/write a little-endian 16-bit value at an address that is known to be guest memory
+    // or guest code bytes (never a host register) -- always byte-swap on a big-endian host.
+    static uint16_t read_iword( const void * p )
+    {
+#ifdef TARGET_BIG_ENDIAN
+        return flip_endian16( * (const uint16_t *) p );
+#else
+        return * (const uint16_t *) p;
+#endif
+    } //read_iword
+
+    static void write_iword( void * p, uint16_t val )
+    {
+#ifdef TARGET_BIG_ENDIAN
+        * (uint16_t *) p = flip_endian16( val );
+#else
+        * (uint16_t *) p = val;
+#endif
+    } //write_iword
+
+    uint16_t mword( uint16_t seg, uint16_t offset ) { return read_iword( flat_address16( seg, offset ) ); }
     uint8_t mbyte( uint16_t seg, uint16_t offset ) { return * flat_address8( seg, offset ); }
+    void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { write_iword( flat_address16( seg, offset ), value ); }
+    void setmbyte( uint16_t seg, uint16_t offset, uint8_t value ) { * flat_address8( seg, offset ) = value; }
 
   private:
     // the code assumes relative positions of most of these member variables. they can't easily be moved around.
@@ -195,8 +253,8 @@ struct i8086
 
     bool isword() { return ( _b0 & 1 ); } // true if the instruction is dealing with a word, not a byte (there are several exceptions)
     bool toreg() { return ( _b0 & 2 ); } // decode on the fly since it's rarely used. instruction is writing to a register, not memory
-    uint16_t b12() { return * (uint16_t *) ( _pcode + 1 ); } // bytes 1 and 2 from the start of the opcode
-    uint16_t b34() { return * (uint16_t *) ( _pcode + 3 ); } // bytes 3 and 4 from the start of the opcode
+    uint16_t b12() { return read_iword( _pcode + 1 ); } // bytes 1 and 2 from the start of the opcode
+    uint16_t b34() { return read_iword( _pcode + 3 ); } // bytes 3 and 4 from the start of the opcode
 
     void trace_decode()
     {
@@ -294,8 +352,17 @@ struct i8086
     } //flatten
 
     void unhandled_instruction();
-    void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { * flat_address16( seg, offset ) = value; }
-    void setmbyte( uint16_t seg, uint16_t offset, uint8_t value ) { * flat_address8( seg, offset ) = value; }
+
+#ifdef TARGET_BIG_ENDIAN
+    // read_word/write_word are handed a uint16_t * that points either into the register
+    // file (a real host-native uint16_t -- no swap needed) or into guest memory (raw
+    // little-endian bytes -- needs a swap). distinguish by whether p falls inside the
+    // guest memory array.
+    static bool is_guest_memory( void * p )
+    {
+        return ( (uint8_t *) p >= memory ) && ( (uint8_t *) p < ( memory + sizeof( memory ) ) );
+    } //is_guest_memory
+#endif
 
     uint16_t read_word( void * p )
     {
@@ -307,6 +374,10 @@ struct i8086
             return ( hi << 8 ) | lo;
         }
 
+#ifdef TARGET_BIG_ENDIAN
+        if ( is_guest_memory( p ) )
+            return flip_endian16( * (uint16_t *) p );
+#endif
         return * (uint16_t *) p;
     } //read_word
 
@@ -317,8 +388,16 @@ struct i8086
             uint8_t *pb = (uint8_t *) p;
             *pb = (uint8_t) ( val & 0xff );
             * ( pb - 65535 ) = (uint8_t) ( val >> 8 );
+            return;
         }
 
+#ifdef TARGET_BIG_ENDIAN
+        if ( is_guest_memory( p ) )
+        {
+            * (uint16_t *) p = flip_endian16( val );
+            return;
+        }
+#endif
         * (uint16_t *) p = val;
     } //write_word
 
@@ -397,7 +476,7 @@ struct i8086
         {
             _bc += 2;
             AddCycles( 5 );
-            uint16_t offset = * (uint16_t *) ( _pcode + 2 );
+            uint16_t offset = read_iword( _pcode + 2 );
             _effective_offset = get_displacement() + offset;
             return flat_address( get_displacement_seg(), _effective_offset );
         }
@@ -406,7 +485,7 @@ struct i8086
         {
             _bc += 2;
             AddCycles( 5 );
-            return flat_address( get_seg_value(), * (uint16_t *) ( _pcode + 2 ) );
+            return flat_address( get_seg_value(), read_iword( _pcode + 2 ) );
         }
 
         _effective_offset = get_displacement();
@@ -420,7 +499,7 @@ struct i8086
 
         if ( 3 == _mod )
             return get_preg16( _rm );
-        
+
         return (uint16_t *) get_rm_ptr_common();
     } //get_rm_ptr16
 
@@ -429,7 +508,7 @@ struct i8086
         assert( !isword() );
         if ( 3 == _mod )
             return get_preg8( _rm );
-        
+
         return (uint8_t *) get_rm_ptr_common();
     } //get_rm_ptr8
 
@@ -438,25 +517,25 @@ struct i8086
         assert( isword() );
         assert( 0x8d == _b0 ); // it's lea
         assert( _mod <= 2 ); // lea specifies that the source operand must be memory, not a register
-        
+
         if ( 1 == _mod )
         {
             _bc += 1;
             int16_t offset = (int16_t) (int8_t) _pcode[ 2 ]; // cast for sign extension
             return get_displacement() + offset;
         }
- 
+
         if ( 2 == _mod )
         {
             _bc += 2;
-            uint16_t offset = * (uint16_t *) ( _pcode + 2 );
+            uint16_t offset = read_iword( _pcode + 2 );
             return get_displacement() + offset;
         }
 
         if ( 6 == _rm )  // 0 == mod. least frequent
         {
             _bc += 2;
-            return * (uint16_t *) ( _pcode + 2 );
+            return read_iword( _pcode + 2 );
         }
 
         return get_displacement();
@@ -467,14 +546,14 @@ struct i8086
         assert( isword() );
         if ( toreg() )
         {
-            rhs = * get_rm_ptr16();
+            rhs = read_word( get_rm_ptr16() ); // could be a register or guest memory
             return get_preg16( _reg );
         }
 
-        rhs = * get_preg16( _reg );
+        rhs = * get_preg16( _reg ); // always a register; never guest memory
         return get_rm_ptr16();
     } //get_op_args16
-    
+
     uint8_t * get_op_args8( uint8_t & rhs )
     {
         assert( !isword() );
@@ -487,7 +566,7 @@ struct i8086
         rhs = * get_preg8( _reg );
         return get_rm_ptr8();
     } //get_op_args8
-    
+
     const char * render_flags() // show the subset actually used with any frequency
     {
         static char acflags[13] = {0};

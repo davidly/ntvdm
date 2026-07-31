@@ -6,6 +6,13 @@ extern "C" int clock_gettime( clockid_t id, struct timespec * res );
 
 static bool s_convert_redirected_LF_to_CR = false;
 
+// Tracks true end-of-input for a redirected (non-tty) stdin, as observed by an actual read()
+// in redirected_getch(). feof(stdin) can't be used for this: everything here reads via the raw
+// read() syscall, never through stdio, so the FILE*'s own eof flag is never set and feof(stdin)
+// would stay false forever -- making kbhit() falsely report "input available" forever and feed
+// an endless stream of phantom EOF-as-0xff keystrokes to the guest once the real input runs out.
+static bool s_redirected_stdin_eof = false;
+
 #ifdef WATCOMDOS
 
 #include <conio.h>
@@ -619,7 +626,7 @@ class ConsoleConfiguration
         int portable_kbhit()
         {
             if ( !isatty( fileno( stdin ) ) )
-                return ( 0 == feof( stdin ) );
+                return !s_redirected_stdin_eof;
 
             #ifdef _WIN32
                 if ( 0 != aReady[ 0 ] )
@@ -670,6 +677,7 @@ class ConsoleConfiguration
 
                 return data;
             }
+            s_redirected_stdin_eof = true;
             return EOF;
         } //redirected_getch()
 
@@ -758,9 +766,20 @@ class ConsoleConfiguration
     
         bool throttled_kbhit()
         {
-            // _kbhit() does device I/O in Windows, which sleeps for a tiny amount waiting for a reply, so 
+            // _kbhit() does device I/O in Windows, which sleeps for a tiny amount waiting for a reply, so
             // compute-bound mbasic.com apps run 10x slower than they should because mbasic polls for keyboard input.
             // Workaround: only call _kbhit() if 50 milliseconds has gone by since the last call.
+
+            // This function is called every emulator main-loop iteration (every ~2000 emulated 8086 cycles),
+            // so even just reading the real clock to check the 50ms window adds up to a real syscall that
+            // often. On a host where syscalls are cheap (native execution, vDSO-accelerated clock reads) that's
+            // negligible, but under a CPU emulator like sparcos/m68 every syscall is fully interpreted and
+            // comparatively very expensive. So only bother reading the clock at all every 8th call; skipping
+            // 7 out of 8 clock reads doesn't meaningfully change the effective ~50ms throttle window in practice.
+
+            static uint32_t call_count = 0;
+            if ( 0 != ( call_count++ & 7 ) )
+                return false;
 
 // newlib for embedded only has second-level granularity for high_resolution_clock, so use a different codepath for that
 // also, Open Watcom i386 doesn't support high_resolution_clock
