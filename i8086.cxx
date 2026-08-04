@@ -1930,8 +1930,8 @@ _prefix_set:
             case 0xeb: { ip += ( 2 + (int16_t) (int8_t) _b1 ); continue; } // jmp short i8
             case 0xec: { set_al( i8086_invoke_in_byte( dx ) ); break; } // in al, dx
             case 0xed: { ax = i8086_invoke_in_word( dx ); break; } // in ax, dx
-            case 0xee: { break; } // out al, dx
-            case 0xef: { break; } // out ax, dx
+            case 0xee: { i8086_invoke_out_byte( dx, al() ); break; } // out al, dx
+            case 0xef: { i8086_invoke_out_word( dx, ax ); break; } // out ax, dx
             case 0xf0: { break; } // lock prefix. ignore since interrupts won't happen
             case 0xf2: // repne/repnz -- fall through to the f3 code
             case 0xf3: { prefix_repeat_opcode = _b0; ip++; goto _prefix_set; } // rep/repe/repz

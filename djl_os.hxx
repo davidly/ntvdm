@@ -122,9 +122,9 @@
         return s;
     } //strlwr
 
-    inline uint64_t _abs64( int64_t x ) { return ( x > 0 ) ? x : -x; }
-
     inline char * _strlwr( char * s ) { return strlwr( s ); }
+
+    inline uint64_t _abs64( int64_t x ) { return ( x > 0 ) ? x : -x; }
 
     inline void sleep_ms( uint64_t ms )
     {
@@ -353,7 +353,7 @@ inline char printable( uint8_t x )
     inline uint64_t flip_endian64( uint64_t x )
     {
         return ( ( x & 0xffull ) << 56 ) | ( ( x & 0xff00ull ) << 40 ) | ( ( x & 0xff0000ull ) << 24 ) | ( ( x & 0xff000000ull ) << 8 ) |
-               ( ( x & 0xff00000000ull ) >> 8 ) | ( ( x & 0xff0000000000ull ) >> 24 ) | ( ( x & 0xff000000000000ull ) >> 40 ) | ( x >> 56 );
+                ( ( x & 0xff00000000ull ) >> 8 ) | ( ( x & 0xff0000000000ull ) >> 24 ) | ( ( x & 0xff000000000000ull ) >> 40 ) | ( x >> 56 );
     } //flip_endian64
 
     inline uint32_t flip_endian32( uint32_t x )
