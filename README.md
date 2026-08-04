@@ -131,6 +131,8 @@ The emulator has been compiled and tested on the following platforms:
 
  * Raspberry PI OS, g++, ARM64 and ARM32
 
+ * Big-endian CPUs via emulation: m68 and sparcos emulators (in sister repos) using g++ compilers for 68000 and sparc v8.
+
 ### Windows
 
 Build with m.bat or mr.bat for debug and release versions on Windows. Or build with g++ instead by using mg.bat or mgr.bat.
