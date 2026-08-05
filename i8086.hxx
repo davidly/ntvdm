@@ -403,6 +403,13 @@ struct i8086
 
     uint16_t * add_two_wrap( uint16_t * p )
     {
+        // _effective_offset must always advance by 2 (with wraparound) to track the true
+        // offset of the word p now points at -- read_word/write_word rely on it being
+        // accurate to detect their own wrap case. Compute the offset-wrap condition from
+        // the old value first, since it reflects where p started, not where it ends up.
+        bool offset_wraps = ( 0xfffe == _effective_offset || 0xffff == _effective_offset );
+        _effective_offset += 2;
+
         p++;
         uint8_t * beyond = memory + 1024 * 1024;
 
@@ -416,12 +423,11 @@ struct i8086
             tracer.Trace( "wrapped back to start of memory plus one in add_two_wrap\n" );
             p = (uint16_t *) ( memory + 1 );
         }
-        else if ( 0xfffe == _effective_offset || 0xffff == _effective_offset )
+        else if ( offset_wraps )
         {
-            tracer.Trace( "_effective_offset in add_two_wrap is %04x, p start is %p\n", _effective_offset, p );
+            tracer.Trace( "_effective_offset in add_two_wrap wrapped to %04x, p start is %p\n", _effective_offset, p );
             uint8_t * pb = (uint8_t *) p;
             p = (uint16_t *) ( pb - 65536 );
-            _effective_offset += 2;
         }
 
         return p;

@@ -11,6 +11,7 @@ msc_v3/GC.EXE
 test86/tests/*.json
 !test86/tests/A1_wraptest.json
 !test86/tests/89_wraptest.json
+!test86/tests/C4_wraptest.json
 !test86/tests/8088.json
 test86/tests/undocumented/
 test86/**/test86.log
