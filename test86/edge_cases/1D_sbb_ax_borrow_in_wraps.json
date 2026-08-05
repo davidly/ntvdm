@@ -1,0 +1,60 @@
+[
+  {
+    "name": "sbb ax, 0 with ax=0, cf=1: borrow-in alone wraps ax to 0xFFFF",
+    "bytes": [
+      29,
+      0,
+      0
+    ],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61443
+      },
+      "ram": [
+        [0, 29],
+        [1, 0],
+        [2, 0]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 65535,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 3,
+        "flags": 61591
+      },
+      "ram": [
+        [0, 29],
+        [1, 0],
+        [2, 0]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_1D_sbb_ax_borrow_in_wraps00000000000000000000000000000000"
+  }
+]

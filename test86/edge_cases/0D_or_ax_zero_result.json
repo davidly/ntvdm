@@ -1,0 +1,60 @@
+[
+  {
+    "name": "or ax, 0 with ax=0: zf set, cf/of forced clear despite being set before",
+    "bytes": [
+      13,
+      0,
+      0
+    ],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 63507
+      },
+      "ram": [
+        [0, 13],
+        [1, 0],
+        [2, 0]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 3,
+        "flags": 61526
+      },
+      "ram": [
+        [0, 13],
+        [1, 0],
+        [2, 0]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_0D_or_ax_zero_result0000000000000000000000000000000000000"
+  }
+]

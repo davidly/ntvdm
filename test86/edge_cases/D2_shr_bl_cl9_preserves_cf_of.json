@@ -1,0 +1,54 @@
+[
+  {
+    "name": "shr bl, cl=9 (count>8): unlike shl's boundary, cf/of are left untouched",
+    "bytes": [210, 235],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 255,
+        "cx": 9,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 63491
+      },
+      "ram": [
+        [0, 210],
+        [1, 235]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 9,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63559
+      },
+      "ram": [
+        [0, 210],
+        [1, 235]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_D2_shr_bl_cl9_preserves_cf_of0000000000000000000000000000"
+  }
+]

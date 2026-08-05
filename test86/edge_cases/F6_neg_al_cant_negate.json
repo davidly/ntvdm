@@ -1,0 +1,54 @@
+[
+  {
+    "name": "neg al with al=0x80: most-negative byte can't be negated, of set",
+    "bytes": [246, 216],
+    "initial": {
+      "regs": {
+        "ax": 128,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 246],
+        [1, 216]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 128,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63619
+      },
+      "ram": [
+        [0, 246],
+        [1, 216]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_F6_neg_al_cant_negate000000000000000000000000000000000000"
+  }
+]

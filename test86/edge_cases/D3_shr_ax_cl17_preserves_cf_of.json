@@ -1,0 +1,54 @@
+[
+  {
+    "name": "shr ax, cl with cl=17 (word, count>16): same cf/of-preserved asymmetry",
+    "bytes": [211, 232],
+    "initial": {
+      "regs": {
+        "ax": 65535,
+        "bx": 0,
+        "cx": 17,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 63491
+      },
+      "ram": [
+        [0, 211],
+        [1, 232]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 17,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63559
+      },
+      "ram": [
+        [0, 211],
+        [1, 232]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_D3_shr_ax_cl17_preserves_cf_of000000000000000000000000000"
+  }
+]

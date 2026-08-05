@@ -1,0 +1,60 @@
+[
+  {
+    "name": "xor ax, 0FFFFh with ax=0xFFFF: cancels to 0, cf/of forced clear",
+    "bytes": [
+      53,
+      255,
+      255
+    ],
+    "initial": {
+      "regs": {
+        "ax": 65535,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 63507
+      },
+      "ram": [
+        [0, 53],
+        [1, 255],
+        [2, 255]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 3,
+        "flags": 61526
+      },
+      "ram": [
+        [0, 53],
+        [1, 255],
+        [2, 255]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_35_xor_ax_self_cancel000000000000000000000000000000000000"
+  }
+]

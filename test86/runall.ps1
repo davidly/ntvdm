@@ -20,6 +20,19 @@ files (0 if all passed).
   pwsh ./runall.ps1
   pwsh ./runall.ps1 tests/undocumented
   pwsh ./runall.ps1 -TestDir /some/other/tests
+
+.NOTES
+  tests/*.json (~10,000 hardware-validated cases per opcode) are NOT checked
+  into this repo (several GB -- see .gitignore) and must be fetched and
+  converted separately. That corpus originates from Tom Harte's
+  ProcessorTests project (github.com/TomHarte/ProcessorTests, now archived,
+  redirects to github.com/SingleStepTests/ProcessorTests), generated with
+  Folkert van Heusden's assistance; its current, actively-maintained
+  standalone home is github.com/SingleStepTests/8088, the `v1` folder
+  specifically (NOT `v2`, which is a different, incompatible format from
+  newer/different hardware). See convert_singlesteptests.py in this
+  directory for the exact conversion required and a clone-to-running-tests
+  example.
 #>
 
 param(

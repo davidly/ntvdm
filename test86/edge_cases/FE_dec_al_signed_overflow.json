@@ -1,0 +1,54 @@
+[
+  {
+    "name": "dec al with al=0x80: byte signed-overflow boundary, OF set",
+    "bytes": [254, 200],
+    "initial": {
+      "regs": {
+        "ax": 128,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 254],
+        [1, 200]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 127,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63506
+      },
+      "ram": [
+        [0, 254],
+        [1, 200]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_FE_dec_al_signed_overflow00000000000000000000000000000000"
+  }
+]

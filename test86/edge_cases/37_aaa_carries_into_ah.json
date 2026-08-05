@@ -1,0 +1,54 @@
+[
+  {
+    "name": "aaa with al=0x0F: carries into ah; unlike daa/das, PF/ZF/SF untouched",
+    "bytes": [
+      55
+    ],
+    "initial": {
+      "regs": {
+        "ax": 15,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61638
+      },
+      "ram": [
+        [0, 55]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 261,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 61655
+      },
+      "ram": [
+        [0, 55]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_37_aaa_carries_into_ah00000000000000000000000000000000000"
+  }
+]

@@ -1,0 +1,54 @@
+[
+  {
+    "name": "shl ax, cl with cl=17 (word, count>16): op_sal16's forced-zero boundary",
+    "bytes": [211, 224],
+    "initial": {
+      "regs": {
+        "ax": 65535,
+        "bx": 0,
+        "cx": 17,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 211],
+        [1, 224]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 17,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 61510
+      },
+      "ram": [
+        [0, 211],
+        [1, 224]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_D3_shl_ax_cl17_forced_zero0000000000000000000000000000000"
+  }
+]

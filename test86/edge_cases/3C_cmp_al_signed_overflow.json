@@ -1,0 +1,54 @@
+[
+  {
+    "name": "cmp al, 1 with al=0x80: signed-overflow flags, al itself untouched",
+    "bytes": [60, 1],
+    "initial": {
+      "regs": {
+        "ax": 128,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 60],
+        [1, 1]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 128,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63506
+      },
+      "ram": [
+        [0, 60],
+        [1, 1]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_3C_cmp_al_signed_overflow00000000000000000000000000000000"
+  }
+]

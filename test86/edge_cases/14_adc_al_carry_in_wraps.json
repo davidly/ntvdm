@@ -1,0 +1,54 @@
+[
+  {
+    "name": "adc al, 0 with al=0xFF, cf=1: carry-in alone wraps al to 0, cf stays set",
+    "bytes": [20, 0],
+    "initial": {
+      "regs": {
+        "ax": 255,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61443
+      },
+      "ram": [
+        [0, 20],
+        [1, 0]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 61527
+      },
+      "ram": [
+        [0, 20],
+        [1, 0]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_14_adc_al_carry_in_wraps000000000000000000000000000000000"
+  }
+]

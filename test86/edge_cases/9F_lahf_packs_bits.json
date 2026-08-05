@@ -1,0 +1,54 @@
+[
+  {
+    "name": "lahf: packs sf/zf/af/pf/cf into ah (0xD7), leaves of/df/if untouched",
+    "bytes": [
+      159
+    ],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 65239
+      },
+      "ram": [
+        [0, 159]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 55040,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 65239
+      },
+      "ram": [
+        [0, 159]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_9F_lahf_packs_bits000000000000000000000000000000000000000"
+  }
+]

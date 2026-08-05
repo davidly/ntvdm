@@ -1,0 +1,60 @@
+[
+  {
+    "name": "lea ax, [es:bx+si]: es prefix consumed but has no effect on the result",
+    "bytes": [
+      38,
+      141,
+      0
+    ],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 4660,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 43981,
+        "sp": 0,
+        "bp": 0,
+        "si": 1,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 38],
+        [1, 141],
+        [2, 0]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 4661,
+        "bx": 4660,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 43981,
+        "sp": 0,
+        "bp": 0,
+        "si": 1,
+        "di": 0,
+        "ip": 3,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 38],
+        [1, 141],
+        [2, 0]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_26_lea_ignores_segment_override00000000000000000000000000"
+  }
+]

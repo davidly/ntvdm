@@ -1,0 +1,54 @@
+[
+  {
+    "name": "sub al, 1 with al=0x10: nibble borrow sets AF, no byte borrow, CF clear",
+    "bytes": [44, 1],
+    "initial": {
+      "regs": {
+        "ax": 16,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 44],
+        [1, 1]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 15,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 61462
+      },
+      "ram": [
+        [0, 44],
+        [1, 1]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_2C_sub_al_nibble_borrow0000000000000000000000000000000000"
+  }
+]

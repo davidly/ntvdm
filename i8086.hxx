@@ -235,6 +235,7 @@ struct i8086
     uint8_t _mod;     // bits 7:6 of _b1
     uint8_t * _pcode; // pointer to the first opcode currently executing
     uint16_t _effective_offset; // for word instructions that have an address offset. used to handle segment wrapping
+    uint8_t _wrap_scratch[ 6 ]; // holds a segment-wrapped copy of the instruction bytes; see decode_instruction()
 
     uint8_t * reg8_pointers[ 8 ];
     uint16_t * reg16_pointers[ 8 ];
@@ -243,6 +244,24 @@ struct i8086
     void decode_instruction( uint8_t * pcode )
     {
         _bc = 1;
+
+        // An instruction (opcode + modrm + disp16 + imm16) can be up to 6 bytes. pcode
+        // is a flat pointer into memory computed from cs:ip, so reading past it with
+        // plain pointer arithmetic (as _pcode[n]/read_iword(_pcode+n)/b12()/b34() do
+        // throughout the decoder) pulls in the next linear byte rather than wrapping
+        // back to offset 0 of the same segment the way real 8086 segment-relative
+        // offsets do -- the same wraparound read_word()/write_word() already handle
+        // for data operands via _effective_offset. If ip is close enough to the top of
+        // the segment that those 6 bytes could cross 0xffff, fetch through a small
+        // wrap-aware scratch buffer instead so every existing _pcode-relative read
+        // still works unchanged.
+        if ( ip > 0xfffa )
+        {
+            for ( uint16_t i = 0; i < _countof( _wrap_scratch ); i++ )
+                _wrap_scratch[ i ] = mbyte( cs, ip + i ); // ip+i wraps via uint16_t arithmetic
+            pcode = _wrap_scratch;
+        }
+
         _pcode = pcode;
         * (uint16_t *) & _b0 = * (uint16_t *) pcode; // updates both _b0 and _b1 with one copy
         _rm = ( _b1 & 7 );

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "movsb with df=1, si=di=0: both decrement to 0xFFFF (wrap) after the copy",
+    "bytes": [
+      164
+    ],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 4096,
+        "es": 12288,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 62466
+      },
+      "ram": [
+        [0, 164],
+        [65536, 66],
+        [196608, 0]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 4096,
+        "es": 12288,
+        "sp": 0,
+        "bp": 0,
+        "si": 65535,
+        "di": 65535,
+        "ip": 1,
+        "flags": 62466
+      },
+      "ram": [
+        [0, 164],
+        [65536, 66],
+        [196608, 66]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_A4_movsb_df1_wraps_si_di000000000000000000000000000000000"
+  }
+]

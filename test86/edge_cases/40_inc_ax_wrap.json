@@ -1,0 +1,54 @@
+[
+  {
+    "name": "inc ax with ax=0xFFFF: wraps to 0, CF preserved, AF set, OF clear",
+    "bytes": [
+      64
+    ],
+    "initial": {
+      "regs": {
+        "ax": 65535,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61443
+      },
+      "ram": [
+        [0, 64]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 61527
+      },
+      "ram": [
+        [0, 64]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_40_inc_ax_wrap0000000000000000000000000000000000000000000"
+  }
+]

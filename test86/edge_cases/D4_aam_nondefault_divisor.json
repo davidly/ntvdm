@@ -1,0 +1,54 @@
+[
+  {
+    "name": "aam 10h with al=34: D4 supports any immediate divisor, not just 0Ah",
+    "bytes": [212, 16],
+    "initial": {
+      "regs": {
+        "ax": 34,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 212],
+        [1, 16]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 514,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 212],
+        [1, 16]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_D4_aam_nondefault_divisor00000000000000000000000000000000"
+  }
+]

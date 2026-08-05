@@ -1,0 +1,54 @@
+[
+  {
+    "name": "sbb al, 0 with al=0, cf=1: borrow-in alone wraps al to 0xFF",
+    "bytes": [28, 0],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61443
+      },
+      "ram": [
+        [0, 28],
+        [1, 0]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 255,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 61591
+      },
+      "ram": [
+        [0, 28],
+        [1, 0]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_1C_sbb_al_borrow_in_wraps00000000000000000000000000000000"
+  }
+]

@@ -1,0 +1,54 @@
+[
+  {
+    "name": "rol bl, cl with cl=9: 8-bit rotate period means this equals cl=1",
+    "bytes": [210, 195],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 165,
+        "cx": 9,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 210],
+        [1, 195]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 75,
+        "cx": 9,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63491
+      },
+      "ram": [
+        [0, 210],
+        [1, 195]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_D2_rol_bl_cl9_equals_cl1000000000000000000000000000000000"
+  }
+]

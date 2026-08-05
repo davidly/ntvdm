@@ -1,0 +1,58 @@
+[
+  {
+    "name": "rep movsb with cx=0: zero iterations, si/di/memory all untouched",
+    "bytes": [243, 164],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 4096,
+        "es": 12288,
+        "sp": 0,
+        "bp": 0,
+        "si": 80,
+        "di": 96,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 243],
+        [1, 164],
+        [65616, 170],
+        [196704, 187]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 4096,
+        "es": 12288,
+        "sp": 0,
+        "bp": 0,
+        "si": 80,
+        "di": 96,
+        "ip": 2,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 243],
+        [1, 164],
+        [65616, 170],
+        [196704, 187]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_A4_rep_movsb_cx0_zero_iterations0000000000000000000000000"
+  }
+]

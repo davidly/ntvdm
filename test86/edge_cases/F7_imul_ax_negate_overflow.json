@@ -1,0 +1,54 @@
+[
+  {
+    "name": "imul bx with ax=-32768, bx=-1: +32768 doesn't fit in a signed word, cf/of set",
+    "bytes": [247, 235],
+    "initial": {
+      "regs": {
+        "ax": 32768,
+        "bx": 65535,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 247],
+        [1, 235]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 32768,
+        "bx": 65535,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63623
+      },
+      "ram": [
+        [0, 247],
+        [1, 235]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_F7_imul_ax_negate_overflow0000000000000000000000000000000"
+  }
+]

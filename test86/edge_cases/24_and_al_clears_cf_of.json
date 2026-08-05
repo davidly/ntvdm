@@ -1,0 +1,54 @@
+[
+  {
+    "name": "and al, 0Fh: cf/of forced clear even though set beforehand, af untouched",
+    "bytes": [36, 15],
+    "initial": {
+      "regs": {
+        "ax": 255,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 63507
+      },
+      "ram": [
+        [0, 36],
+        [1, 15]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 15,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 61462
+      },
+      "ram": [
+        [0, 36],
+        [1, 15]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_24_and_al_clears_cf_of00000000000000000000000000000000000"
+  }
+]

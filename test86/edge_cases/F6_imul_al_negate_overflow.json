@@ -1,0 +1,54 @@
+[
+  {
+    "name": "imul bl with al=-128, bl=-1: +128 doesn't fit in a signed byte, cf/of set",
+    "bytes": [246, 235],
+    "initial": {
+      "regs": {
+        "ax": 128,
+        "bx": 255,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 246],
+        [1, 235]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 128,
+        "bx": 255,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63491
+      },
+      "ram": [
+        [0, 246],
+        [1, 235]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_F6_imul_al_negate_overflow0000000000000000000000000000000"
+  }
+]

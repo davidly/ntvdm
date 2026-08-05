@@ -1,0 +1,56 @@
+[
+  {
+    "name": "pushf: pushes the exact current flags word",
+    "bytes": [
+      156
+    ],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 8192,
+        "ds": 0,
+        "es": 0,
+        "sp": 16,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 65171
+      },
+      "ram": [
+        [0, 156]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 8192,
+        "ds": 0,
+        "es": 0,
+        "sp": 14,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 65171
+      },
+      "ram": [
+        [0, 156],
+        [131087, 254],
+        [131086, 147]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_9C_pushf_value0000000000000000000000000000000000000000000"
+  }
+]

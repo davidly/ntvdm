@@ -1,0 +1,54 @@
+[
+  {
+    "name": "aad 10h with ah=2, al=5: D5 supports any base, not just the conventional 0Ah",
+    "bytes": [213, 16],
+    "initial": {
+      "regs": {
+        "ax": 517,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 213],
+        [1, 16]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 37,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 213],
+        [1, 16]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_D5_aad_nondefault_base00000000000000000000000000000000000"
+  }
+]

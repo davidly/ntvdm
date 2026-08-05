@@ -1,0 +1,54 @@
+[
+  {
+    "name": "aas with al=0x0F, ah=1: low nibble > 9 borrows from ah; PF/ZF/SF untouched",
+    "bytes": [
+      63
+    ],
+    "initial": {
+      "regs": {
+        "ax": 271,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61638
+      },
+      "ram": [
+        [0, 63]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 9,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 61655
+      },
+      "ram": [
+        [0, 63]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_3F_aas_borrows_from_ah00000000000000000000000000000000000"
+  }
+]

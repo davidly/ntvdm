@@ -1,0 +1,54 @@
+[
+  {
+    "name": "mul bl, al=0x81 bl=1: sf quirk reflects bit7 of low byte, not ax bit15",
+    "bytes": [246, 227],
+    "initial": {
+      "regs": {
+        "ax": 129,
+        "bx": 1,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 246],
+        [1, 227]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 129,
+        "bx": 1,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 61574
+      },
+      "ram": [
+        [0, 246],
+        [1, 227]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_F6_mul_al_sf_from_low_byte0000000000000000000000000000000"
+  }
+]

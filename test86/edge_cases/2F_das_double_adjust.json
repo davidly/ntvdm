@@ -1,0 +1,54 @@
+[
+  {
+    "name": "das with al=0x9A: both the low-nibble and high-nibble adjustments fire",
+    "bytes": [
+      47
+    ],
+    "initial": {
+      "regs": {
+        "ax": 154,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 47]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 52,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 61459
+      },
+      "ram": [
+        [0, 47]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_2F_das_double_adjust0000000000000000000000000000000000000"
+  }
+]

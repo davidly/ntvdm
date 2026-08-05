@@ -1,0 +1,54 @@
+[
+  {
+    "name": "daa with al=0x9A: both the low-nibble and high-nibble adjustments fire",
+    "bytes": [
+      39
+    ],
+    "initial": {
+      "regs": {
+        "ax": 154,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 39]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 61527
+      },
+      "ram": [
+        [0, 39]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_27_daa_double_adjust0000000000000000000000000000000000000"
+  }
+]

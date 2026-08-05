@@ -1,0 +1,60 @@
+[
+  {
+    "name": "adc ax, 0 with ax=0xFFFF, cf=1: carry-in alone wraps ax to 0",
+    "bytes": [
+      21,
+      0,
+      0
+    ],
+    "initial": {
+      "regs": {
+        "ax": 65535,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61443
+      },
+      "ram": [
+        [0, 21],
+        [1, 0],
+        [2, 0]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 3,
+        "flags": 61527
+      },
+      "ram": [
+        [0, 21],
+        [1, 0],
+        [2, 0]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_15_adc_ax_carry_in_wraps000000000000000000000000000000000"
+  }
+]

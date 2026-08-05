@@ -1,0 +1,54 @@
+[
+  {
+    "name": "cbw with al=0x80 (negative): ah becomes 0xFF",
+    "bytes": [
+      152
+    ],
+    "initial": {
+      "regs": {
+        "ax": 128,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 152]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 65408,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 152]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_98_cbw_sign_extends00000000000000000000000000000000000000"
+  }
+]

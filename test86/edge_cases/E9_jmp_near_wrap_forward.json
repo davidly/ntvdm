@@ -1,0 +1,60 @@
+[
+  {
+    "name": "jmp near +0020h from ip=0FFF0h wraps ip forward past 0xFFFF to 0x0013",
+    "bytes": [
+      233,
+      32,
+      0
+    ],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 65520,
+        "flags": 61442
+      },
+      "ram": [
+        [65520, 233],
+        [65521, 32],
+        [65522, 0]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 19,
+        "flags": 61442
+      },
+      "ram": [
+        [65520, 233],
+        [65521, 32],
+        [65522, 0]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_E9_jmp_near_wrap_forward000000000000000000000000000000000"
+  }
+]

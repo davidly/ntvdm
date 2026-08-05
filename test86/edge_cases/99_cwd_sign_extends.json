@@ -1,0 +1,54 @@
+[
+  {
+    "name": "cwd with ax=0x8000 (negative): dx becomes 0xFFFF",
+    "bytes": [
+      153
+    ],
+    "initial": {
+      "regs": {
+        "ax": 32768,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 153]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 32768,
+        "bx": 0,
+        "cx": 0,
+        "dx": 65535,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 153]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_99_cwd_sign_extends00000000000000000000000000000000000000"
+  }
+]

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "popf: restores all 9 real flag bits from the stack exactly",
+    "bytes": [
+      157
+    ],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 8192,
+        "ds": 0,
+        "es": 0,
+        "sp": 16,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 157],
+        [131088, 147],
+        [131089, 255]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 0,
+        "cx": 0,
+        "dx": 0,
+        "cs": 0,
+        "ss": 8192,
+        "ds": 0,
+        "es": 0,
+        "sp": 18,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 1,
+        "flags": 65427
+      },
+      "ram": [
+        [0, 157],
+        [131088, 147],
+        [131089, 255]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_9D_popf_value00000000000000000000000000000000000000000000"
+  }
+]

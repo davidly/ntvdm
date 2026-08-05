@@ -1,0 +1,54 @@
+[
+  {
+    "name": "rcl bl, cl with cl=9: 9-bit rotate-through-carry period restores value+cf",
+    "bytes": [210, 211],
+    "initial": {
+      "regs": {
+        "ax": 0,
+        "bx": 165,
+        "cx": 9,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 0,
+        "flags": 61442
+      },
+      "ram": [
+        [0, 210],
+        [1, 211]
+      ],
+      "queue": []
+    },
+    "final": {
+      "regs": {
+        "ax": 0,
+        "bx": 165,
+        "cx": 9,
+        "dx": 0,
+        "cs": 0,
+        "ss": 0,
+        "ds": 0,
+        "es": 0,
+        "sp": 0,
+        "bp": 0,
+        "si": 0,
+        "di": 0,
+        "ip": 2,
+        "flags": 63490
+      },
+      "ram": [
+        [0, 210],
+        [1, 211]
+      ],
+      "queue": []
+    },
+    "cycles": [],
+    "test_hash": "manual_D2_rcl_bl_cl9_full_period00000000000000000000000000000000"
+  }
+]
