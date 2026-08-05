@@ -1,0 +1,588 @@
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\00.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\00.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\01.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\01.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\02.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\02.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\03.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\03.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\04.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\04.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\05.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\05.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\06.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\06.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\07.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\07.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\08.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\08.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\09.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\09.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\0A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\0A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\0B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\0B.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\0C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\0C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\0D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\0D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\0E.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\0E.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\10.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\10.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\11.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\11.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\12.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\12.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\13.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\13.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\14.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\14.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\15.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\15.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\16.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\16.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\17.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\17.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\18.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\18.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\19.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\19.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\1A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\1A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\1B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\1B.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\1C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\1C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\1D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\1D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\1E.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\1E.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\1F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\1F.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\20.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\20.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\21.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\21.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\22.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\22.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\23.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\23.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\24.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\24.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\25.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\25.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\27.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\27.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\28.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\28.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\29.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\29.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\2A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\2A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\2B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\2B.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\2C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\2C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\2D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\2D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\2F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\2F.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\30.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\30.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\31.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\31.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\32.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\32.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\33.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\33.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\34.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\34.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\35.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\35.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\37.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\37.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\38.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\38.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\39.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\39.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\3A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\3A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\3B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\3B.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\3C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\3C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\3D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\3D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\3F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\3F.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\40.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\40.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\41.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\41.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\42.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\42.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\43.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\43.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\44.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\44.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\45.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\45.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\46.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\46.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\47.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\47.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\48.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\48.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\49.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\49.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\4A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\4A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\4B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\4B.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\4C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\4C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\4D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\4D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\4E.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\4E.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\4F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\4F.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\50.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\50.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\51.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\51.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\52.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\52.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\53.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\53.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\54.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\54.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\55.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\55.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\56.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\56.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\57.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\57.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\58.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\58.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\59.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\59.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\5A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\5A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\5B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\5B.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\5C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\5C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\5D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\5D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\5E.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\5E.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\5F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\5F.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\70.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\70.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\71.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\71.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\72.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\72.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\73.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\73.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\74.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\74.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\75.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\75.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\76.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\76.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\77.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\77.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\78.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\78.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\79.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\79.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\7A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\7A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\7B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\7B.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\7C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\7C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\7D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\7D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\7E.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\7E.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\7F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\7F.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\80.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\80.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\80.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\80.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\80.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\80.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\80.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\80.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\80.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\80.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\80.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\80.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\80.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\80.6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\80.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\80.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\8088.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 0 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\8088.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\81.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\81.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\81.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\81.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\81.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\81.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\81.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\81.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\81.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\81.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\81.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\81.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\81.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\81.6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\81.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\81.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\82.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\82.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\82.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\82.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\82.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\82.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\82.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\82.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\82.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\82.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\82.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\82.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\82.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\82.6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\82.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\82.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\83.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\83.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\83.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\83.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\83.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\83.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\83.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\83.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\83.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\83.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\83.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\83.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\83.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\83.6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\83.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\83.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\84.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\84.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\85.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\85.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\86.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\86.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\87.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\87.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\88.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\88.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\89.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\89.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\8A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\8A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\8B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\8B.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\8C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\8C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\8D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\8D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\8E.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\8E.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\8F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\8F.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\90.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\90.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\91.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\91.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\92.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\92.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\93.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\93.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\94.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\94.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\95.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\95.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\96.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\96.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\97.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\97.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\98.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\98.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\99.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\99.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\9A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\9A.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\9C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\9C.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\9D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\9D.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\9E.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\9E.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\9F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\9F.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A8.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A8.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\A9.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\A9.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\AA.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\AA.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\AB.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\AB.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\AC.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\AC.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\AD.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\AD.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\AE.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\AE.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\AF.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 2000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\AF.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B8.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B8.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\B9.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\B9.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\BA.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\BA.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\BB.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\BB.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\BC.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\BC.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\BD.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\BD.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\BE.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\BE.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\BF.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\BF.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\C2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\C2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\C3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\C3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\C4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\C4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\C5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\C5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\C6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\C6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\C7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\C7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\CA.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\CA.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\CB.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\CB.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\CC.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\CC.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\CD.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\CD.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\CE.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\CE.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\CF.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\CF.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D0.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D0.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D0.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D0.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D0.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D0.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D0.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D0.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D0.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D0.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D0.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D0.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D0.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D0.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D1.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D1.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D1.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D1.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D1.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D1.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D1.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D1.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D1.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D1.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D1.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D1.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D1.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D1.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D2.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D2.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D2.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D2.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D2.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D2.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D2.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D2.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D2.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D2.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D2.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D2.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D2.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D2.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D3.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D3.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D3.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D3.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D3.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D3.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D3.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D3.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D3.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D3.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D8.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D8.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\D9.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\D9.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\DA.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\DA.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\DB.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\DB.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\DC.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\DC.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\DD.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\DD.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\DE.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\DE.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\DF.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\DF.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E8.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E8.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\E9.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\E9.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\EA.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\EA.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\EB.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\EB.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\EC.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\EC.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\ED.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\ED.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\EE.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\EE.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\EF.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\EF.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F6.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F6.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F6.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F6.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F6.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F6.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F6.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F6.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F6.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F6.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F6.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F6.6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F6.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F6.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F7.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F7.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F7.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F7.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F7.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F7.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F7.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F7.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F7.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F7.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F7.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F7.6.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F7.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F7.7.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F8.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F8.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\F9.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\F9.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FA.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FA.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FB.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FB.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FC.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FC.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FD.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FD.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FE.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FE.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FE.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FE.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FF.0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FF.0.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FF.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FF.1.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FF.2.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FF.2.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FF.3.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FF.3.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FF.4.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FF.4.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FF.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FF.5.json with great success
+ran test86 C:\Users\david\OneDrive\ntvdm\test86\tests\FF.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\FF.6.json with great success

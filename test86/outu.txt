@@ -1,0 +1,62 @@
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\0F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\0F.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\60.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\60.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\61.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\61.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\62.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\62.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\63.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\63.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\64.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\64.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\65.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\65.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\66.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\66.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\67.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\67.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\68.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\68.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\69.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\69.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6A.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6A.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6B.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6B.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6C.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6C.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6D.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6D.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6E.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6E.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6F.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\6F.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\C0.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\C0.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\C1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\C1.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\C8.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\C8.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\C9.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\C9.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D0.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D0.6.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D1.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D1.6.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D2.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D2.6.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D3.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D3.1.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D3.5.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D3.5.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D3.6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 4000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D3.6.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D6.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\D6.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\F6.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\F6.1.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\F7.1.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\F7.1.json with great success
+ran ..\..\armos\armosg -m:200 ..\..\test86 C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\FF.7.json in directory C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented
+test86 completed 10000 tests in C:\Users\david\OneDrive\ntvdm\test86\tests\undocumented\FF.7.json with great success

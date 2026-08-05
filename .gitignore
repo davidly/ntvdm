@@ -3,3 +3,39 @@ msc_v3/GC.MAP
 msc_v3/gc.COD
 msc_v3/gc.OBJ
 msc_v3/GC.EXE
+
+# test86: exclude the large third-party SingleStepTests/ProcessorTests JSON corpus
+# (9+ GB total, several files over GitHub's 100MB hard push limit on their own --
+# see https://github.com/TomHarte/ProcessorTests, referenced in i8086.cxx). Keep the
+# small hand-written regression tests and the opcode-status manifest tracked.
+test86/tests/*.json
+!test86/tests/A1_wraptest.json
+!test86/tests/89_wraptest.json
+!test86/tests/8088.json
+test86/tests/undocumented/
+test86/**/test86.log
+
+# test86: compiled binaries and their per-build-variant run logs (produced by ms.sh and
+# mrall.sh's multi-optimization-level/multi-compiler build matrix). All mechanically
+# regenerable from source; none of it is meaningful to diff or review in git. Deliberately
+# NOT included here: baseline_out.txt/out.txt/baseline_outu.txt/outu.txt, which r.bat/ru.bat
+# and their arm variants actively diff against as a regression baseline, and the small
+# hand-picked single-test-case files (sample.json, one.json, 05.json, etc.), which aren't
+# part of the bulky corpus and may be intentional debugging aids.
+test86/test86
+test86/test86.exe
+test86/test86.obj
+test86/test86.pdb
+test86/test86.asm
+test86/i8086.obj
+test86/i8086.asm
+test86/vc140.pdb
+test86/bin*-david-arm64
+test86/bin[0-9]/test86
+test86/binfast/test86
+test86/clangbin[0-9]/test86
+test86/clangbinfast/test86
+test86/out_bin*.txt
+test86/out_clangbin*.txt
+test86/outu_bin*.txt
+test86/outu_clangbin*.txt
