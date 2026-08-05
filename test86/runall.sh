@@ -1,6 +1,6 @@
 #!/bin/bash
-# Runs every test86 JSON test file in tests/, one process per core, and prints a summary.
-# Exits with the number of failed files (0 if everything passed).
+# Runs every test86 JSON test file in tests/ and tests/undocumented/, one process per
+# core, and prints a summary. Exits with the number of failed files (0 if all passed).
 
 set -u
 cd "$(dirname "$0")"
@@ -11,7 +11,7 @@ trap 'rm -rf "$outdir"' EXIT
 
 start=$(date +%s.%N)
 
-ls tests/*.json | xargs -P "$nproc_count" -I{} sh -c \
+ls tests/*.json tests/undocumented/*.json 2>/dev/null | xargs -P "$nproc_count" -I{} sh -c \
     './test86 "{}" > "'"$outdir"'/$(basename "{}").out" 2>&1'
 
 end=$(date +%s.%N)
