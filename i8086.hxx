@@ -485,7 +485,8 @@ struct i8086
         {
             _bc += 2;
             AddCycles( 5 );
-            return flat_address( get_seg_value(), read_iword( _pcode + 2 ) );
+            _effective_offset = read_iword( _pcode + 2 );
+            return flat_address( get_seg_value(), _effective_offset );
         }
 
         _effective_offset = get_displacement();

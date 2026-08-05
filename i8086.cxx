@@ -586,7 +586,13 @@ void i8086::op_cmps8()
 
 void i8086::op_cmps16()
 {
-    op_sub16( mword( get_seg_value(), si ), mword( es, di ) ); // es cannot be overridden
+    // one byte at a time for segment wrapping
+    uint16_t seg = get_seg_value();
+    uint8_t l1 = * flat_address8( seg, si );
+    uint8_t h1 = * flat_address8( seg, si + 1 );
+    uint8_t l2 = * flat_address8( es, di ); // es cannot be overridden
+    uint8_t h2 = * flat_address8( es, di + 1 );
+    op_sub16( ( (uint16_t) h1 << 8 ) | (uint16_t) l1, ( (uint16_t) h2 << 8 ) | (uint16_t) l2 );
     update_rep_sidi16();
 } //op_cmps16
 
@@ -629,7 +635,11 @@ void i8086::op_lods8()
 
 void i8086::op_lods16()
 {
-    ax = mword( get_seg_value(), si );
+    // one byte at a time for segment wrapping
+    uint16_t seg = get_seg_value();
+    uint8_t l = * flat_address8( seg, si );
+    uint8_t h = * flat_address8( seg, si + 1 );
+    ax = ( (uint16_t) h << 8 ) | (uint16_t) l;
     update_index16( si );
 } //op_lods16
 
@@ -641,7 +651,10 @@ void i8086::op_scas8()
 
 void i8086::op_scas16()
 {
-    op_sub16( ax, mword( es, di ) ); // es cannot be overridden
+    // one byte at a time for segment wrapping
+    uint8_t l = * flat_address8( es, di ); // es cannot be overridden
+    uint8_t h = * flat_address8( es, di + 1 );
+    op_sub16( ax, ( (uint16_t) h << 8 ) | (uint16_t) l );
     update_index16( di );
 } //op_scas16
 
@@ -1478,7 +1491,12 @@ _prefix_set:
             }
             case 0xa1: // mov ax, mem16
             {
-                ax = mword( get_seg_value(), b12() );
+                // one byte at a time for segment wrapping
+                uint16_t seg = get_seg_value();
+                uint16_t off = b12();
+                uint8_t l = * flat_address8( seg, off );
+                uint8_t h = * flat_address8( seg, off + 1 );
+                ax = ( (uint16_t) h << 8 ) | (uint16_t) l;
                 _bc += 2;
                 break;
             }
@@ -1490,7 +1508,11 @@ _prefix_set:
             }
             case 0xa3: // mov mem16, ax
             {
-                setmword( get_seg_value(), b12(), ax );
+                // one byte at a time for segment wrapping
+                uint16_t seg = get_seg_value();
+                uint16_t off = b12();
+                * flat_address8( seg, off + 1 ) = ah();
+                * flat_address8( seg, off ) = al();
                 _bc += 2;
                 break;
             }
