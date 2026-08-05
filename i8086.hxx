@@ -661,6 +661,8 @@ struct i8086
         void AddCycles( uint8_t amount ) {}
         void AddMemCycles( uint8_t amount ) {}
     #endif
+    void RemoveOpcodeCycles(); // undoes the automatic per-opcode-fetch base cost for _b0; used when a rep prefix
+                                // means that cost was already covered by the prefix byte's own base cost instead
 
 }; //i8086
 

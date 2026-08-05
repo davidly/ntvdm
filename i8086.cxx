@@ -90,7 +90,7 @@ static const uint8_t i8086_cycles[ 256 ] =
     /*30*/     3,  3,  3,  3,  4,  4,  2,  4,    3,  3,  3,  3,  4,  4,  2,  4,
     /*40*/     3,  3,  3,  3,  3,  3,  3,  3,    3,  3,  3,  3,  3,  3,  3,  3,
     /*50*/    15, 15, 15, 15, 15, 15, 15, 15,   12, 12, 12, 12, 12, 12, 12, 12,
-    /*60*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  1,  4,  4,  4,  4,  4,  4,
+    /*60*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
     /*70*/     4,  4,  4,  4,  4,  4,  4,  4,    4,  4,  4,  4,  4,  4,  4,  4,
     /*80*/     4,  4,  4,  4,  5,  5,  4,  4,    2,  2,  2,  2,  2,  4,  2, 12, // lea as 4, not 2; docs can't be right
     /*90*/     4,  4,  4,  4,  4,  4,  4,  4,    2,  5, 36,  4, 14, 12,  4,  4,
@@ -101,6 +101,12 @@ static const uint8_t i8086_cycles[ 256 ] =
     /*e0*/     6,  5,  5,  6, 14, 14, 14, 14,   23, 15, 15, 15, 12, 12, 12, 12,
     /*f0*/     1,  0,  9,  9,  2,  3,  5,  5,    2,  2,  2,  2,  2,  2,  3,  2,
 };
+
+#ifdef I8086_TRACK_CYCLES
+void i8086::RemoveOpcodeCycles() { cycles -= i8086_cycles[ _b0 ]; }
+#else
+void i8086::RemoveOpcodeCycles() {}
+#endif
 
 void i8086::update_index8( uint16_t & index_register ) // si or di
 {
@@ -1520,6 +1526,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode ) // f3 is legal, but f2 is used here in ms-dos link.exe v2.0
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 17/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 17 );
@@ -1535,6 +1542,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode ) // f3 is legal, but f2 is used here in ms-dos link.exe v2.0
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 17/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 17 );
@@ -1550,6 +1558,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode )
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 30/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 30 );
@@ -1568,6 +1577,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode )
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 30/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 30 );
@@ -1593,6 +1603,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode ) // f3 is legal, but f2 is used here in ms-dos link.exe v2.0
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 10/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 10 );
@@ -1608,6 +1619,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode ) // f3 is legal, but f2 is used here in ms-dos link.exe v2.0
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 14/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 14 );
@@ -1623,6 +1635,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode ) // f3 is odd but supported. f2 here is illegal but used
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 10/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 10 ); // a guess
@@ -1638,6 +1651,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode ) // f3 is odd but supported. f2 here is illegal but used
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 10/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 10 ); // a guess
@@ -1653,6 +1667,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode )
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 15/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 15 ); // a guess
@@ -1671,6 +1686,7 @@ _prefix_set:
             {
                 if ( 0xff != prefix_repeat_opcode )
                 {
+                    RemoveOpcodeCycles(); // undo the flat per-opcode cost; rep's cost is the prefix byte's 9 plus 19/rep
                     while ( 0 != cx )
                     {
                         AddCycles( 19 ); // a guess
