@@ -3,8 +3,8 @@ do
     mkdir bin"$optflag" 2>/dev/null
     mkdir clangbin"$optflag" 2>/dev/null
 
-    _gnubuild="g++ -ggdb -fno-builtin -Wno-unused-result -fsigned-char -D NDEBUG -I .. -I . test86.cxx ../i8086.cxx -o bin"$optflag"/test86 -O"$optflag" -static"
-    _clangbuild="clang-18 -x c++ test86.cxx ../i8086.cxx -I .. -I . -o clangbin"$optflag"/test86 -O"$optflag" -static -fno-builtin -D NDEBUG -fsigned-char -Wno-unused-result -Wno-format -Wno-format-security -std=c++14 -lm -lstdc++"
+    _gnubuild="g++ -ggdb -fno-builtin -Wno-unused-result -fsigned-char -D NDEBUG -D I8086_TEST_HARNESS -I .. -I . test86.cxx ../i8086.cxx -o bin"$optflag"/test86 -O"$optflag" -static"
+    _clangbuild="clang-18 -x c++ test86.cxx ../i8086.cxx -I .. -I . -o clangbin"$optflag"/test86 -O"$optflag" -static -fno-builtin -D NDEBUG -D I8086_TEST_HARNESS -fsigned-char -Wno-unused-result -Wno-format -Wno-format-security -std=c++14 -lm -lstdc++"
 
     if [ "$optflag" != "fast" ]; then
         $_clangbuild &

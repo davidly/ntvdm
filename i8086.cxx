@@ -1181,7 +1181,9 @@ _prefix_set:
 
         #ifndef NDEBUG
             opcode_usage[ _b0 ]++;
-            assert( 0 != cs || 0 != ip );                  // almost certainly an app bug.
+            #ifndef I8086_TEST_HARNESS // test86 legitimately starts single-step vectors at cs:ip 0:0
+                assert( 0 != cs || 0 != ip );               // almost certainly an app bug.
+            #endif
         #endif
 
         #ifdef I8086_TRACK_CYCLES
