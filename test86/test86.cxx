@@ -445,19 +445,39 @@ void run_tests( const char * path )
 
 int main( int argc, char * argv[] )
 {
-    tracer.Enable( true, "test86.log", true );
-    tracer.SetQuiet( true );
-    cpu.trace_instructions( true );
+    // Tracing is off by default: every parallel worker in runall.sh would otherwise
+    // enable it and race to write the same hardcoded "test86.log", which is both wasted
+    // I/O (nobody's reading it during a bulk run) and produces a corrupted/interleaved
+    // log anyway. Pass -t for one-off single-file debugging.
 
-    if ( 2 != argc )
-        fail( "usage: %s filename.json\n", argv[0] );
+    bool trace = false;
+    const char * path = 0;
+    for ( int i = 1; i < argc; i++ )
+    {
+        if ( !strcmp( argv[ i ], "-t" ) )
+            trace = true;
+        else if ( 0 == path )
+            path = argv[ i ];
+        else
+            path = 0; // too many non-flag arguments; fall through to the usage error below
+    }
 
-    run_tests( argv[ 1 ] );
+    if ( 0 == path )
+        fail( "usage: %s [-t] filename.json\n  -t   enable instruction tracing to test86.log (single-file runs only --\n       don't use this under runall.sh, every parallel worker would race to\n       write the same log)\n", argv[ 0 ] );
+
+    if ( trace )
+    {
+        tracer.Enable( true, "test86.log", true );
+        tracer.SetQuiet( true );
+        cpu.trace_instructions( true );
+    }
+
+    run_tests( path );
 
     if ( 0 == tests_failed )
-        printf( "test86 completed %llu tests in %s with great success\n", tests_run, argv[ 1 ] );
+        printf( "test86 completed %llu tests in %s with great success\n", tests_run, path );
     else
-        printf( "test86 completed %llu tests with %llu failures in %s\n", tests_run, tests_failed, argv[ 1 ] );
+        printf( "test86 completed %llu tests with %llu failures in %s\n", tests_run, tests_failed, path );
 
     return ( 0 == tests_failed ) ? 0 : 1; // so callers can trust the exit code instead of having to parse stdout
 } //main
