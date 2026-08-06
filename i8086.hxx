@@ -185,8 +185,8 @@ struct i8086
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return (uint8_t *) flat_address( seg, offset ); }
     uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) flat_address( seg, offset ); }
 
-    // read/write a little-endian 16-bit value at an address that is known to be guest memory
-    // or guest code bytes (never a host register) -- always byte-swap on a big-endian host.
+    // read a little-endian 16-bit value at an address that is known to be guest code bytes
+    // (never a host register) -- always byte-swap on a big-endian host.
     static uint16_t read_iword( const void * p )
     {
 #ifdef TARGET_BIG_ENDIAN
@@ -196,19 +196,23 @@ struct i8086
 #endif
     } //read_iword
 
-    static void write_iword( void * p, uint16_t val )
-    {
-#ifdef TARGET_BIG_ENDIAN
-        * (uint16_t *) p = flip_endian16( val );
-#else
-        * (uint16_t *) p = val;
-#endif
-    } //write_iword
-
-    uint16_t mword( uint16_t seg, uint16_t offset ) { return read_iword( flat_address16( seg, offset ) ); }
     uint8_t mbyte( uint16_t seg, uint16_t offset ) { return * flat_address8( seg, offset ); }
-    void setmword( uint16_t seg, uint16_t offset, uint16_t value ) { write_iword( flat_address16( seg, offset ), value ); }
     void setmbyte( uint16_t seg, uint16_t offset, uint8_t value ) { * flat_address8( seg, offset ) = value; }
+
+    // word-at-a-time access to guest memory, one byte at a time so a word at offset 0xffff
+    // wraps to offset 0 of the same segment instead of spilling into the next paragraph.
+    uint16_t mword( uint16_t seg, uint16_t offset )
+    {
+        uint16_t lo = mbyte( seg, offset );
+        uint16_t hi = mbyte( seg, (uint16_t) ( offset + 1 ) );
+        return ( hi << 8 ) | lo;
+    } //mword
+
+    void setmword( uint16_t seg, uint16_t offset, uint16_t value )
+    {
+        setmbyte( seg, offset, (uint8_t) value );
+        setmbyte( seg, (uint16_t) ( offset + 1 ), (uint8_t) ( value >> 8 ) );
+    } //setmword
 
   private:
     // the code assumes relative positions of most of these member variables. they can't easily be moved around.
