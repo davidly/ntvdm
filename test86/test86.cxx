@@ -10,7 +10,7 @@
 #include <djl_os.hxx>
 #include <i8086.hxx>
 
-#ifdef __amd64
+#ifndef _MSC_VER
 #define _strtoui64 strtoull
 #endif
 
