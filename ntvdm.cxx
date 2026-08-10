@@ -63,6 +63,7 @@
 #include <djl_os.hxx>
 #include <sys/timeb.h>
 #include <memory.h>
+#include <atomic>
 #include <chrono>
 #include <mutex>
 #include <fcntl.h>
@@ -300,7 +301,8 @@ static uint16_t g_mainPSP = 0;                       // psp of the main app
 static bool g_use80xRowsMode = false;                // true to force 80 x 25/43/50 with cursor positioning
 static bool g_forceConsole = false;                  // true to force teletype mode, with no cursor positioning
 static bool g_int16_1_loop = false;                  // true if an app is looping to get keyboard input. don't busy loop.
-static bool g_KbdPeekAvailable = false;              // true when peek on the keyboard sees keystrokes
+static atomic<bool> g_KbdPeekAvailable( false );     // true when peek on the keyboard sees keystrokes. Set by the
+                                                      // keyboard-peek thread, read/cleared by the main thread.
 static bool g_int9_pending = false;                  // true if an int9 was scheduled but not yet invoked
 static long g_injectedControlC = 0;                  // # of control c events to inject
 static int g_appTerminationReturnCode = 0;           // when int 21 function 4c is invoked to terminate an app, this is the app return code
@@ -842,10 +844,10 @@ void SleepAndScheduleInterruptCheck()
         g_KbdPeekAvailable = true; // make sure an int9 gets scheduled
 
     CKbdBuffer kbd_buf;
-    //tracer.Trace( "  update required: %d, kbdpeek available: %d\n", DisplayUpdateRequired(), g_KbdPeekAvailable );
+    //tracer.Trace( "  update required: %d, kbdpeek available: %d\n", DisplayUpdateRequired(), (bool) g_KbdPeekAvailable );
     if ( kbd_buf.IsEmpty() && !DisplayUpdateRequired() && !g_KbdPeekAvailable )
     {
-        tracer.Trace( "  sleeping in SleepAndScheduleInterruptCheck. g_KbdPeekAvailable %d\n", g_KbdPeekAvailable );
+        tracer.Trace( "  sleeping in SleepAndScheduleInterruptCheck. g_KbdPeekAvailable %d\n", (bool) g_KbdPeekAvailable );
 #ifdef _WIN32
         DWORD dw = WaitForSingleObject( g_heventKeyStroke, 1 );
         tracer.Trace( "  sleep woke up due to %s\n", ( 0 == dw ) ? "keystroke event signaled" : "timeout" );

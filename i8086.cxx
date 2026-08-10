@@ -17,6 +17,7 @@
 
 #include <djl_os.hxx>
 
+#include <atomic>
 #include <stdio.h>
 #include <memory.h>
 #include <assert.h>
@@ -31,17 +32,27 @@ uint8_t memory[ 0x10fff0 ];  // though only 0..fffff is addressable on the 8086
 
 i8086 cpu;
 static CDisassemble8086 g_Disassembler;
-static uint32_t g_State = 0;
+// g_State is set from the keyboard-peek thread (exit_emulate_early) as well as read/cleared on
+// every instruction in the main emulation loop, so it's an atomic bitmask rather than a plain
+// uint32_t. All accesses use memory_order_relaxed: this flag needs to be atomic (no lost updates
+// across the |=/&=~ read-modify-writes, no torn reads) but nothing here depends on ordering
+// relative to any other memory, and relaxed keeps the per-instruction check (below, ~1.6% of
+// runtime) exactly as cheap as the plain read it replaces -- a relaxed load compiles to the same
+// bare load instruction on x86 and ARM. The fetch_or/fetch_and calls do cost more per-call than a
+// plain |=/&=~ (a locked RMW on x86), but they only execute inside handle_state(), which itself
+// only runs when this same relaxed read just found g_State non-zero -- i.e. on the rare "something
+// is pending" path (halt/keystroke/trap/trace-toggle), never on the hot per-instruction path.
+static atomic<uint32_t> g_State( 0 );
 
 const uint32_t stateTraceInstructions = 1;
 const uint32_t stateEndEmulation = 2;
 const uint32_t stateExitEmulateEarly = 4;
 const uint32_t stateTrapSet = 8;
 
-void i8086::trace_instructions( bool t ) { if ( t ) g_State |= stateTraceInstructions; else g_State &= ~stateTraceInstructions; }
-void i8086::end_emulation() { g_State |= stateEndEmulation; }
-void i8086::exit_emulate_early() { g_State |= stateExitEmulateEarly; }
-static void trap_set() { g_State |= stateTrapSet; }
+void i8086::trace_instructions( bool t ) { if ( t ) g_State.fetch_or( stateTraceInstructions, memory_order_relaxed ); else g_State.fetch_and( ~stateTraceInstructions, memory_order_relaxed ); }
+void i8086::end_emulation() { g_State.fetch_or( stateEndEmulation, memory_order_relaxed ); }
+void i8086::exit_emulate_early() { g_State.fetch_or( stateExitEmulateEarly, memory_order_relaxed ); }
+static void trap_set() { g_State.fetch_or( stateTrapSet, memory_order_relaxed ); }
 
 bool i8086::external_interrupt( uint8_t interrupt_num )
 {
@@ -716,7 +727,7 @@ void i8086::op_rotate16( uint16_t * pval, uint8_t operation, uint8_t amount )
 
 not_inlined void i8086::op_interrupt( uint8_t interrupt_num, uint8_t instruction_length )
 {
-    if ( g_State & stateTraceInstructions )
+    if ( g_State.load( memory_order_relaxed ) & stateTraceInstructions )
         tracer.Trace( "op_interrupt num %#x, length %d\n", interrupt_num, instruction_length );
 
     materializeFlags();
@@ -1115,31 +1126,31 @@ not_inlined bool i8086::op_ff()
 
 not_inlined bool i8086::handle_state()
 {
-    if ( g_State & stateEndEmulation )
+    if ( g_State.load( memory_order_relaxed ) & stateEndEmulation )
     {
-        g_State &= ~stateEndEmulation;
+        g_State.fetch_and( ~stateEndEmulation, memory_order_relaxed );
         return true;
     }
 
-    if ( ( g_State & stateExitEmulateEarly ) &&
+    if ( ( g_State.load( memory_order_relaxed ) & stateExitEmulateEarly ) &&
          ( 0xff == prefix_segment_override ) &&    // wait until there is no prefix to exit
          ( 0xff == prefix_repeat_opcode ) )
     {
-        g_State &= ~stateExitEmulateEarly;
+        g_State.fetch_and( ~stateExitEmulateEarly, memory_order_relaxed );
         return true;
     }
 
-    if ( g_State & stateTraceInstructions )
+    if ( g_State.load( memory_order_relaxed ) & stateTraceInstructions )
         trace_state();
 
-    if ( g_State & stateTrapSet )
+    if ( g_State.load( memory_order_relaxed ) & stateTrapSet )
     {
         assert( fTrap );
         if ( fIgnoreTrap )  // set just after the iret that enables fTrap or an int3; actually trap after the following instruction
             fIgnoreTrap = false;
         else
         {
-            g_State &= ~stateTrapSet;
+            g_State.fetch_and( ~stateTrapSet, memory_order_relaxed );
             op_interrupt( 1, 0 );
         }
     }
@@ -1173,7 +1184,7 @@ uint64_t i8086::emulate( uint64_t maxcycles )
         prefix_repeat_opcode = 0xff;
 
 _prefix_set:
-        if ( 0 != g_State )                                // 1.6% of runtime
+        if ( 0 != g_State.load( memory_order_relaxed ) )   // 1.6% of runtime
             if ( handle_state() )
                 break;
 

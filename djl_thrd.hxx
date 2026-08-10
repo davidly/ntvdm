@@ -2,6 +2,7 @@
 
 #if !defined( _WIN32 ) && !defined( sparc ) && !defined( __mc68000__ )
 
+#include <atomic>
 #include <pthread.h>
 
 class C_pthread_mutex_t_lock
@@ -28,7 +29,7 @@ class CSimpleThread
         pthread_t the_thread;
         pthread_cond_t end_condition;
         pthread_mutex_t the_mutex;
-        bool stop_running;
+        std::atomic<bool> stop_running;
 
 #endif
 
@@ -62,8 +63,12 @@ class CSimpleThread
         CSimpleThread( void * ( * start_routine )( void * ) ) : the_thread( 0 )
         {
             stop_running = false;
-            end_condition = (pthread_cond_t) PTHREAD_COND_INITIALIZER;
-            the_mutex = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
+            // Explicit init (rather than assigning PTHREAD_MUTEX_INITIALIZER/PTHREAD_COND_INITIALIZER)
+            // for both: assigning one of those macros to an already-declared variable and then also
+            // calling pthread_*_init on it -- which the cond var used to do -- is undefined behavior
+            // per POSIX (initializing an already-initialized primitive), even though it's harmless in
+            // practice with glibc/macOS's actual implementations.
+            pthread_mutex_init( & the_mutex, 0 );
             pthread_cond_init( & end_condition, 0 );
             int ret = pthread_create( & the_thread, 0, start_routine, (void *) this );
             tracer.Trace( "simplethread: return value from pthread_create: %d\n", ret );
@@ -73,13 +78,19 @@ class CSimpleThread
         {
             if ( 0 != the_thread )
             {
-                stop_running = true;
-
                 {
-                    // This signal is used to wake the thread from sleeping so it can check if it's time to stop.
+                    // stop_running is set inside the same lock as the signal (rather than before it,
+                    // as this used to do) so the happens-before relationship the waiting thread relies
+                    // on to see it is established by this lock/unlock pair directly, not by incidental
+                    // reasoning about pthread_mutex_lock/unlock acting as a fence around a write that
+                    // precedes it in program order. stop_running is also atomic<bool> now (not a plain
+                    // bool) so this is correct independent of that argument too -- belt and suspenders,
+                    // since the thread proc below reads it outside any lock, right after pthread_cond_
+                    // timedwait's internal re-lock/unlock has already returned.
 
                     tracer.Trace( "simplethread: signaling a thread to check if it's time to complete\n" );
                     C_pthread_mutex_t_lock mtx_lock( the_mutex );
+                    stop_running = true;
                     pthread_cond_signal( & end_condition );
                 }
 

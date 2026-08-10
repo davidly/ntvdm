@@ -413,7 +413,8 @@ void run_tests( const char * path )
 
     long len = portable_filelen( file.get() );
     vector<char> data( len + 1 );
-    fread( data.data(), len, 1, file.get() );
+    if ( 0 != len && 1 != fread( data.data(), len, 1, file.get() ) )
+        fail( "can't read input file %s\n", path );
     char * p = data.data();
 
     do
