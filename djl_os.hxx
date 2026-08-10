@@ -22,6 +22,7 @@
 
     #define not_inlined __declspec(noinline)
     #define force_inlined __forceinline
+    #define always_inlined __forceinline
 
     inline void sleep_ms( uint64_t ms ) { SleepEx( (DWORD) ms, FALSE ); }
 
@@ -44,6 +45,7 @@
     #define MAX_PATH 255
     #define not_inlined
     #define force_inlined __inline
+    #define always_inlined __inline // Watcom __inline is a hint, not a mandate; mark noinline by hand if it bloats a segment
 
     inline void sleep_ms( uint64_t ms ) {}
 
@@ -81,6 +83,7 @@
 
     #define not_inlined __attribute__ ((noinline))
     #define force_inlined inline
+    #define always_inlined __attribute__((always_inline)) inline // overrides size-based inlining heuristics, unlike force_inlined above
 
     inline void bump_thread_priority() {}
 

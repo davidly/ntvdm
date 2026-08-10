@@ -32,16 +32,6 @@ uint8_t memory[ 0x10fff0 ];  // though only 0..fffff is addressable on the 8086
 
 i8086 cpu;
 static CDisassemble8086 g_Disassembler;
-// g_State is set from the keyboard-peek thread (exit_emulate_early) as well as read/cleared on
-// every instruction in the main emulation loop, so it's an atomic bitmask rather than a plain
-// uint32_t. All accesses use memory_order_relaxed: this flag needs to be atomic (no lost updates
-// across the |=/&=~ read-modify-writes, no torn reads) but nothing here depends on ordering
-// relative to any other memory, and relaxed keeps the per-instruction check (below, ~1.6% of
-// runtime) exactly as cheap as the plain read it replaces -- a relaxed load compiles to the same
-// bare load instruction on x86 and ARM. The fetch_or/fetch_and calls do cost more per-call than a
-// plain |=/&=~ (a locked RMW on x86), but they only execute inside handle_state(), which itself
-// only runs when this same relaxed read just found g_State non-zero -- i.e. on the rare "something
-// is pending" path (halt/keystroke/trap/trace-toggle), never on the hot per-instruction path.
 static atomic<uint32_t> g_State( 0 );
 
 const uint32_t stateTraceInstructions = 1;
