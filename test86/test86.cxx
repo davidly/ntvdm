@@ -55,8 +55,8 @@ void i8086_hard_exit( const char * pcerror )
 {
     printf( "hard exit on test number %llu: %s, hash %s, file %s\n  ", tests_run + 1, acname, achash, pfilename );
     cpu.reset_disassembler();
-    tracer.Trace( pcerror );
-    printf( pcerror );
+    tracer.Trace( "%s", pcerror );
+    printf( "%s", pcerror );
     tracer.Trace( "  %s\n", build_string() );
 
     // don't process-exit -- there are hundreds of thousands of tests to get through and one hard
