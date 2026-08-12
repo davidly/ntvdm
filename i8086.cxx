@@ -32,7 +32,22 @@ uint8_t memory[ 0x10fff0 ];  // though only 0..fffff is addressable on the 8086
 
 i8086 cpu;
 static CDisassemble8086 g_Disassembler;
-static atomic<uint32_t> g_State( 0 );
+
+#ifdef __mc68000__
+    // the 68000 compiler doesn't support atomic<uint32_t> so we use a relaxed implementation instead
+    class RelaxedUint32
+    {
+        uint32_t v;
+      public:
+        RelaxedUint32( uint32_t initial ) : v( initial ) {}
+        uint32_t fetch_or( uint32_t x, memory_order = memory_order_relaxed ) { uint32_t old = v; v |= x; return old; }
+        uint32_t fetch_and( uint32_t x, memory_order = memory_order_relaxed ) { uint32_t old = v; v &= x; return old; }
+        uint32_t load( memory_order = memory_order_relaxed ) const { return v; }
+    };
+    static RelaxedUint32 g_State( 0 );
+#else
+    static atomic<uint32_t> g_State( 0 );
+#endif
 
 const uint32_t stateTraceInstructions = 1;
 const uint32_t stateEndEmulation = 2;
