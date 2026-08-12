@@ -33,7 +33,7 @@ uint8_t memory[ 0x10fff0 ];  // though only 0..fffff is addressable on the 8086
 i8086 cpu;
 static CDisassemble8086 g_Disassembler;
 
-#ifdef __mc68000__
+#if defined( __mc68000__ ) || defined( sparc )
     // the 68000 compiler doesn't support atomic<uint32_t> so we use a relaxed implementation instead
     class RelaxedUint32
     {
