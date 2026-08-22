@@ -208,7 +208,7 @@ to specify a folder that maps to C:\. e.g. -r:. or -r:.. or -r:/this/that
 the terminal application to disable menu access using the Alt key.
 
  * Most DOS applications require lines to end with CR/LF.  Ensure your input
-files have this on Linux systems or appliations will fail in odd ways.
+files have this on Linux systems or applications will fail in odd ways.
 
 Usually View - Keyboard Shortcuts
 
