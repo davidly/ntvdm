@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bitset>
+#include <string.h>
 using namespace std;
 
 extern uint8_t memory[ 0x10fff0 ];
@@ -185,14 +186,37 @@ struct i8086
     uint8_t * flat_address8( uint16_t seg, uint16_t offset ) { return (uint8_t *) flat_address( seg, offset ); }
     uint16_t * flat_address16( uint16_t seg, uint16_t offset ) { return (uint16_t *) flat_address( seg, offset ); }
 
+    // Guest words need not be aligned. Fixed-size copies let the compiler use word
+    // accesses where supported and byte accesses on strict-alignment targets.
+    // Use the builtin explicitly because our GCC/Clang builds use -fno-builtin.
+    static uint16_t read_unaligned_word( const void * p )
+    {
+        uint16_t value;
+#if defined( __GNUC__ ) || defined( __clang__ )
+        __builtin_memcpy( &value, p, sizeof( value ) );
+#else
+        memcpy( &value, p, sizeof( value ) );
+#endif
+        return value;
+    } //read_unaligned_word
+
+    static void write_unaligned_word( void * p, uint16_t value )
+    {
+#if defined( __GNUC__ ) || defined( __clang__ )
+        __builtin_memcpy( p, &value, sizeof( value ) );
+#else
+        memcpy( p, &value, sizeof( value ) );
+#endif
+    } //write_unaligned_word
+
     // read a little-endian 16-bit value at an address that is known to be guest code bytes
     // (never a host register) -- always byte-swap on a big-endian host.
     static uint16_t read_iword( const void * p )
     {
 #ifdef TARGET_BIG_ENDIAN
-        return flip_endian16( * (const uint16_t *) p );
+        return flip_endian16( read_unaligned_word( p ) );
 #else
-        return * (const uint16_t *) p;
+        return read_unaligned_word( p );
 #endif
     } //read_iword
 
@@ -267,7 +291,8 @@ struct i8086
         }
 
         _pcode = pcode;
-        * (uint16_t *) & _b0 = * (uint16_t *) pcode; // updates both _b0 and _b1 with one copy
+        _b0 = pcode[ 0 ];
+        _b1 = pcode[ 1 ];
         _rm = ( _b1 & 7 );
         _reg = ( ( _b1 >> 3 ) & 7 );
         _mod = ( _b1 >> 6 );
@@ -399,9 +424,9 @@ struct i8086
 
 #ifdef TARGET_BIG_ENDIAN
         if ( is_guest_memory( p ) )
-            return flip_endian16( * (uint16_t *) p );
+            return flip_endian16( read_unaligned_word( p ) );
 #endif
-        return * (uint16_t *) p;
+        return read_unaligned_word( p );
     } //read_word
 
     void write_word( void * p, uint16_t val )
@@ -417,11 +442,11 @@ struct i8086
 #ifdef TARGET_BIG_ENDIAN
         if ( is_guest_memory( p ) )
         {
-            * (uint16_t *) p = flip_endian16( val );
+            write_unaligned_word( p, flip_endian16( val ) );
             return;
         }
 #endif
-        * (uint16_t *) p = val;
+        write_unaligned_word( p, val );
     } //write_word
 
     uint16_t * add_two_wrap( uint16_t * p )
@@ -433,7 +458,7 @@ struct i8086
         bool offset_wraps = ( 0xfffe == _effective_offset || 0xffff == _effective_offset );
         _effective_offset += 2;
 
-        p++;
+        p = (uint16_t *) ( (uint8_t *) p + 2 );
         uint8_t * beyond = memory + 1024 * 1024;
 
         if ( (uint8_t *) p == beyond )

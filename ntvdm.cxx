@@ -8681,9 +8681,12 @@ uint16_t LoadOverlay( const char * app, uint16_t CodeSegment, uint16_t segReloca
             for ( uint16_t r = 0; r < head.num_relocs; r++ )
             {
                 uint32_t offset = (uint32_t) relocations[ r ].offset + (uint32_t) relocations[ r ].segment * 16;
-                le16_t * target = (le16_t *) ( pcode + offset );
-                //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, (uint16_t) *target, (uint16_t) *target + segRelocationFactor );
-                *target += segRelocationFactor;
+                // Relocation words may start at odd addresses in the image.
+                uint8_t * target = pcode + offset;
+                uint16_t value = (uint16_t) target[0] | ( (uint16_t) target[1] << 8 );
+                value += segRelocationFactor;
+                target[0] = (uint8_t) value;
+                target[1] = (uint8_t) ( value >> 8 );
             }
         }
     }
@@ -8943,7 +8946,7 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
 
         tracer.Trace( "  loading app %s\n", acApp );
         tracer.Trace( "  looks like an MZ exe... size from blocks %u, bytes in last block %u\n",
-                      ( (uint32_t) head.blocks_in_file ) * 512, head.bytes_in_last_block );
+                      ( (uint32_t) head.blocks_in_file ) * 512, (unsigned) (uint16_t) head.bytes_in_last_block );
 
         const uint16_t CodeSegment = DataSegment + 16; //  data segment + 256 bytes (16 paragraphs) for the psp
         uint8_t * pcode = cpu.flat_address8( CodeSegment, 0 );
@@ -8971,9 +8974,12 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             for ( uint16_t r = 0; r < head.num_relocs; r++ )
             {
                 uint32_t offset = (uint32_t) relocations[ r ].offset + (uint32_t) relocations[ r ].segment * 16;
-                le16_t * target = (le16_t *) ( pcode + offset );
-                //tracer.TraceQuiet( "  relocation %u offset %u, update %#02x to %#02x\n", r, offset, (uint16_t) *target, (uint16_t) *target + CodeSegment );
-                *target += CodeSegment;
+                // Relocation words may start at odd addresses in the image.
+                uint8_t * target = pcode + offset;
+                uint16_t value = (uint16_t) target[0] | ( (uint16_t) target[1] << 8 );
+                value += CodeSegment;
+                target[0] = (uint8_t) value;
+                target[1] = (uint8_t) ( value >> 8 );
             }
         }
 
@@ -9002,7 +9008,8 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
             *reg_cs = CodeSegment + head.relative_cs;
             *reg_ip = head.ip;
             tracer.Trace( "  loaded %s suspended (mode 1), cs %04x, ip %04x, ss %04x, sp %04x\n",
-                          acApp, *reg_cs, *reg_ip, *reg_ss, *reg_sp );
+                          acApp, (unsigned) (uint16_t) *reg_cs, (unsigned) (uint16_t) *reg_ip,
+                          (unsigned) (uint16_t) *reg_ss, (unsigned) (uint16_t) *reg_sp );
         }
     }
 
@@ -9280,7 +9287,9 @@ uint16_t AllocateEnvironment( uint16_t segStartingEnv, const char * pathToExecut
     }
 
     *penv++ = 0; // extra 0 to indicate there are no more environment variables
-    * (le16_t *) ( penv ) = 0x0001; // one more additional item per DOS 3.0+
+    // Environment strings can leave penv unaligned. Store the count as bytes.
+    penv[0] = 1; // one more additional item per DOS 3.0+
+    penv[1] = 0;
     penv += 2;
 
     strcpy( penv, fullPath );
@@ -9686,22 +9695,22 @@ int main( int argc, char * argv[] )
         // global bios memory
 
         uint8_t * pbiosdata = cpu.flat_address8( 0x40, 0 );
-        * (le16_t *) ( pbiosdata + 0x10 ) = 0x21;           // equipment list. diskette installed and initial video mode 0x20
-        * (le16_t *) ( pbiosdata + 0x13 ) = 640;            // contiguous 1k blocks (640 * 1024)
-        * (le16_t *) ( pbiosdata + 0x1a ) = 0x1e;           // keyboard buffer head
-        * (le16_t *) ( pbiosdata + 0x1c ) = 0x1e;           // keyboard buffer tail
+        cpu.setmword( 0x40, 0x10, 0x21 );           // equipment list. diskette installed and initial video mode 0x20
+        cpu.setmword( 0x40, 0x13, 640 );            // contiguous 1k blocks (640 * 1024)
+        cpu.setmword( 0x40, 0x1a, 0x1e );           // keyboard buffer head
+        cpu.setmword( 0x40, 0x1c, 0x1e );           // keyboard buffer tail
         * (uint8_t *)  ( pbiosdata + 0x49 ) = DefaultVideoMode; // video mode is 3 == 80x25, 16 colors
-        * (le16_t *) ( pbiosdata + 0x4a ) = ScreenColumns;  // 80
-        * (le16_t *) ( pbiosdata + 0x4c ) = 0x1000;         // video regen buffer size
+        cpu.setmword( 0x40, 0x4a, ScreenColumns );  // 80
+        cpu.setmword( 0x40, 0x4c, 0x1000 );         // video regen buffer size
         * (uint8_t *)  ( pbiosdata + 0x60 ) = 7;              // cursor ending/bottom scan line
         * (uint8_t *)  ( pbiosdata + 0x61 ) = 6;              // cursor starting/top scan line
         * (uint8_t *)  ( pbiosdata + 0x62 ) = 0;              // current display page
-        * (le16_t *) ( pbiosdata + 0x63 ) = 0x3d4;          // base port for 6845 CRT controller. color
-        * (le16_t *) ( pbiosdata + 0x65 ) = 41;             // 6845 crt mode control register value
-        * (le16_t *) ( pbiosdata + 0x66 ) = 48;             // cga palette mask
-        * (le16_t *) ( pbiosdata + 0x72 ) = 0x1234;         // soft reset flag (bypass memteest and crt init)
-        * (le16_t *) ( pbiosdata + 0x80 ) = 0x1e;           // keyboard buffer start
-        * (le16_t *) ( pbiosdata + 0x82 ) = 0x3e;           // one byte past keyboard buffer
+        cpu.setmword( 0x40, 0x63, 0x3d4 );          // base port for 6845 CRT controller. color
+        cpu.setmword( 0x40, 0x65, 41 );             // 6845 crt mode control register value
+        cpu.setmword( 0x40, 0x66, 48 );             // cga palette mask
+        cpu.setmword( 0x40, 0x72, 0x1234 );         // soft reset flag (bypass memteest and crt init)
+        cpu.setmword( 0x40, 0x80, 0x1e );           // keyboard buffer start
+        cpu.setmword( 0x40, 0x82, 0x3e );           // one byte past keyboard buffer
         * (uint8_t *)  ( pbiosdata + 0x84 ) = DefaultScreenRows - 1; // 25 - 1
         * (uint8_t *)  ( pbiosdata + 0x87 ) = 0x60;           // video mode options for ega+
         * (uint8_t *)  ( pbiosdata + 0x88 ) = 9;              // ega feature bits
