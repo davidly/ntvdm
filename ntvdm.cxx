@@ -576,6 +576,8 @@ const char * DOSToHostPath( const char * p )
 static HANDLE g_hConsoleOutput = 0;                // the Windows console output handle
 static HANDLE g_hConsoleInput = 0;                 // the Windows console input handle
 static HANDLE g_heventKeyStroke;
+// _read() on redirected stdin does not set the CRT FILE EOF indicator.
+static atomic<bool> g_redirectedInputEOF( false );
 #endif
 
 uint8_t * GetDiskTransferAddress() { return cpu.flat_address8( g_diskTransferSegment, g_diskTransferOffset ); }
@@ -2727,7 +2729,7 @@ void InjectKeystrokes()
         kbd_buf.Add( 0x03, 0x2e );
     }
 
-    if ( !isatty( fileno( stdin ) ) && kbd_buf.IsEmpty() && ( 0 == feof( stdin) ) )
+    if ( !isatty( fileno( stdin ) ) && kbd_buf.IsEmpty() && !g_redirectedInputEOF.load( memory_order_relaxed ) )
     {
         int result = ConsoleConfiguration::portable_getch();
         if ( EOF != result )
@@ -2736,6 +2738,8 @@ void InjectKeystrokes()
             tracer.Trace( "  adding redirected character %02x to keyboard buffer\n", ch );
             kbd_buf.Add( ch, ascii_to_scancode[ ch ] );
         }
+        else
+            g_redirectedInputEOF.store( true, memory_order_relaxed );
     }
 } //InjectKeystrokes
 
@@ -9023,9 +9027,14 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
         aHandles[ 0 ] = (HANDLE) param;    // the stop/shutdown event
         aHandles[ 1 ] = g_hConsoleInput;
 
+        const bool redirectedInput = !isatty( fileno( stdin ) );
+
         do
         {
-            DWORD ret = WaitForMultipleObjects( 2, aHandles, FALSE, 20 );
+            // A redirected file handle stays signaled, even at EOF. Waiting on
+            // it spins and can flood the guest with keyboard interrupts.
+            DWORD ret = redirectedInput ? WaitForSingleObject( aHandles[ 0 ], 20 ) :
+                                         WaitForMultipleObjects( 2, aHandles, FALSE, 20 );
             if ( WAIT_OBJECT_0 == ret )
                 break;
 
@@ -9034,11 +9043,11 @@ uint16_t LoadBinary( const char * acApp, const char * acAppArgs, uint8_t lenAppA
                 bool keystrokeAvailable = false;
                 uint8_t asciiChar = 0, scancode = 0;
 
-                if ( !isatty( fileno( stdin ) ) )
+                if ( redirectedInput )
                 {
                     CKbdBuffer kbd_buf;
                     if  ( kbd_buf.IsEmpty() )
-                        keystrokeAvailable = ( !feof( stdin ) );
+                        keystrokeAvailable = !g_redirectedInputEOF.load( memory_order_relaxed );
                 }
                 else
                     keystrokeAvailable = peek_keyboard( asciiChar, scancode );
