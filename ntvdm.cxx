@@ -1007,11 +1007,22 @@ static bool tc_build_file_open()
     return false;
 } //tc_build_file_open
 
+bool root_is_folder()
+{
+    // true if /r maps DOS C:\ to a host folder rather than to a host drive's root.
+    // DOS then sees only drive C:, as on Linux.
+
+    return ( strlen( g_acRoot ) > 3 );
+} //root_is_folder
+
 uint8_t get_current_drive()
 {
     // 0 == A...
 
 #ifdef _WIN32
+    if ( root_is_folder() )
+        return 2; // 'C'
+
     GetCurrentDirectoryA( sizeof( cwd ), cwd );
     return (uint8_t) toupper( cwd[0] ) - 'A';
 #else
@@ -4835,6 +4846,9 @@ void HandleAppExit()
 uint8_t HighestDrivePresent()
 {
 #ifdef _WIN32
+    if ( root_is_folder() )
+        return 2; // 'C'
+
     DWORD dwDriveMask = GetLogicalDrives();
 
     // a = 0 ... z = 25
@@ -5368,8 +5382,12 @@ void handle_int_21( uint8_t c )
             acDir[1] = ':';
             acDir[2] = 0;
 #ifdef _WIN32
-            BOOL ok = SetCurrentDirectoryA( acDir );
-            tracer.Trace( "  result of SetCurrentDirectory to '%s': %d\n", acDir, ok );
+            // with a /r folder, changing the host drive would leave that folder and break relative paths
+            if ( !root_is_folder() )
+            {
+                BOOL ok = SetCurrentDirectoryA( acDir );
+                tracer.Trace( "  result of SetCurrentDirectory to '%s': %d\n", acDir, ok );
+            }
 #endif
 
             return;
